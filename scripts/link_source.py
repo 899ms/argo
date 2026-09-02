@@ -95,6 +95,18 @@ def _is_link_to_source(path: Path) -> bool:
         return False
 
 
+# 判定「目录像 argo 真源/旧副本」的特征文件。用于 --force 迁走目录前的软校验，
+# 防止用户把 --to 错指到任意数据目录，--force 下整目录被 rename 迁走的误伤。
+_ARGO_MARKERS = ("scripts/search.py", "SKILL.md")
+
+
+def _looks_like_argo_copy(path: Path) -> bool:
+    """路径是否为 argo 真源/旧副本（含脚本与 SKILL 文档），而非任意数据目录。"""
+    if not path.is_dir():
+        return False
+    return any((path / marker).exists() for marker in _ARGO_MARKERS)
+
+
 def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
     """将 target 设为指向 SOURCE 的 symlink。"""
     source = SOURCE.resolve()
@@ -111,6 +123,16 @@ def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
             print(
                 f"[fail] 目标已存在且不是指向真源的链接: {target}\n"
                 f"       若确认可替换，加 --force（会先移走/删除该路径）",
+                file=sys.stderr,
+            )
+            return 1
+        # 软校验（dry-run 与实际执行都触发）：目录若不像 argo 真源/旧副本
+        # （无 scripts/search.py 或 SKILL.md），拒绝 --force 迁走，防止 --to
+        # 误指用户数据目录被整目录 rename 的误伤。
+        if target.is_dir() and not _looks_like_argo_copy(target):
+            print(
+                f"[fail] 目录不像 argo 真源/旧副本，拒绝 --force 迁走: {target}\n"
+                f"       若确要替换，先手动备份该目录，或删掉后再执行。",
                 file=sys.stderr,
             )
             return 1
