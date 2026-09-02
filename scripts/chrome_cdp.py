@@ -314,10 +314,16 @@ class _ChromeProcess:
     def _find_chrome() -> str:
         candidates = [
             os.environ.get("CHROME_PATH", ""),
+            # macOS
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            # Linux 常见可执行名（含 stable / chromium-browser / snap）
             "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
             "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/snap/bin/google-chrome",
+            "/snap/bin/chromium",
             # Windows：Chrome / Edge 常见安装路径
             os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
             os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
@@ -328,6 +334,15 @@ class _ChromeProcess:
         for c in candidates:
             if c and os.path.isfile(c):
                 return c
+        # Linux 常经 PATH 而非绝对路径发现（如 /snap/bin/chromium 是 symlink、
+        # chromium-browser 只在 PATH 中）：shutil.which 作为绝对路径后的兜底，
+        # 保留 macOS/Windows 既有优先顺序，不改变原行为。
+        import shutil
+        for name in ("google-chrome", "google-chrome-stable",
+                     "chromium", "chromium-browser"):
+            hit = shutil.which(name)
+            if hit:
+                return hit
         raise FileNotFoundError("Chrome not found. Install Chrome/Edge or set CHROME_PATH / chrome_path.")
 
     def start(self) -> None:
