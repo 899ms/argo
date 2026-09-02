@@ -26,15 +26,9 @@ triggers:
 
 # Argo v2.8.5 — 统一搜索与证据核验
 
-> 从「帮你搜到」升级为「帮你核到」。搜索输出自带**证据闭环**：高后果问题（金融/医疗/法律/事实核查）标 `fetch_required`，每条结果标 `fetch_suggested`；`--verify` 一键核验正文并回填「核实后证据分」，核实过的链接自动记忆，二次搜索直接显示已核实。本版详见 `docs/RELEASE_NOTES_v2.8.5.md` 与 `docs/RELEASE_NOTES_v2.8.0.md`。
+> 从「帮你搜到」升级为「帮你核到」。搜索输出自带**证据闭环**：高后果问题（金融/医疗/法律/事实核查）标 `fetch_required`，每条结果标 `fetch_suggested`；`--verify` 一键核验正文并回填「核实后证据分」，核实过的链接自动记忆，二次搜索直接显示已核实。
 >
-> v2.8.5 增量：DSH 插件工具原生化（`argo_search`/`argo_fetch` 原生一等工具默认可用，schema 单一真源生成 + 漂移门禁）；MCP 默认关闭、三形态按需开启；Windows 全平台兼容（tempfile / GBK / 解释器解析 / junction / `install.ps1`，PR #11）；配额自愈闭环（200 业务错误封套识别 + 路由排除 + 周期自愈）；抓取全局 deadline（`ARGO_FETCH_DEADLINE_S`）+ tinyfish 渲染层 + `.md` 变体探测；密钥热读 + 状态目录单一真源。详见 `docs/RELEASE_NOTES_v2.8.5.md`。
->
-> v2.8.4 增量：接入 Keenable（L1 声明式 HTTP，免费体验期）；多客户端 MCP 一键注入/诊断/还原（`argo mcp inject`，客户端真源 `mcp/clients.yaml`，原子写 + 备份 + 可逆）；深度研究本地数据融合 L1（`file_inputs` 白名单入账 + `recompute` 可复算执行器 + `local_sources`，`no_primary_sources` 计入本地一手）；结构化搜索增强（查询归一化 + 检索变体 + 复杂度门控，避免简单问题被拖成多轮）；social 域优先 + TF-IDF 检索修复；`--include-local` 本机命中并入。详见 `docs/RELEASE_NOTES_v2.8.4.md`。
->
-> v2.8.3 增量：anysearch 改为进程内 builder（消除 subprocess 启动开销 + `HttpClient.post` UA 轮换/重试/退避）；weighted RRF 动态可靠性因子（weakest-link 弱源降权，论文 2508.01405）；多语言路由修复（ja/ko 返回目标语言 + 德法西意走 anysearch + 中文内容/金融/技术引擎双层过滤 + Bing `mkt` 市场码 + 语言偏好软排序）。
->
-> v2.8.2 增量：Windows 全平台支持（移除 npm `os` 限制；GBK 编码防线 `PYTHONUTF8` + `-X utf8` + JSON `read_bytes`；工具探测改 `shutil.which`；Ctrl+C 干净退出；Chrome/Edge 自动发现）；主包 `dsh.bundle` 声明（`dsh plugin add github:taxueseek/argo` 即得 MCP 工具；v2.8.4 起 MCP 默认不挂载，默认入口为原生工具与 web seam）；npm 包补 `engines/`、`data/`。
+> 本版增量 / 变更日志见 `docs/RELEASE_NOTES_v2.8.5.md` 与 `docs/RELEASE_NOTES_v2.8.0.md`。
 
 ## 快速上手
 
@@ -94,50 +88,6 @@ argo screenshot "https://example.com" [--full-page] [--output /tmp/page.png]
 argo pdf "https://example.com/paper.pdf" [--pages "1-5"] [--password "secret"]
 ```
 
-### MCP 服务
-
-```bash
-python3 scripts/mcp_server.py [--test]
-```
-
-工具名：`argo_search`、`argo_local_search`（本机文件/记录搜索，非联网）、`argo_local_read`（白名单本地文本预览，`ARGO_LOCAL_READ_DIRS` 配置目录，fail-closed）、`argo_recompute`（fail-closed 可复算执行器，受限子进程重算数值）、`argo_research`（含 social-sentiment）、`argo_evidence`、`argo_clarify`、`argo_crawl`、`argo_fetch`（mode=extract 结构化提取）、`argo_screenshot`、`argo_pdf`、`argo_social_search`（mode=sentiment 舆情聚合）、`argo_article`（微信公众号文章全文）、`argo_job`（招聘岗位多平台聚合）。
-
-多客户端 MCP 一键接入（自研，注入/诊断/还原；客户端描述真源 `mcp/clients.yaml`）：
-
-```bash
-argo mcp status                 # 诊断各客户端（已安装/已配置）
-argo mcp inject --all           # 注入所有已安装客户端（原子写 + 备份）
-argo mcp inject --cursor        # 注入指定客户端（支持逗号分隔）
-argo mcp undo --all             # 还原（精确移除 entry 或从备份回滚）
-argo mcp inject --all --dry-run # 只预览不写
-```
-
-安全可逆：写入前备份到 `~/.argo/mcp-backup/`（带时间戳），atomic_write（同目录 temp+rename），含密钥配置 0600 权限；TOML 走行级 append section 不破坏手写注释。支持 Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline。
-
-DeepSeek Harness 插件一行安装（原生 `argo_search` / `argo_fetch` 工具 + `web_search` seam + `wide_research` 编排；MCP 完整工具面默认不挂、按需在 profile patch 中开启——搜索/抓取高频路径走 CLI 单发同引擎同守卫，零常驻 token 开销）：
-
-```bash
-dsh plugin --profile web add "github:taxueseek/argo#main&path:packages/dsh-plugin"
-```
-
-`wide_research` 与 `argo_research` 共用同一套证据语义：规划互补轨道（可带 `depends_on` 依赖分阶段，默认并行）→ 有界并发子代理取证 → 来源账本（仅 http(s) URL 入账）→ 综合报告，输出自带 `quality_gate_results`（`passed` / `conclusion_cap`：failures→low、warnings→medium、干净→high）。`passed=false` 或 `conclusion_cap=low` 时禁止把报告结论当事实表述，先 `argo_fetch` / `--verify` 核验账本来源再下判断。worker 只用 argo 取证工具，不允许调用 `argo_research`（防研究套研究，硬保护不可放行）。
-
-### 配额与引擎
-
-```bash
-python3 scripts/quota.py stats              # 配额状态
-python3 scripts/search.py --list-engines    # 全量引擎清单（真源 config.yaml）
-python3 scripts/search.py --list-engines --routable-only
-```
-
-TinyFish 搜索引擎（`tinyfish` / `tinyfish_news` / `tinyfish_paper`）与抓取渲染层（`_tinyfish_fetch`）**原生直连** `api.search/fetch.tinyfish.ai`，认证用 `X-API-Key`（官方标准）。配置：
-
-```bash
-export TINYFISH_API_KEY="sk-tinyfish-..."   # 去 agent.tinyfish.ai/api-keys 申请
-```
-
-未配置 `TINYFISH_API_KEY` 时，search 引擎不进路由（`env_ready=false`），抓取渲染层自动回退浏览器，不崩、不改变既有抓取行为。
-
 ## Agent 执行纪律
 
 1. **高后果问题**（金融/医疗/法律/事实核查）：search → evidence（或看 `credibility_fast`）→ fetch 高分 URL → 再下结论；`fetch_required=true` 时禁止跳过核验
@@ -159,40 +109,18 @@ python3 scripts/search.py "贵州茅台股价" --verify 3
 # [verify] 核验 3 条，improved=2 unchanged=1 degraded=0 mean_delta=0.18
 ```
 
-## 子技能
+## 按需读取（低频操作细节）
 
-| 子技能 | 位置 | 入口 |
-|--------|------|------|
-| local-search（本地零成本聚合） | `sub-skills/local-search/` | `python3 scripts/search.py "查询" --local-first` |
-| local-seek（本机文件搜索） | `sub-skills/local-seek/` | `python3 sub-skills/local-seek/scripts/seek.py "查询" --path ~/notes --count`（MCP: `argo_local_search`） |
-| ego-search（登录态专业搜索） | `sub-skills/ego-search/` | `python3 sub-skills/ego-search/scripts/ego_search.py search "AI 搜索" --runtime auto` |
+以下内容不每次必读，按需打开对应参考。日常搜索/抓取/深度研究走上面核心命令即可。
 
-## 本地打通（三通道）
+| 场景 | 读什么 |
+|------|--------|
+| MCP 工具全清单 / 多客户端注入 / DSH 插件接入 / 配额·TinyFish / 子技能 / 本地打通 / 工程纪律 | `references/operations.md` |
+| 参数大全、三大工具输出字段、子技能细节 | `references/usage.md` |
+| 深度研究协议：契约、工作包、dossier vs 判断稿、可判定门禁 | `references/research-protocol.md` |
+| 契约 / 工作包 / 判断稿骨架 | `references/research-templates.md` |
+| 引擎全景：垂直域/社交/学术/本地引擎表 + 路由规则 | `references/engines.md` |
+| 架构：文件结构、证据流水线、量化公式、输出 JSON Schema、内容质量信号 | `references/architecture.md` |
+| MCP 多客户端注入详解 | `docs/MCP_SETUP.md` |
 
-- **搜索体验**：`python3 scripts/search.py "查询" --include-local` —— 联网结果尾部并入本机文件命中（file:// 带行号，source=local_files，不参与融合评分）
-- **本地分析**：MCP `argo_local_read`（白名单预览，`ARGO_LOCAL_READ_DIRS=~/data,~/notes` 配置；worker 侧在 wide_research 默认工具白名单）；数据计算走工作包 `recompute`（fail-closed 授权）
-- **插件 wide_research 接入**：`file_inputs`（本地一手数据，登记血缘 sha256/路径，内容不入账）+ `recompute`（可复算契约，编排器侧受限执行，产出 `recomputed_values`）+ `include_local`（worker 搜索并入本机命中）；门禁 `recompute_skipped` / `recompute_conflict` 对齐核心，本地一手计入一手命中（防 no_source 假阴性）
-- **成果复用**：`python3 scripts/research.py --search-archive "主题词" [--archive-since 日期]` —— 检索历史研究/搜索归档（`数据/argo-search-archive/runs/`），按主题词 + 时间窗列出历史 run 与来源统计
-
-## 工程纪律（单一真源）
-
-- **代码真源** = 本仓库；**引擎声明真源** = `config.yaml`（外置 `engines/specs/*.yaml` 优先覆盖同名引擎）；注册表由 `scripts/sync_backends.py` 派生到 `backends/*`
-- **宿主入口** 用 `scripts/link_source.py` symlink 指回真源（目标来自 `--to` / `ARGO_LINK_TARGETS` / 本机 `installs.local.yaml`）；禁止 rsync/多副本；禁止在产品代码写死主机 skill 路径
-- **新增搜索源**：只改 `config.yaml`（必要时 `scripts/engines.py` 注册 builder）→ `python3 scripts/sync_backends.py && python3 scripts/sync_backends.py --check` → 回归 `python3 -m pytest tests/ -q`
-
-## 参考文档
-
-| 文档 | 内容 |
-|------|------|
-| `references/engines.md` | 引擎全景：垂直域 / 社交 / 学术 / 本地引擎表 + 路由规则 + 引擎调用示例 |
-| `references/research-protocol.md` | 深度研究协议：契约、工作包、dossier vs 判断稿、可判定门禁 |
-| `references/research-templates.md` | 契约 / 工作包 / 判断稿骨架 |
-| `references/usage.md` | 详细用法：参数大全、三大工具输出字段、子技能细节 |
-| `references/architecture.md` | 架构：文件结构、证据流水线、量化公式、输出 JSON Schema、内容质量信号 |
-| `docs/RELEASE_NOTES_v2.8.4.md` | 本版（2.8.4）发布说明 |
-| `docs/RELEASE_NOTES_v2.8.0.md` | v2.8.0 证据闭环发布说明 |
-| `docs/MCP_SETUP.md` | 多客户端 MCP 一键接入：注入 / 诊断 / 还原 |
-| `docs/DESIGN_LOCAL_DATA_FUSION.md` | 本地数据与网络数据分层融合设计（深度研究 L1） |
-| `docs/ARGO_INTRO.md` | 面向用户的介绍、安装方式、能力边界 |
-| `docs/engines/keenable.md` | Keenable 引擎说明 |
-| `docs/ADDING_NEW_ENGINE.md` | 新增引擎指南 |
+> 工程纪律（单一真源：代码真源=本仓库、引擎声明真源=config.yaml、宿主入口用 link_source.py symlink、新增搜索源流程）见 `references/operations.md` 末尾。
