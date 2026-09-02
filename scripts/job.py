@@ -749,7 +749,8 @@ def _mcpjobs_ensure() -> bool:
         if not os.path.exists(MCPJOBS_ENTRY):
             r = subprocess.run(
                 ["npm", "install", "--prefix", MCPJOBS_DIR, "--no-audit", "--no-fund",
-                 "mcp-jobs"], capture_output=True, text=True, timeout=240)
+                 "mcp-jobs"], capture_output=True, text=True, timeout=240,
+                encoding="utf-8", errors="replace")  # Windows GBK 控制台读 stderr 需显式 UTF-8
             if r.returncode != 0:
                 raise RuntimeError(f"npm install mcp-jobs 失败：{(r.stderr or r.stdout)[:120]}")
         p = subprocess.Popen(["node", MCPJOBS_ENTRY],

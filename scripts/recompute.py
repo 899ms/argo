@@ -33,6 +33,26 @@ from typing import Any
 _TAIL_STDOUT = 3000  # 超时/被杀时保留尾部输出（大任务不至于白跑全丢）
 _TAIL_STDERR = 2000
 
+
+def _kill_process_group(proc: subprocess.Popen) -> None:
+    """跨平台击杀进程组。
+
+    POSIX：start_new_session=True 时 proc 为进程组组长，用 killpg 杀掉整组
+    （含子进程），避免仅杀父进程留下孤儿子任务。
+    Windows：无 killpg/getpgid（POSIX-only），os.kill 也只能杀单进程，
+    taskkill /T 才可递归，但依赖外部命令；此处退化为 proc.kill()，仍保证
+    「父进程被杀、communicate 退出」的 fail-closed 语义（子进程虽可能残留，
+    但由独立 temp 工作目录 + 断网防护兜底，不扩散）。
+    """
+    try:
+        # POSIX-only：Windows 抛 AttributeError
+        if hasattr(os, "killpg") and hasattr(os, "getpgid") and os.name != "nt":
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            return
+    except (ProcessLookupError, OSError, ValueError, AttributeError):
+        pass
+    proc.kill()
+
 # 注入到用户代码执行前的防护段：Python 层断网 + 强制文件白名单 + 禁外部进程
 _NET_DISABLE_PRELUDE = """
 import socket as _socket
@@ -167,7 +187,7 @@ def run_recompute(
                 stdout, stderr = proc.communicate(timeout=timeout_s)
             except subprocess.TimeoutExpired:
                 try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    _kill_process_group(proc)
                 except Exception:
                     proc.kill()
                 stdout, stderr = proc.communicate()
