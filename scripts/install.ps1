@@ -1,8 +1,15 @@
 # Argo 一键安装脚本（Windows PowerShell 版）
 # 与 install.sh 对齐：克隆/更新真源 + 依赖 + 可选 Skill 链接
 # 用法：
-#   powershell -ExecutionPolicy Bypass -File scripts/install.ps1
-#   $env:ARGO_HOME = "C:\path\to\argo"; powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+#   powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1
+#   powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1 --link C:\path\to\skill
+#   $env:ARGO_HOME = "C:\path\to\argo"; powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1
+#
+# 安全提示：
+#   - 本脚本经 git clone 落地（非网络下载），RemoteSigned 已足够放行本地脚本。
+#     若因下载文件的 MOTW 被拦，先 `Unblock-File scripts\install.ps1` 再运行，
+#     避免使用 `-ExecutionPolicy Bypass`（微软安全基线明确反对完全绕过执行策略）。
+#   - 供应链加固：设 ARGO_PIN=<commit SHA> 使克隆后校验 HEAD 一致（与 install.sh 对齐）。
 #
 # 环境变量：
 #   ARGO_HOME         安装目录，默认 $env:USERPROFILE\.local\share\argo
@@ -17,15 +24,17 @@ $Repo = if ($env:ARGO_REPO) { $env:ARGO_REPO } else { "https://github.com/taxues
 $Branch = if ($env:ARGO_BRANCH) { $env:ARGO_BRANCH } else { "main" }
 $InstallDir = if ($env:ARGO_HOME) { $env:ARGO_HOME } else { Join-Path $env:USERPROFILE ".local\share\argo" }
 $SkipPip = ($env:ARGO_SKIP_PIP -eq "1")
+$Pin = if ($env:ARGO_PIN) { $env:ARGO_PIN } else { "" }
 $LinkTargets = @()
-foreach ($a in $args) {
-    if ($a -eq "--link" -or $a -eq "--to") { continue }
-    if ($args -contains $a) { continue }  # --to 的值在下一轮处理
-    $LinkTargets += $a
-}
-# 简单解析 --to <path>
+# 逐个参数解析：--link <path> / --to <path> 收集其值，其他未知参数跳过
 for ($i = 0; $i -lt $args.Count; $i++) {
-    if ($args[$i] -eq "--to") { $LinkTargets += $args[$i + 1] }
+    $a = $args[$i]
+    if ($a -eq "--link" -or $a -eq "--to") {
+        if ($i + 1 -lt $args.Count) { $LinkTargets += $args[$i + 1]; $i++ }
+        continue
+    }
+    # 裸路径参数（未带开关）视为链接目标
+    $LinkTargets += $a
 }
 if ($env:ARGO_LINK_TARGETS) {
     $LinkTargets += ($env:ARGO_LINK_TARGETS -split ";")
@@ -42,9 +51,9 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-$pyOk = python -c "import sys; print(1 if sys.version_info >= (3, 10) else 0)"
-if ($pyOk.Trim() -ne "1") {
-    Write-Error "当前 Python 版本低于 3.10。"
+$pyOk = (python -c "import sys; print(1 if sys.version_info >= (3, 10) else 0)" 2>$null).Trim()
+if ($pyOk -ne "1") {
+    Write-Error "当前 Python 版本低于 3.10，或 python 不在 PATH。"
     exit 1
 }
 
@@ -60,6 +69,18 @@ if (Test-Path (Join-Path $InstallDir ".git")) {
     Write-Host "==> 克隆仓库…"
     New-Item -ItemType Directory -Force -Path (Split-Path $InstallDir) | Out-Null
     git clone --depth 1 --branch $Branch $Repo $InstallDir
+}
+
+# 供应链加固：固定 commit 校验（ARGO_PIN），与 install.sh 对齐
+if ($Pin) {
+    $actualHead = if (Test-Path (Join-Path $InstallDir ".git")) {
+        (git -C $InstallDir rev-parse HEAD 2>$null)
+    } else { "unknown" }
+    if ($actualHead.Trim() -ne $Pin) {
+        Write-Error "供应链校验失败：固定 commit 为 $Pin，实际 HEAD 为 $actualHead。请人工核查仓库来源。"
+        exit 1
+    }
+    Write-Host "==> 供应链校验通过: HEAD=$Pin"
 }
 
 if (-not $SkipPip) {

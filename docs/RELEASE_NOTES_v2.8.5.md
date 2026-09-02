@@ -89,7 +89,11 @@ MCP 开关回归默认关闭——需要完整工具面时一条 profile patch �
 curl -fsSL https://raw.githubusercontent.com/taxueseek/argo/main/scripts/install.sh | bash
 
 # Windows（PowerShell，本版新增）
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/taxueseek/argo/main/scripts/install.ps1 | iex"
+# 建议先落盘再本地执行（RemoteSigned 放行本地脚本；远程 `irm|iex` 直接执行有供应链投毒面，
+# 且 `-ExecutionPolicy Bypass` 被微软安全基线反对）。
+irm -OutFile scripts/install.ps1 https://raw.githubusercontent.com/taxueseek/argo/main/scripts/install.ps1
+powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1
+# 若因下载文件 MOTW 被拦：Unblock-File scripts\install.ps1
 
 # 已装过：进仓库目录拉取即可
 git pull --ff-only
