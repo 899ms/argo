@@ -612,7 +612,8 @@ LIVE_CASES: list[dict[str, Any]] = [
     # media
     {"id": "L_zh_media", "q": "周杰伦 专辑", "lang": "zh",
      "domain": "media_search", "primary": "itunes", "scenario": "media",
-     "gold": ["jay", "chou", "周杰伦", "album", "叶惠美", "范特西"],
+     # musicbrainz 数据源返回繁体（周杰倫），金标含简繁两形（数据源事实，非引擎缺陷）
+     "gold": ["jay", "chou", "周杰伦", "周杰倫", "album", "叶惠美", "范特西"],
      "pollute": ["pypi", "crates"]},
     {"id": "L_en_media", "q": "Taylor Swift album", "lang": "en",
      "domain": "media_search", "primary": "itunes", "scenario": "media",

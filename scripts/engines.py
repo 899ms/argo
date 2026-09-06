@@ -13,6 +13,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -201,6 +202,7 @@ def _build_local_search_engine(spec: dict[str, Any]) -> Any:
         env = _os.environ.copy()
         env.update(spec.get("env", {}) or {})
         proc = _subprocess.run(cmd + args, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace",
                                timeout=timeout, env=env)
         if proc.returncode != 0:
             return []
@@ -315,6 +317,38 @@ _SEMANTIC_ENGINES = frozenset({
     "byted", "bocha", "anysearch", "tavily", "exa", "octen",
     "uapi", "searxng", "parallel", "you", "bocha_ai",
 })
+
+# ── 实体型引擎的查询规范化（2026-09-06 live 金标教训）─────────────────────
+# 自然语言句直达实体搜索接口会全军覆没：「NASA founding year」wikidata 0 条
+# （裸「NASA」7 条）、「where is Eiffel Tower」同型且拖满 11s 超时、
+# 「Cristiano Ronaldo club」thesportsdb 抖动放大。接口只吃实体名——分发层
+# 统一剥疑问前缀与属性词，保留核心实体。只作用于实体型引擎；通用 web 引擎
+# 不动（属性词对全文检索是有用信号）。
+_ENTITY_QUERY_ENGINES = frozenset({"wikidata", "thesportsdb", "local_openstreetmap"})
+_ENTITY_Q_PREFIX_RE = re.compile(
+    r"(?i)^\s*(where\s+(is|are|was|were)|where'?s|who\s+(is|are|was)|who'?s"
+    r"|what\s+(is|are)|when\s+(was|is|did)|which\s+\w+\s+(is|was)"
+    r"|哪里|在哪[里儿]?|是谁?|是什么|什么时候|哪一[个国年])\s*",
+)
+_ENTITY_ATTR_RE = re.compile(
+    r"(?i)\b(founding year|founded|established|headquarters?|located( in)?"
+    r"|population|capital|address|club|team|stadium|league|album|discography"
+    r"|song|movie|film|director|cast|成立年份?|创立|总部|位置|球队|俱乐部"
+    r"|职能|职责|专辑|歌曲|电影|导演|主演)\b",
+)
+
+
+def _entity_core_query(query: str) -> str:
+    """实体搜索接口的查询规范化：剥疑问前缀+属性词，保留核心实体名。"""
+    raw = (query or "").strip()
+    q = _ENTITY_Q_PREFIX_RE.sub(" ", raw)
+    # 中文疑问词多为尾部后置（「清华大学 在哪里」），与英文前缀形态分开剥
+    q = re.sub(r"(?i)(在哪里|在哪|哪儿|哪里|是什么|是谁|什么时候)\s*[?？]?\s*$", " ", q)
+    q = _ENTITY_ATTR_RE.sub(" ", q)
+    q = re.sub(r"[?？:：，,]+", " ", q)
+    q = re.sub(r"\s+", " ", q).strip()
+    return q or raw
+
 
 _engine_registry: dict[str, Any] = {}
 _engine_specs: dict[str, dict[str, Any]] = {}
@@ -442,6 +476,9 @@ def search(query: str, engine: str, n: int = 5, timeout: float = 8, depth: str =
     # 语义型引擎不识别平台结构化语法，剥掉字段只留核心词；透传型保持原 query。
     if engine in _SEMANTIC_ENGINES:
         query = strip_structured(query)
+    elif engine in _ENTITY_QUERY_ENGINES:
+        # 实体型引擎：自然语言句（疑问前缀/属性词）会让实体搜索接口空结果
+        query = _entity_core_query(query)
     eff_n = bucket_n(engine, n)
     key = _call_key(query, engine, eff_n, kwargs)
 
