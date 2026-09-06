@@ -392,7 +392,9 @@ class HttpClient:
         cmd.append(final_url)
 
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout + 5)
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace",
+                               timeout=self.timeout + 5)
             output = r.stdout.strip()
             lines = output.rsplit("\n", 2)
             if len(lines) >= 2:
@@ -617,9 +619,12 @@ class HttpClient:
         cmd.append(url)
         try:
             import subprocess
-            r = subprocess.run(cmd, input=payload, capture_output=True, text=True,
+            # payload 恒为 bytes（post() 已 encode），故不用 text 模式：
+            # text=True 收 bytes input 会 TypeError；stdout 手动按 UTF-8 解
+            # （网页字节流本就 UTF-8，显式解也修掉 Windows GBK 乱码）
+            r = subprocess.run(cmd, input=payload, capture_output=True,
                                timeout=self.timeout + 5)
-            output = r.stdout.strip()
+            output = (r.stdout or b"").decode("utf-8", errors="replace").strip()
             lines = output.rsplit("\n", 2)
             if len(lines) >= 2:
                 text = lines[0] if len(lines) == 2 else "\n".join(lines[:-2])

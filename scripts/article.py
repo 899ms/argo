@@ -24,8 +24,22 @@ HEADERS = {
 
 def fetch(url: str, timeout: int = 30) -> str:
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    # 起点域名白名单挡不住服务端 302：重定向的每一跳都要过 SSRF 校验
+    # （http/https scheme + 非本机/内网目标），被拒即抛错而非跟随
+    opener = urllib.request.build_opener(_SafeRedirectHandler)
+    with opener.open(req, timeout=timeout) as r:
         return r.read().decode("utf-8", errors="ignore")
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """每跳重定向目标过 url_safety.check_url，拦截内网/非 http(s) 目标。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        from url_safety import check_url
+        ok, reason = check_url(newurl)
+        if not ok:
+            raise ValueError(f"重定向目标被 SSRF 防护拦截（{reason}）: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def strip_tags(s: str) -> str:

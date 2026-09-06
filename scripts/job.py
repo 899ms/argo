@@ -298,8 +298,11 @@ def load_snapshot(path: str) -> Optional[dict]:
 
 def save_snapshot(path: str, payload: dict) -> None:
     os.makedirs(JOBS_DIR, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    # 原子写：tmp + replace，避免并发快照 torn write 损坏 JSON
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
 
 
 # ── HTTP 基础 ───────────────────────────────────────────────────────────
@@ -755,7 +758,8 @@ def _mcpjobs_ensure() -> bool:
                 raise RuntimeError(f"npm install mcp-jobs 失败：{(r.stderr or r.stdout)[:120]}")
         p = subprocess.Popen(["node", MCPJOBS_ENTRY],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                             stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                             stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                             encoding="utf-8", errors="replace")  # node JSON-RPC 恒 UTF-8，Windows 默认 GBK 会对不上
         _MCPJ["proc"] = p
         _mcpjobs_send("initialize", {
             "protocolVersion": "2024-11-05", "capabilities": {},

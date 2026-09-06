@@ -89,7 +89,9 @@ def _no_exec(*a, **k):
 for _f in ("system", "popen", "popen2", "popen3", "popen4", "spawnl", "spawnle",
            "spawnlp", "spawnlpe", "spawnv", "spawnve", "spawnvp", "spawnvpe",
            "fork", "forkpty", "posix_spawn", "posix_spawnp", "execv", "execve",
-           "execl", "execle", "execlp", "execlpe", "execvp", "execvpe", "startfile"):
+           "execl", "execle", "execlp", "execlpe", "execvp", "execvpe", "startfile",
+           # os.open/os.fdopen 可拿原始 fd 绕过 builtins.open 白名单，一并封死
+           "open", "fdopen"):
     if hasattr(_os_mod, _f):
         setattr(_os_mod, _f, _no_exec)
 del _abc, _mach, _os_mod
@@ -145,6 +147,13 @@ def run_recompute(
         "def _guarded_open(p, *a, **k):\n"
         "    if isinstance(p, str):\n"
         "        _assert_allowed(p)\n"
+        "    elif isinstance(p, bytes):\n"
+        "        import os\n"
+        "        _assert_allowed(os.fsdecode(p))\n"
+        "    elif hasattr(p, '__fspath__'):\n"
+        "        # Path/pathlib 对象同样必须过白名单（原先只拦 str，\n"
+        "        # open(Path('/etc/passwd')) 可绕过）\n"
+        "        _assert_allowed(p)\n"
         "    return _guard_open(p, *a, **k)\n"
         "import builtins, io\n"
         "builtins.open = _guarded_open\n"
@@ -173,12 +182,16 @@ def run_recompute(
     try:
         with tempfile.TemporaryDirectory(prefix="argo-recompute-") as workdir:
             proc = subprocess.Popen(
-                [py, "-I", "-c", full_code],
+                # -I 隔离模式会忽略 PYTHONUTF8 环境变量，故编码须用 -X utf8
+                # 显式指定：Windows 下子进程按 GBK 编码 stdout，打印 emoji 等
+                # 非 GBK 字符会 UnicodeEncodeError 误判为任务失败
+                [py, "-I", "-X", "utf8", "-c", full_code],
                 cwd=workdir,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8", errors="replace",
                 env=env,
                 start_new_session=True,  # 独立进程组，便于整组击杀
                 preexec_fn=_limits if hasattr(os, "fork") else None,

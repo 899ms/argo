@@ -585,7 +585,12 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             if exact:
                 cmd.append("--exact")
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                # 子进程是我们的 seek_py：显式 UTF-8 双向（Windows 默认 GBK，
+                # 中文 query 的 JSON 输出会 mojibake/解码崩）
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=60,
+                    env={**os.environ, "PYTHONUTF8": "1"})
             except Exception as e:
                 return _ok({"query": query, "engine": "local_files", "count": 0,
                             "results": [], "errors": [f"本地搜索执行失败: {e}"]}, pretty=pretty)
