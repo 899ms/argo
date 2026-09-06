@@ -320,11 +320,78 @@ _JA_KO_CN_ENGINES = _ZH_CONTENT_ENGINES | frozenset({
 
 
 def _social_domain_first(_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """命中列表里有 social 域 → 提到首位（无则原样）。"""
+    """命中列表里有 social 域 → 提到首位（无则原样）。
+
+    redskill_search 命中且排位在 social 之前时保持原序：它是小红书技能
+    垂直域，语义比泛社交域更具体，避免「小红书技能排行」类查询的
+    主域被 social（zhihu 组合）抢占。
+    """
     social = [h for h in _hits if h.get("name") == "social"]
     if not social:
         return _hits
+    idx_first_social = _hits.index(social[0])
+    idx_redskill = next(
+        (i for i, h in enumerate(_hits) if h.get("name") == "redskill_search"), None
+    )
+    if idx_redskill is not None and idx_redskill < idx_first_social:
+        return _hits
     return social + [h for h in _hits if h.get("name") != "social"]
+
+
+def _diffuse_intent_guard(hits: list[dict[str, Any]], query: str,
+                          features: dict | None = None) -> list[dict[str, Any]]:
+    """面查意图守卫：点查域在「主题句式查询」下让位。
+
+    点查域（package_search / ai_model）语义是「查询主体即目标对象」：
+    「pnpm add lodash」「GPT-4o」该走结构化源。但当查询是长主题句
+    （去重 token ≥5）且不含该域意图词时，实体词（pnpm/DeepSeek）只是
+    上下文，域命中属词面误抢——2026-09-06 实测：「pnpm file: directory
+    dependency no content hash reinstall」（无意图词）被锁死 pypi，
+    返回单字垃圾包且骗过覆盖守卫早停；「DeepSeek Harness DSH 插件开发」
+    被锁死 models_dev。让位后主域由次域 / TF-IDF / 通用组合接管。
+
+    判别优先级：面查信号 > 意图豁免 > token 门槛。面查信号命中即让位
+    （「npm 包 安装 报错」意图是解决报错，不是找包）；意图词命中则豁免
+    （「python 环境安装 requests 库」确实是包查询）。
+    """
+    if not hits:
+        return hits
+    try:
+        from tfidf_router import tokenize
+        n_tokens = len(set(tokenize(query)))
+    except Exception:
+        return hits  # 分词不可用不设卡（fail-open，同覆盖守卫口径）
+    if n_tokens < _POINTED_MIN_TOKENS:
+        return hits
+    kept: list[dict[str, Any]] = []
+    for d in hits:
+        name = d.get("name") or ""
+        intent_re = _POINTED_INTENT_RE.get(name)
+        if intent_re is None:
+            kept.append(d)
+            continue
+        if re.search(_DIFFUSE_SIGNAL_RE, query):
+            continue  # 面查信号压过意图豁免：报错/排查/对比类走通用
+        if re.search(intent_re, query):
+            kept.append(d)
+            continue
+        continue  # 长主题句 + 无意图词：实体词只是上下文，让位
+    return kept
+
+
+# 点查域 → 意图豁免词（命中即视为真正的结构化点查）
+_POINTED_INTENT_RE: dict[str, str] = {
+    "package_search": r"(?i)\b(install|add|uninstall|download|安装|下载|替代包|包名)\b",
+    "ai_model": r"(?i)(价格|pricing|上下文|context window|token limit|vision|多模态|免费|开源|多少钱)",
+}
+# 面查信号：查询在研究/排障/对比一个主题，而非定位一个对象
+_DIFFUSE_SIGNAL_RE = re.compile(
+    r"(?i)\b(issue|bug|regression|reinstall|stale|not.?work|broken|crash"
+    r"|how (to|does|do)|why (is|does|do)|difference|vs\.?)\b"
+    r"|报错|失效|不生效|不更新|出错|排查|区别|对比"
+)
+# 长主题句门槛：去重 token 少于此值不设卡（短查询大概率是点查）
+_POINTED_MIN_TOKENS = 5
 
 
 def match_domains(query: str, domains: list[dict[str, Any]] | None = None,
@@ -1151,6 +1218,8 @@ def route_query(query: str, engine_override: str = "auto",
     # 结构化域优先：social 域 patterns（config.yaml 单一真源）命中即提前，
     # 避免被 query 里的实体词（GPT/Llama/api）误抢到模型库/技术域。
     _domain_hits = _social_domain_first(_domain_hits)
+    # 面查意图守卫：长主题句 + 无意图词时点查域让位（防 pypi/models_dev 词面误抢）
+    _domain_hits = _diffuse_intent_guard(_domain_hits, query, features)
     domain = _domain_hits[0] if _domain_hits else None
     secondary = _domain_hits[1:] if len(_domain_hits) > 1 else []
     hard_domain = bool(domain and domain.get("patterns"))

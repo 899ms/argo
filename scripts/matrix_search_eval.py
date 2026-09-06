@@ -272,6 +272,16 @@ ROUTE_MATRIX: list[dict[str, Any]] = [
     {"id": "R_zh_package", "q": "requests pypi", "lang": "en",
      "domain": "package_search", "primary_any": ["pypi", "npm"], "scenario": "code",
      "soft": True},
+    # 面查负例（2026-09-06 diffuse intent guard）：长主题句含生态实体词但无
+    # 意图词 → 点查域让位，combo 不得被 pypi/npm/models_dev 锁死。
+    {"id": "R_en_pkg_diffuse", "q": "pnpm file: directory dependency no content hash reinstall",
+     "lang": "en", "domain": None, "forbid": ["pypi", "npm", "crates", "docker_hub"],
+     "scenario": "tech"},
+    {"id": "R_en_model_diffuse", "q": "DeepSeek Harness DSH 插件开发",
+     # 拉丁实体词主导，语言检测判 en（同 R_zh_package 口径）；守卫只断言
+     # 域让位：ai_model/models_dev 不得锁死通用开发意图
+     "lang": "en", "domain": None, "forbid": ["models_dev", "huggingface"],
+     "scenario": "tech"},
 
     # ── 通用多语 ──
     {"id": "R_ja_gen", "q": "アニメ おすすめ", "lang": "ja",
@@ -288,6 +298,20 @@ ROUTE_MATRIX: list[dict[str, Any]] = [
      "domain": None, "forbid_cn": True, "scenario": "general"},
     {"id": "R_zh_gen", "q": "如何学习机器学习", "lang": "zh",
      "domain": None, "scenario": "general"},
+
+    # ── 2026-09-02 金标增补：fast 单引擎冗余事故回归钉 ──
+    # 事故：英文技术无域查询 fast 兜底为 anysearch 单引擎，首引擎上游波动
+    # 返回高计数垃圾时早停吞掉次引擎（execution 层守卫见 search.py
+    # _query_coverage_ok；此处钉路由层契约：兜底 combo 必含 ≥2 个免费通用源）。
+    {"id": "R_en_tech_nodomain", "q": "Crawl4AI pruning content filter extraction",
+     "lang": "en", "domain": "general_search", "primary_any": ["anysearch", "duckduckgo"],
+     "forbid_cn": True, "scenario": "general"},
+    {"id": "R_en_tech_py", "q": "python asyncio tutorial", "lang": "en",
+     "domain": "english_tech", "primary_any": ["octen", "anysearch", "duckduckgo"],
+     "forbid_cn": True, "scenario": "general"},
+    {"id": "R_zh_food", "q": "附近好吃的本帮菜馆", "lang": "zh",
+     "domain": "chinese_general", "primary_any": ["bocha", "anysearch", "local_bing"],
+     "scenario": "general"},
 ]
 
 

@@ -253,13 +253,15 @@ def _results_sufficient(
     results: list[dict[str, Any]],
     mode: str = "auto",
     min_results: int | None = None,
+    query: str = "",
 ) -> bool:
-    return _sufficient_internal(results, mode, min_results)
+    return _sufficient_internal(results, mode, min_results, query)
 
 
 def _cumulative_sufficient(raw_results: dict[str, list[dict[str, Any]]],
                            mode: str = "auto",
-                           min_results: int | None = None) -> bool:
+                           min_results: int | None = None,
+                           query: str = "") -> bool:
     """跨引擎累计结果是否已够（wave-2 提前终止判定）。
 
     与 _results_sufficient 同阈值，但把 raw_results 里所有已完成的
@@ -272,20 +274,64 @@ def _cumulative_sufficient(raw_results: dict[str, list[dict[str, Any]]],
         merged.extend(
             r for r in res if isinstance(r, dict) and "error" not in r
         )
-    return _sufficient_internal(merged, mode, min_results)
+    return _sufficient_internal(merged, mode, min_results, query)
+
+
+def _query_coverage_ok(results: list[dict[str, Any]], query: str) -> bool:
+    """查询-结果词面覆盖守卫（fast/auto 早停质量门槛）。
+
+    2026-09-02 实测教训：fast 早停原只看计数+snippet，首引擎上游波动时
+    返回 5 条高计数但不相关结果（查询 Crawl4AI 却返回无关 MDN 页），
+    早停吞掉 wave-2，单引擎垃圾即成最终答案。本守卫只在极端场景（多数
+    结果与查询零词面交集）拒绝早停，让既有 wave-2/串行次引擎补跑——
+    只影响「是否停」，不丢弃任何结果，最坏代价是多跑一个引擎。
+
+    CJK 说明：中文查询分词为单字，覆盖判定在字符级——结果与查询零字符
+    交集同样会被拒早停（弱信号但非空）；同义词改写场景（如「电脑」vs
+    「计算机」）可能多跑一个引擎，属可接受代价：宁可多一次调用，不放走
+    单引擎垃圾。
+    """
+    if not query or not query.strip():
+        return True
+    try:
+        from tfidf_router import tokenize
+    except ImportError:
+        return True  # 分词不可用不设卡（fail-open）
+    q_set = set(tokenize(query))
+    if not q_set:
+        return True
+    # 同构垃圾检测：结构性包索引被域外查询误抢时，会把查询切词后逐词
+    # 返回单 token 包名（title≈1 词、URL=/project/<word>），词面覆盖因此
+    # 虚高（垃圾包名恰好是查询关键词）→ 覆盖守卫被骗过、垃圾即成最终
+    # 答案。多数结果标题 ≤1 token 且查询有 ≥3 token 时，视为索引噪声，
+    # 拒绝早停、放行串行次引擎补跑。
+    single_token_titles = sum(
+        1 for r in results if len(set(tokenize(r.get("title") or ""))) <= 1
+    )
+    if len(q_set) >= 3 and single_token_titles * 2 > len(results):
+        return False
+    covered = 0
+    for r in results:
+        text = f"{r.get('title') or ''} {r.get('snippet') or ''}"
+        if q_set & set(tokenize(text)):
+            covered += 1
+    return covered >= max(1, (len(results) + 1) // 2)
 
 
 def _sufficient_internal(
     results: list[dict[str, Any]],
     mode: str,
     min_results: int | None,
+    query: str = "",
 ) -> bool:
     """渐进检索 early-stop：结果是否已够用。
 
     轻量启发式（不依赖网络/LLM）：
       - 默认 auto：至少 3 条非错误 + 2 条有 snippet
       - 默认 fast：至少 2 条 + 1 个 snippet
-      - min_results：域配置覆盖（答案型源 1 条快照即够用）
+      - min_results：域配置覆盖（答案型源 1 条快照即够用，计数语义不动）
+      - 通用路径叠加词面覆盖守卫（_query_coverage_ok）：结果与查询几乎
+        无交集时不许早停
     """
     goods = [r for r in results if isinstance(r, dict) and "error" not in r]
     if not goods:
@@ -303,8 +349,10 @@ def _sufficient_internal(
         need_snip = 1 if need <= 2 else max(2, need - 1)
         return len(goods) >= need and with_snippet >= min(need_snip, len(goods))
     if mode == "fast":
-        return len(goods) >= 2 and with_snippet >= 1
-    return len(goods) >= 3 and with_snippet >= 2
+        ok = len(goods) >= 2 and with_snippet >= 1
+    else:
+        ok = len(goods) >= 3 and with_snippet >= 2
+    return ok and _query_coverage_ok(goods, query)
 
 
 def _missing_env_for(eng: str) -> list[str]:
@@ -1222,7 +1270,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         _ingest(e, res, outcome, lat)
         goods_primary = [r for r in res if isinstance(r, dict) and "error" not in r]
         if not no_early and _results_sufficient(
-            goods_primary, mode=mode, min_results=early_min,
+            goods_primary, mode=mode, min_results=early_min, query=query,
         ):
             early_stopped = True
         else:
@@ -1241,7 +1289,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                             ))
                         # 累计结果已足够 → 提前终止剩余 wave-2（不白等慢源拖尾）
                         if not no_early and _cumulative_sufficient(
-                                raw_results, mode=mode, min_results=early_min):
+                                raw_results, mode=mode, min_results=early_min,
+                                query=query):
                             for fut2 in futures:
                                 if not fut2.done():
                                     fut2.cancel()
@@ -1297,12 +1346,13 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 continue  # 无结果：串行试下一引擎
             # 答案型域 min_results=1：1 条快照即 early-stop
             if allow_early and not no_early and _results_sufficient(
-                goods, mode=mode, min_results=early_min,
+                goods, mode=mode, min_results=early_min, query=query,
             ):
                 early_stopped = True
                 break
-            # 默认串行：任一引擎有结果即停（历史行为）；答案型不够用则继续补源
-            if early_min is None and not no_early:
+            # 默认串行：任一引擎有结果即停（历史行为）；答案型不够用则继续补源。
+            # 词面覆盖守卫同语义：结果与查询几乎无交集 → 试下一引擎（救援线）
+            if early_min is None and not no_early and _query_coverage_ok(goods, query):
                 break
 
     wasted_ms = nonlocal_wasted[0]
@@ -2175,7 +2225,9 @@ def _run_local_seek(query: str, max_n: int = 5) -> list[dict[str, Any]]:
         return []
     r = _sp.run(
         [sys.executable, seek_py, query, "--json", "--max", str(max(max_n, 1))],
-        capture_output=True, text=True, timeout=20,
+        capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=20,
+        env={**os.environ, "PYTHONUTF8": "1"},  # 子进程是自家 seek.py，双向显式 UTF-8
     )
     if r.returncode != 0 or not r.stdout.strip():
         return []
