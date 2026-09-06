@@ -330,11 +330,21 @@ _ENTITY_Q_PREFIX_RE = re.compile(
     r"|what\s+(is|are)|when\s+(was|is|did)|which\s+\w+\s+(is|was)"
     r"|哪里|在哪[里儿]?|是谁?|是什么|什么时候|哪一[个国年])\s*",
 )
+# 英文属性词带 \b（空格分词下词边界天然成立）；中文属性词不进此表——
+# CJK 字符全是 \w，「周杰伦专辑」「周杰伦的专辑」这类无空格连写永远撞不上
+# 词边界（2026-09-06 审查实锤漏剥），改由下方尾部循环剥离。
 _ENTITY_ATTR_RE = re.compile(
     r"(?i)\b(founding year|founded|established|headquarters?|located( in)?"
     r"|population|capital|address|club|team|stadium|league|album|discography"
-    r"|song|movie|film|director|cast|成立年份?|创立|总部|位置|球队|俱乐部"
-    r"|职能|职责|专辑|歌曲|电影|导演|主演)\b",
+    r"|song|movie|film|director|cast)\b",
+)
+# 中文属性词（含繁体）：只在查询尾部剥离——中文自然语序是实体名在前、
+# 属性词在后；不碰串中，「电影频道」「歌曲排行榜」这类实体名内含属性词，
+# 串中剥离会误伤。长词优先，避免「成立年份」被「成立」截断残留「年份」。
+_ENTITY_ATTR_TAILS = (
+    "成立年份", "成立", "创立", "創立", "总部", "總部", "位置", "球队", "球隊",
+    "俱乐部", "俱樂部", "职能", "職能", "职责", "職責", "专辑", "專輯",
+    "歌曲", "电影", "電影", "导演", "導演", "主演",
 )
 
 
@@ -343,8 +353,25 @@ def _entity_core_query(query: str) -> str:
     raw = (query or "").strip()
     q = _ENTITY_Q_PREFIX_RE.sub(" ", raw)
     # 中文疑问词多为尾部后置（「清华大学 在哪里」），与英文前缀形态分开剥
-    q = re.sub(r"(?i)(在哪里|在哪|哪儿|哪里|是什么|是谁|什么时候)\s*[?？]?\s*$", " ", q)
+    q = re.sub(r"(?i)(在哪里|在哪|哪儿|哪里|是什么|是谁|什么时候|有哪些)\s*[?？]?\s*$",
+               " ", q)
     q = _ENTITY_ATTR_RE.sub(" ", q)
+    # 空白归一化必须在尾部循环前：前缀/属性词剥除用空格替换，尾空格会让
+    # endswith 判空（「清华大学总部 」漏剥总部）
+    q = re.sub(r"\s+", " ", q).strip()
+    # 中文属性词尾部循环剥 + 「的」后缀收尾：「周杰伦的专辑」→「周杰伦的」
+    # →「周杰伦」。剩单字不剥（「美的」是实体，剥成「美」即误伤）
+    changed = True
+    while changed:
+        changed = False
+        for tail in _ENTITY_ATTR_TAILS:
+            if q.endswith(tail) and len(q) > len(tail) + 1:
+                q = q[:-len(tail)].strip()
+                changed = True
+                break
+        if not changed and q.endswith("的") and len(q) > 3:
+            q = q[:-1].strip()
+            changed = True
     q = re.sub(r"[?？:：，,]+", " ", q)
     q = re.sub(r"\s+", " ", q).strip()
     return q or raw

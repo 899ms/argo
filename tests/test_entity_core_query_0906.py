@@ -58,6 +58,26 @@ class TestEntityCoreQuery(unittest.TestCase):
         self.assertEqual(_entity_core_query("founded"), "founded")
         self.assertEqual(_entity_core_query("who is who"), "who")
 
+    def test_cjk_no_space_tail_strip(self):
+        """中文无空格连写（2026-09-07 审查修复）：\\b 对 CJK 全是 \\w、
+        永不成立，属性词漏剥——「周杰伦专辑」这类最常见形态此前原样透传。"""
+        for q, want in [
+            ("周杰伦专辑", "周杰伦"),
+            ("周杰伦的专辑", "周杰伦"),
+            ("清华大学总部在哪里", "清华大学"),
+            ("北京大学成立年份", "北京大学"),
+            ("周杰倫專輯", "周杰倫"),  # 繁体
+        ]:
+            self.assertEqual(_entity_core_query(q), want, q)
+
+    def test_cjk_entity_containing_attr_word_untouched(self):
+        """实体名内含属性词：只剥尾部不碰串中——「电影频道」不能被剥成
+        「频道」；「美的」是实体（Midea），剩单字不剥。"""
+        self.assertEqual(_entity_core_query("电影频道"), "电影频道")
+        self.assertEqual(_entity_core_query("电影频道 总部"), "电影频道")
+        self.assertEqual(_entity_core_query("歌曲排行榜"), "歌曲排行榜")
+        self.assertEqual(_entity_core_query("美的"), "美的")
+
     def test_entity_engine_set(self):
         """实体型引擎集合：wikidata / thesportsdb / local_openstreetmap。"""
         self.assertEqual(

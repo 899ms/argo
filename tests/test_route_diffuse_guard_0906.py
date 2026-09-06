@@ -84,6 +84,21 @@ def test_keep_intent_word_hits():
         assert any(h.get("name") == "package_search" for h in kept)
 
 
+def test_keep_intent_word_no_space_cjk():
+    """连写中文意图词（2026-09-07 审查修复）：\\b 对 CJK 失配，真实点查
+    「python环境安装requests库」这类连写此前被误让位。"""
+    q = "python环境安装requests库哪个版本好"
+    hits = [_fake_domain("package_search")]
+    assert _diffuse_intent_guard(hits, q) == hits, "连写意图词未豁免"
+
+
+def test_diffuse_still_yields_no_space_with_error_word():
+    """连写含面查信号（报错）：让位语义不变（信号词 CJK 备选本就不带 \\b）。"""
+    q = "npm包安装报错怎么排查"
+    hits = [_fake_domain("package_search")]
+    assert _diffuse_intent_guard(hits, q) == []
+
+
 def test_non_pointed_domain_untouched():
     hits = [_fake_domain("film_search"), _fake_domain("geo_places")]
     assert _diffuse_intent_guard(hits, "a long theme sentence about movies") == hits

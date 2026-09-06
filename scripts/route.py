@@ -363,6 +363,7 @@ def _diffuse_intent_guard(hits: list[dict[str, Any]], query: str,
         return hits  # 分词不可用不设卡（fail-open，同覆盖守卫口径）
     if n_tokens < _POINTED_MIN_TOKENS:
         return hits
+    diffuse_hit = re.search(_DIFFUSE_SIGNAL_RE, query) is not None
     kept: list[dict[str, Any]] = []
     for d in hits:
         name = d.get("name") or ""
@@ -370,7 +371,7 @@ def _diffuse_intent_guard(hits: list[dict[str, Any]], query: str,
         if intent_re is None:
             kept.append(d)
             continue
-        if re.search(_DIFFUSE_SIGNAL_RE, query):
+        if diffuse_hit:
             continue  # 面查信号压过意图豁免：报错/排查/对比类走通用
         if re.search(intent_re, query):
             kept.append(d)
@@ -379,9 +380,12 @@ def _diffuse_intent_guard(hits: list[dict[str, Any]], query: str,
     return kept
 
 
-# 点查域 → 意图豁免词（命中即视为真正的结构化点查）
+# 点查域 → 意图豁免词（命中即视为真正的结构化点查）。
+# 英文备选吃 \b；中文备选必须在 \b 外——CJK 字符全是 \w，「npm安装报错」
+# 这类无空格连写永远撞不上词边界（2026-09-06 审查实锤），会让真实包查询
+# 被误让位。同 _DIFFUSE_SIGNAL_RE 中文备选的既有口径。
 _POINTED_INTENT_RE: dict[str, str] = {
-    "package_search": r"(?i)\b(install|add|uninstall|download|安装|下载|替代包|包名)\b",
+    "package_search": r"(?i)\b(install|add|uninstall|download)\b|安装|下载|替代包|包名",
     "ai_model": r"(?i)(价格|pricing|上下文|context window|token limit|vision|多模态|免费|开源|多少钱)",
 }
 # 面查信号：查询在研究/排障/对比一个主题，而非定位一个对象

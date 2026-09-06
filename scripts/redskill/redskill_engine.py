@@ -145,10 +145,13 @@ def _search_all(data: dict[str, Any], query: str, n: int) -> list[dict[str, Any]
     """全量技能关键词检索（对比 allSkills 的 skill_name + skill_description）。"""
     all_skills = data.get("allSkills", [])
     note_map = _note_map(data)
-    # 榜单热力榜：useList skill_id -> 排名（用于热门加成）
+    # 榜单热力榜：useList skill_id -> 排名（用于热门加成）。
+    # 单条记录缺 skill_id 不致命，跳过而非让整个搜索抛错
     hot_rank: dict[int, int] = {}
     for i, item in enumerate(data.get("useList", [])):
-        hot_rank[int(item["skill_id"])] = i
+        sid = item.get("skill_id")
+        if sid:
+            hot_rank[int(sid)] = i
 
     q = query.strip().lower()
     tokens = _tokenize(q) or [q]
