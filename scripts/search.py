@@ -950,6 +950,13 @@ def _classify_engine_outcome(eng: str, res: list[dict[str, Any]],
     }
 
 
+# fast 单发总墙钟预算（秒）。引擎级超时收紧（≥8s 源 cap 6s、half_open 2s）之外
+# 的整条路径兜底：实测引擎 P95 跨度 1.5-8.5s，6s 预算覆盖绝大多数快引擎，
+# 只砍 github 类拖尾——「等待剩余时间」与「是否再起新引擎」都受它约束。
+# 仅 fast 模式生效；auto/budget/deep 宁可等待不截断（研究场景语义）。
+_FAST_TOTAL_BUDGET_S = 6.0
+
+
 def execute_search(query: str, decision: dict[str, Any], max_results: int,
                    timeout: int, depth: str, cache: SearchCache, skip_cache: bool,
                    mode: str = "auto",
@@ -1261,19 +1268,65 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     # deep 模式全量并行；fast/auto/budget 可渐进 early-stop
     allow_early = mode in ("fast", "auto", "budget") and depth != "deep"
 
+    # fast 总墙钟预算：deadline 之后不再起新引擎、不再等待慢线程
+    _deadline = t0 + (_FAST_TOTAL_BUDGET_S if mode == "fast" else float("inf"))
+
     early_min = decision.get("early_stop_min_results")
     if parallel and to_run and allow_early and len(to_run) > 1:
-        # Wave-1：主引擎；足够则停（no_early_stop 域除外），否则 wave-2 并行补全
+        # Wave-1 race（2026-09-06）：primary 与次引擎并行起跑，先完成且结果
+        # 合格者赢——原「primary 先行」串行等待下，primary 慢则整体慢（实测
+        # github 引擎 8.5s 拖尾而次引擎 2.4s 就绪）；race 后墙钟由最先合格
+        # 者决定。双成员都不合格则落 wave-2 并行补全（语义不变，且 wave-2
+        # 的累计充分性判定天然包含 race 已收入的结果）。
+        # 成本语义：fast+parallel 域固定 2 次引擎调用（原 1 次），fast 的
+        # combo 以免费通用引擎为主，增量可忽略；结果质量仍由充分性判定+
+        # 覆盖守卫把关，先到不等于放行。
         no_early = bool(decision.get("no_early_stop", False))
         primary, rest = to_run[0], to_run[1:]
-        e, res, outcome, lat = _run_one(primary)
-        _ingest(e, res, outcome, lat)
-        goods_primary = [r for r in res if isinstance(r, dict) and "error" not in r]
-        if not no_early and _results_sufficient(
-            goods_primary, mode=mode, min_results=early_min, query=query,
-        ):
-            early_stopped = True
-        else:
+        race_engines = [primary] + rest[:1]
+        rest = rest[1:]
+        _race_wait = min(_eff_timeout + 2, max(0.1, _deadline - time.time()))
+        race_ex = ThreadPoolExecutor(max_workers=len(race_engines))
+        try:
+            race_futures = {race_ex.submit(_run_one, eng): eng for eng in race_engines}
+            try:
+                for fut in as_completed(race_futures, timeout=_race_wait):
+                    eng = race_futures[fut]
+                    try:
+                        e, res, outcome, lat = fut.result()
+                        _ingest(e, res, outcome, lat)
+                    except Exception as exc:
+                        raw_results[eng] = [{"error": str(exc), "source": eng}]
+                        engine_outcomes.append(_classify_engine_outcome(
+                            eng, raw_results[eng], 0,
+                        ))
+                        continue
+                    goods_race = [
+                        r for r in res if isinstance(r, dict) and "error" not in r
+                    ]
+                    if not no_early and goods_race and _results_sufficient(
+                            goods_race, mode=mode, min_results=early_min, query=query,
+                    ):
+                        for fut2 in race_futures:
+                            if not fut2.done():
+                                fut2.cancel()
+                        early_stopped = True
+                        break
+                    # 不合格（空/不足/覆盖守卫拒绝）：继续等另一成员完成
+            except TimeoutError:
+                for fut, eng in race_futures.items():
+                    if not fut.done():
+                        fut.cancel()
+                        raw_results[eng] = [{"error": "timeout", "source": eng}]
+                        engine_outcomes.append(_classify_engine_outcome(
+                            eng, raw_results[eng], timeout * 1000, "timeout",
+                        ))
+                        nonlocal_wasted[0] += timeout * 1000
+        finally:
+            # wait=False：race 赢家早停后不等输家慢线程（线程自行结束，结果
+            # 丢弃不入融合）——墙钟节省的关键；并发写状态与 wave-2 同先例
+            race_ex.shutdown(wait=False)
+        if not early_stopped and rest:
             with ThreadPoolExecutor(max_workers=min(len(rest), 3)) as ex:
                 futures = {ex.submit(_run_one, eng): eng for eng in rest}
                 try:
@@ -1339,6 +1392,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         # fast 模式 parallel=False 必走本分支，此前曾在此被噪声结果短路
         no_early = bool(decision.get("no_early_stop", False))
         for eng in to_run:
+            if time.time() >= _deadline:
+                break  # fast 预算耗尽：止损不再起新引擎
             e, res, outcome, lat = _run_one(eng)
             _ingest(e, res, outcome, lat)
             goods = [r for r in res if isinstance(r, dict) and "error" not in r]
