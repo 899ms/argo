@@ -47,7 +47,7 @@ python3 scripts/research.py "复杂问题" --json # 取证包（扩词或多工�
 
 | 参数 | 说明 |
 |------|------|
-| `--engine <name>` | 强制引擎（anysearch/byted/bocha/exa/tavily/eastmoney/zhihu/arxiv/pypi/mdn/hackernews/v2ex…，全量见 `--list-engines`） |
+| `--engine <name>` | 强制引擎（anysearch/byted/bocha/exa/tavily/eastmoney/zhihu/arxiv/pypi/mdn/hackernews/v2ex/redskill…，全量见 `--list-engines`） |
 | `--local-first` | 本地零成本聚合优先（local_search 33 引擎） |
 | `--include-local` | 并入本机文件命中（seek 结果尾部，source=local_files；默认关） |
 | `--mode fast|auto|deep|budget` | fast 免费优先 / auto 成本感知（默认）/ deep 质量优先 / budget 配额控制 |

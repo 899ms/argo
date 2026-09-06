@@ -1,6 +1,6 @@
 _generated: 由 scripts/sync_backends.py 从 config.yaml 派生，勿手工修改。
 version: 2
-last_updated: '2026-08-28'
+last_updated: '2026-09-04'
 engines:
 - name: anysearch
   tier: T1
@@ -1285,6 +1285,17 @@ engines:
   status: ok
   recommended: true
   desc: Reddit
+- name: redskill
+  tier: T1
+  type: cli
+  coverage:
+  - chinese
+  - skill
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  desc: 小红书 REDSkill 排行榜与全量技能检索（47650 技能，data.json 本地缓存，免认证）
 - name: rfc_editor
   tier: T1
   type: rfc_editor

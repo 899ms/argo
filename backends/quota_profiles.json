@@ -1140,6 +1140,16 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "redskill": {
+    "label": "小红书REDSkill",
+    "qps": 1,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 5
+  },
   "rfc_editor": {
     "label": "RFC/互联网标准",
     "qps": 3,

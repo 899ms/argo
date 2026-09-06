@@ -60,6 +60,7 @@ itunes（音乐影视）、openverse（开放版权图片）、coingecko（加�
 | 宏观/金融 | fred / worldbank / nbs_stats / eurostat / eastmoney / em_flow / tencent_quote / sina_quote / finviz / seeking_alpha / tencent_kline / fx_rate / gold_analyzer 系 |
 | 影视/体育 | itunes / opensky / electricity_maps / usda / tatoeba / gbif / nasa_cmr / usgs / open_meteo / qweather / aviation_weather |
 | 法律 | courtlistener / wenshu / kor_law |
+| 技能生态 | redskill（小红书 REDSkill 排行榜 + 47650 技能全量检索，data.json 每日 08:05 更新，本地缓存免认证；榜单命令 `python3 scripts/redskill/redskill_engine.py rank use`） |
 | 长尾/独立 | marginalia / wiby / searchmysite / lieu |
 
 路由（先匹配先命中）：`package_search` → pypi+npm+crates+docker_hub+github；`web_docs` → mdn+stackoverflow；`ml_models` → huggingface+github；`cn_tech_community` → juejin+v2ex+devto；`medical` → clinicaltrials+openfda+local_pubmed；`academic` → arxiv+openalex+crossref+europepmc+dblp+semantic_scholar；`game_search` → steam；`prediction_market` → polymarket；`web_archive` → archive_org。
@@ -98,6 +99,8 @@ python3 scripts/search.py "httpx" --engine pypi
 python3 scripts/search.py "Fetch API" --engine mdn
 python3 scripts/search.py "bert" --engine huggingface
 python3 scripts/search.py "查询词" --engine ths_hot --engine cls_telegraph --engine em_global_news
+python3 scripts/search.py "小红书技能 封面" --engine redskill
+python3 scripts/redskill/redskill_engine.py rank use -n 10   # 小红书 REDSkill 技能榜（use|new|today|author）
 ```
 
 ## 外置引擎声明（engines/specs/*.yaml，启动时合并、优先覆盖）

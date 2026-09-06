@@ -10,6 +10,16 @@ domains:
 
 
 
+- desc: 小红书 REDSkill 技能检索/排行
+  engines_combo:
+  - redskill
+  - anysearch
+  fallback: anysearch
+  name: redskill_search
+  parallel: false
+  patterns:
+  - '(?i)(REDSkill|红[书薯]技能|小红书.*(skill|技能)|技能(排行|榜单|排行榜)|skill.*(rank|排行|榜))'
+  primary: redskill
 - desc: 微信公众号文章搜索
   engines_combo:
   - wechat_sogou
@@ -919,6 +929,30 @@ domains:
   quote: false
 
 engines:
+  redskill:
+    type: cli
+    label: 小红书REDSkill
+    enabled: true
+    cost_tier: free
+    qps: 1
+    priority: 5
+    period: second
+    cost_per_call: 0.0
+    cost_unit: free
+    coverage:
+    - chinese
+    - skill
+    desc: 小红书 REDSkill 排行榜与全量技能检索（47650 技能，data.json 本地缓存，免认证）
+    timeout: 60
+    cmd:
+    - python3
+    - scripts/redskill/redskill_engine.py
+    search_args:
+    - search
+    - '{query}'
+    - '-n'
+    - '{n}'
+    env: {}
   tinyfish:
     enabled: true
     label: TinyFish 实时搜索

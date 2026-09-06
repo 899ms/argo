@@ -1937,5 +1937,11 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "redskill": {
+    "label": "小红书REDSkill",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }
