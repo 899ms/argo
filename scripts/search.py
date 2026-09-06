@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -956,6 +957,12 @@ def _classify_engine_outcome(eng: str, res: list[dict[str, Any]],
 # 仅 fast 模式生效；auto/budget/deep 宁可等待不截断（研究场景语义）。
 _FAST_TOTAL_BUDGET_S = 6.0
 
+# primary 独享启动宽限窗（秒）：主引擎在这个时间内完成且合格就免掉 hedge，
+# 只付 1 次调用；窗口未完成才补发次引擎并行 race。实测引擎 P95 1.5-8.5s，
+# 2.0s 覆盖「快引擎」子集（anysearch/local_bing 等），慢引擎（github 8.5s）
+# 在窗口后补发 backup，避免拖尾。可调：偏快取小值（省墙钟）、偏省取大值（省成本）。
+_PRIMARY_GRACE_S = 2.0
+
 
 def execute_search(query: str, decision: dict[str, Any], max_results: int,
                    timeout: int, depth: str, cache: SearchCache, skip_cache: bool,
@@ -1283,54 +1290,103 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         # 覆盖守卫把关，先到不等于放行。
         no_early = bool(decision.get("no_early_stop", False))
         primary, rest = to_run[0], to_run[1:]
-        race_engines = [primary] + rest[:1]
-        rest = rest[1:]
-        _race_wait = min(_eff_timeout + 2, max(0.1, _deadline - time.time()))
-        race_ex = ThreadPoolExecutor(max_workers=len(race_engines))
-        try:
-            race_futures = {race_ex.submit(_run_one, eng): eng for eng in race_engines}
-            try:
-                for fut in as_completed(race_futures, timeout=_race_wait):
-                    eng = race_futures[fut]
-                    try:
-                        e, res, outcome, lat = fut.result()
-                        _ingest(e, res, outcome, lat)
-                    except Exception as exc:
-                        raw_results[eng] = [{"error": str(exc), "source": eng}]
-                        engine_outcomes.append(_classify_engine_outcome(
-                            eng, raw_results[eng], 0,
-                        ))
-                        continue
-                    goods_race = [
-                        r for r in res if isinstance(r, dict) and "error" not in r
-                    ]
-                    if not no_early and goods_race and _results_sufficient(
-                            goods_race, mode=mode, min_results=early_min, query=query,
-                    ):
-                        for fut2 in race_futures:
-                            if not fut2.done():
-                                fut2.cancel()
-                        early_stopped = True
+        # 首发 + 分岔 hedged：先只发 primary，grace 宽限窗内完成且合格 → 只付
+        # 1 次调用（成本回退消除）；窗内未完成 → 补发次引擎并行 race，先合格者
+        # 赢（慢 primary 不拖整体）。弃置线程用 daemon 管理：赢家早停后不再被
+        # 进程退出 join，修掉原 race shutdown(wait=False) 的「函数内快、进程级
+        # 假快」——CLI 单发真省墙钟。质量仍由充分性判定 + 覆盖守卫把关。
+        grace = max(0.3, min(_PRIMARY_GRACE_S, _eff_timeout * 0.25))
+        if time.time() + grace > _deadline:
+            grace = max(0.0, _deadline - time.time())
+
+        def _daemon_start(eng: str):
+            """daemon 线程跑 _run_one：弃置线程不阻塞进程退出。"""
+            holder: dict[str, Any] = {}
+
+            def _work() -> None:
+                try:
+                    holder["r"] = _run_one(eng)
+                except Exception as exc:
+                    holder["r"] = (
+                        eng,
+                        [{"error": str(exc), "source": eng}],
+                        _classify_engine_outcome(
+                            eng, [{"error": str(exc), "source": eng}], 0),
+                        0,
+                    )
+            t = threading.Thread(target=_work, daemon=True)
+            t.start()
+            return holder, t
+
+        def _ingest_holder(holder: dict[str, Any]) -> None:
+            r = holder.get("r")
+            if r:
+                _ingest(r[0], r[1], r[2], r[3])
+
+        def _holder_goods(holder: dict[str, Any]) -> list[dict[str, Any]]:
+            r = holder.get("r")
+            if not r:
+                return []
+            return [x for x in r[1] if isinstance(x, dict) and "error" not in x]
+
+        ph, pt = _daemon_start(primary)
+        pt.join(grace)
+        if not pt.is_alive():
+            # primary 在 grace 内完成：收结果，合格即早停（只 1 次调用）
+            _ingest_holder(ph)
+            goods_p = _holder_goods(ph)
+            if not no_early and goods_p and _results_sufficient(
+                    goods_p, mode=mode, min_results=early_min, query=query):
+                early_stopped = True
+        if not early_stopped and pt.is_alive():
+            # primary 未在 grace 内完成：hedged 分岔，补发次引擎并行 race
+            backup = rest[:1]
+            if backup:
+                rest = rest[1:]
+                bh, bt = _daemon_start(backup[0])
+                pending = [(ph, pt, primary), (bh, bt, backup[0])]
+                _race_wait = min(_eff_timeout + 2,
+                                 max(0.1, _deadline - time.time()))
+                _race_deadline = time.time() + _race_wait
+                while pending and time.time() < _race_deadline:
+                    progressed = False
+                    for (holder, th, eng) in list(pending):
+                        if th.is_alive():
+                            continue
+                        _ingest_holder(holder)
+                        goods = _holder_goods(holder)
+                        if not no_early and goods and _results_sufficient(
+                                goods, mode=mode, min_results=early_min,
+                                query=query):
+                            early_stopped = True
+                        pending.remove((holder, th, eng))
+                        progressed = True
+                    if early_stopped or not pending:
                         break
-                    # 不合格（空/不足/覆盖守卫拒绝）：继续等另一成员完成
-            except TimeoutError:
-                for fut, eng in race_futures.items():
-                    if not fut.done():
-                        fut.cancel()
+                    if not progressed:
+                        time.sleep(0.02)
+                # 超时/弃置：仍活线程标记 timeout（daemon 自行结束，不阻塞
+                # 退出）；恰在末次轮询后完成的线程照常入账——此前它既不
+                # ingest 也不标 timeout，结果静默丢失
+                for (holder, th, eng) in pending:
+                    if th.is_alive():
                         raw_results[eng] = [{"error": "timeout", "source": eng}]
                         engine_outcomes.append(_classify_engine_outcome(
-                            eng, raw_results[eng], timeout * 1000, "timeout",
-                        ))
+                            eng, raw_results[eng], timeout * 1000, "timeout"))
                         nonlocal_wasted[0] += timeout * 1000
-        finally:
-            # wait=False：race 赢家早停后不等输家慢线程（线程自行结束，结果
-            # 丢弃不入融合）——墙钟节省的关键；并发写状态与 wave-2 同先例
-            race_ex.shutdown(wait=False)
-        if not early_stopped and rest:
+                    else:
+                        _ingest_holder(holder)
+        if (not early_stopped and rest
+                and not (mode == "fast" and time.time() >= _deadline)):
+            # fast 预算收口（与串行路径 `time.time() >= _deadline` 同语义）：
+            # deadline 已过不再起新引擎；等待窗口也不越过 deadline——
+            # 「fast 总墙钟预算」对并行路径同样成立
+            w2_wait = min(_eff_timeout + 2,
+                          max(0.1, _deadline - time.time()))
             with ThreadPoolExecutor(max_workers=min(len(rest), 3)) as ex:
                 futures = {ex.submit(_run_one, eng): eng for eng in rest}
                 try:
-                    for fut in as_completed(futures, timeout=_eff_timeout + 2):
+                    for fut in as_completed(futures, timeout=w2_wait):
                         eng = futures[fut]
                         try:
                             e2, res2, outcome2, lat2 = fut.result()

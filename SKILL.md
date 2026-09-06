@@ -1,6 +1,6 @@
 ---
 name: argo
-description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；约 120+ 引擎 TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡（火车票/油价/贵金属/万年历/星座/手机/汽车/挂号）；日常 combo 预算与深度研究 boost；recovery 防污染；Selection×Absorption。CLI：argo search|research|fetch|crawl|article|job|evidence（同引擎 MCP 14 工具按需启用，默认关）。
+description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；约 150+ 引擎 TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡（火车票/油价/贵金属/万年历/星座/手机/汽车/挂号）；日常 combo 预算与深度研究 boost；recovery 防污染；Selection×Absorption。CLI：argo search|research|fetch|crawl|article|job|evidence（同引擎 MCP 14 工具按需启用，默认关）。
 version: 2.8.5
 triggers:
   - 搜索
