@@ -135,5 +135,39 @@ class TestQuotaProfilesAligned(unittest.TestCase):
             qm._state.pop("_test_null_eng", None)
 
 
+class TestZhihuGlobalUtilization(unittest.TestCase):
+    """zhihu_global（全网搜 SearchDB=all，5000/天）防饿死回归门。
+
+    死因链：learner 同族按分重排把它挪到 anysearch 之后 + auto 预算=2 截断
+    → 自家主域永远轮不上（37 天仅 53 次）。修复：zh 查询下 zhihu_content
+    固定 [zhihu, zhihu_global] 成对、learner 过滤豁免；news_realtime 接入 #2。
+    """
+
+    def test_zh_opinion_pair(self):
+        d = route_query("怎么看待 AI 编程工具取代程序员")
+        combo = d.get("engines_combo") or []
+        self.assertEqual(combo[:2], ["zhihu", "zhihu_global"],
+                         f"观点查询应为站内+全网搜成对: {combo}")
+
+    def test_news_intent_pair(self):
+        d = route_query("新能源车 销量 最新新闻")
+        self.assertEqual(d.get("domain"), "news_realtime")
+        combo = d.get("engines_combo") or []
+        self.assertIn("zhihu_global", combo[:2],
+                      f"新闻意图 zhihu_global 应在前二: {combo}")
+
+    def test_error_item_not_silent_empty(self):
+        """HTTP 失败必须返回 error item（原静默 []，把鉴权失败伪装成没结果）。"""
+        import engines
+        import urllib.error
+        env = patch.dict("os.environ", {"ZHIHU_ACCESS_SECRET": "test_secret"})
+        with env, patch("urllib.request.urlopen",
+                        side_effect=urllib.error.HTTPError(
+                            "u", 401, "Unauthorized", {}, None)):
+            res = engines.search("测试查询", "zhihu_global", n=5, timeout=5)
+        self.assertTrue(res and isinstance(res[0], dict) and "error" in res[0],
+                        f"HTTP 401 应产生 error item: {res}")
+
+
 if __name__ == "__main__":
     unittest.main()

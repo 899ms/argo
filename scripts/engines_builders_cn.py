@@ -1090,12 +1090,20 @@ def _build_zhihu_global_engine(spec: dict[str, Any]) -> Any:
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            # 401/403 等必须暴露为 error item 而非静默空——调用侧把
+            # 「没配置」「鉴权失败」「没结果」区分开才可行动（对齐
+            # social_engines/zhihu_engine.py 同接口的口径）
+            return [{"error": f"zhihu_global API HTTP {e.code}", "source": "zhihu_global"}]
         except Exception as e:
             logger.warning(f"zhihu_global 失败: {e}")
-            return []
+            return [{"error": f"zhihu_global {type(e).__name__}: {e}", "source": "zhihu_global"}]
         if data.get("Code") not in (0, None):
+            # 30001=频率限制 30002=配额限制，显式暴露供配额状态机归类
             logger.warning(f"zhihu_global 返回码异常: {data.get('Code')} {data.get('Message')}")
-            return []
+            return [{"error": f"zhihu_global Code={data.get('Code')} "
+                              f"{str(data.get('Message') or '')[:100]}",
+                     "source": "zhihu_global"}]
         items = (data.get("Data") or {}).get("Items") or []
         results = []
         for item in items[:n]:

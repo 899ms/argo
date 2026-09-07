@@ -774,9 +774,10 @@ domains:
   - (?i)\b(geopolitical|conflict|protest|coup|election\s*result|referendum|terror\s*attack|military\s*action|sanctions?|ceasefire|diplomatic|global\s*unrest)\b
   primary: gdelt
 
-- desc: 实时新闻/事件
+- desc: 实时新闻/事件（zhihu_global #2：中文 web 时事实测最强场景，836-1343ms）
   engines_combo:
   - byted
+  - zhihu_global
   - octen
   - you
   fallback: byted

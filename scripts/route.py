@@ -724,6 +724,15 @@ def _lang_aware_combo_order(combo: list[str], features: dict | None,
                 if g in enabled and g in ordered:
                     ordered = [g] + [e for e in ordered if e != g]
                     break
+        if domain_name == "zhihu_content" and "zhihu_global" in ordered:
+            # 站内主搜 + 站外全网搜是成对语义：learner 同族按分重排会把
+            # zhihu_global 挪到 anysearch 之后，叠加 auto 预算=2 即被截掉
+            # （37 天仅 53 次的死因）。zh 查询下固定提回 #2。
+            rest = [e for e in ordered if e not in ("zhihu", "zhihu_global")]
+            if "zhihu" in ordered:
+                ordered = ["zhihu", "zhihu_global"] + rest
+            else:
+                ordered = ["zhihu_global"] + rest
         return ordered
     # 对称分支：非中文查询把中文专用源移尾（含 zh_ratio≤0.15 的混合查询）
     if features.get("primary_lang") in ("en", "ja", "ko"):
@@ -907,6 +916,9 @@ def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "a
     _VERTICAL_PROTECT = frozenset({
         "film_search", "sports_search", "geo_places", "org_entity", "media_search",
         "modal_card",
+        # zhihu_content 的 zhihu_global 曾被 learner 低分过滤饿死（历史用量少
+        # →分低→更不被用），37 天仅 53 次；断掉「饿死循环」
+        "zhihu_content",
     })
     primary = domain.get("primary")
     domain_name = domain.get("name")
