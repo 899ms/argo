@@ -511,10 +511,19 @@ def search(query: str, engine: str, n: int = 5, timeout: float = 8, depth: str =
     eff_n = bucket_n(engine, n)
     key = _call_key(query, engine, eff_n, kwargs)
 
+    # 引擎自声明 timeout 是该源的硬上限（此前被调用方 timeout 位置传参整体
+    # 覆盖成死配置——OSM timeout:6 实测跑出 10s+5s curl 守卫 11.3s）。
+    # deep 模式保持原语义：研究场景宁可等，不受 spec 短超时约束。
+    spec_to = (_engine_specs or {}).get(engine) or {}
+    st = spec_to.get("timeout") if isinstance(spec_to, dict) else None
+    call_to = timeout
+    if mode != "deep" and isinstance(st, (int, float)) and 0 < st < timeout:
+        call_to = float(st)
+
     def _execute() -> list[dict[str, Any]]:
         t0 = time.time()
         try:
-            results = fn(query, eff_n, timeout, depth=depth, mode=mode, **kwargs)
+            results = fn(query, eff_n, call_to, depth=depth, mode=mode, **kwargs)
         except Exception as e:
             # TypeError 可能来自引擎内部逻辑错误而非签名不匹配。
             # 用 inspect.signature 确认引擎是否接受 depth/mode 参数，

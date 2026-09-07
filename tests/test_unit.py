@@ -588,7 +588,7 @@ class TestHttpClientEngineIntegration(unittest.TestCase):
              patch("http_client.HttpClient", _FakeClient):
             raw = _http_get_raw("https://x.example/q", {"Accept": "*/*"}, 8)
         self.assertEqual(raw, '{"ok": 1}')
-        self.assertEqual(calls[0], ("init", False, 1))  # 搜索热路径禁 jitter
+        self.assertEqual(calls[0], ("init", False, 0))  # 搜索热路径禁 jitter 且引擎内不重试（重试上移编排层）
         self.assertTrue(calls[1][2])  # follow_redirects 开启
 
     def test_http_get_raw_env_off_falls_back_urllib(self):

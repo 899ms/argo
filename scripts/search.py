@@ -1212,6 +1212,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                     pass
             if eng_to is not None and eng_to >= 8.0:
                 eff_to = min(float(timeout), cap)
+            # 声明值 < 8s 的收紧由 engines.search 分发层统一执行
+            # （spec timeout 是硬上限，调用方超时不得覆盖）
         try:
             res = _exec_engine(eng, eff_timeout=eff_to)
         except Exception as e:
@@ -1301,7 +1303,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
 
         def _daemon_start(eng: str):
             """daemon 线程跑 _run_one：弃置线程不阻塞进程退出。"""
-            holder: dict[str, Any] = {}
+            holder: dict[str, Any] = {"t0": time.time()}
 
             def _work() -> None:
                 try:
@@ -1367,13 +1369,15 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                         time.sleep(0.02)
                 # 超时/弃置：仍活线程标记 timeout（daemon 自行结束，不阻塞
                 # 退出）；恰在末次轮询后完成的线程照常入账——此前它既不
-                # ingest 也不标 timeout，结果静默丢失
+                # ingest 也不标 timeout，结果静默丢失。latency 记账用真实
+                # 等待时长（原 timeout 参数×1000 是假值，污染遥测）
                 for (holder, th, eng) in pending:
+                    lat_ms = int((time.time() - holder.get("t0", t0)) * 1000)
                     if th.is_alive():
                         raw_results[eng] = [{"error": "timeout", "source": eng}]
                         engine_outcomes.append(_classify_engine_outcome(
-                            eng, raw_results[eng], timeout * 1000, "timeout"))
-                        nonlocal_wasted[0] += timeout * 1000
+                            eng, raw_results[eng], lat_ms, "timeout"))
+                        nonlocal_wasted[0] += lat_ms
                     else:
                         _ingest_holder(holder)
         if (not early_stopped and rest
@@ -1383,6 +1387,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             # 「fast 总墙钟预算」对并行路径同样成立
             w2_wait = min(_eff_timeout + 2,
                           max(0.1, _deadline - time.time()))
+            t_w2 = time.time()
             with ThreadPoolExecutor(max_workers=min(len(rest), 3)) as ex:
                 futures = {ex.submit(_run_one, eng): eng for eng in rest}
                 try:
@@ -1406,14 +1411,15 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                             early_stopped = True
                             break
                 except TimeoutError:
+                    lat_ms = int((time.time() - t_w2) * 1000)
                     for fut, eng in futures.items():
                         if not fut.done():
                             fut.cancel()
                             raw_results[eng] = [{"error": "timeout", "source": eng}]
                             engine_outcomes.append(_classify_engine_outcome(
-                                eng, raw_results[eng], timeout * 1000, "timeout",
+                                eng, raw_results[eng], lat_ms, "timeout",
                             ))
-                            nonlocal_wasted[0] += timeout * 1000
+                            nonlocal_wasted[0] += lat_ms
                 for fut in futures:
                     if not fut.done():
                         fut.cancel()

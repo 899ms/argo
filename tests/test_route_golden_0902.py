@@ -172,20 +172,20 @@ class TestEarlyStopRescueIntegration(unittest.TestCase):
     def test_garbage_primary_rescued_by_second_engine(self):
         """事故场景回放：anysearch 垃圾 → 守卫拒绝早停 → duckduckgo 补跑。"""
         decision = route_query(QUERY, mode="fast", depth="fast", context="search")
-        self.assertEqual(decision["engines_combo"], ["anysearch", "duckduckgo"])
+        self.assertEqual(decision["engines_combo"], ["anysearch", "local_bing"])
 
         def fake(_q: str, eng: str, **_k: Any) -> list:
             if eng == "anysearch":
                 return MORNING_GARBAGE
-            if eng == "duckduckgo":
+            if eng == "local_bing":
                 return GOOD_RESULTS
             return []
 
         out, calls = self._execute(QUERY, decision, fake)
-        self.assertIn("duckduckgo", calls, "守卫应触发次引擎补跑")
+        self.assertIn("local_bing", calls, "守卫应触发次引擎补跑")
         merged_titles = " ".join(r.get("title", "") for r in out.get("results", []))
         self.assertIn("Crawl4AI", merged_titles, "融合结果应包含救援来源")
-        self.assertIn("duckduckgo", out.get("engines_used", []))
+        self.assertIn("local_bing", out.get("engines_used", []))
 
     def test_good_primary_keeps_early_stop(self):
         """控制组：首引擎好结果 → 早停保持，次引擎零调用（成本不回退）。"""
@@ -195,7 +195,7 @@ class TestEarlyStopRescueIntegration(unittest.TestCase):
             return GOOD_RESULTS if eng == "anysearch" else []
 
         _out, calls = self._execute(QUERY, decision, fake)
-        self.assertNotIn("duckduckgo", calls, "好结果不应触发补跑")
+        self.assertNotIn("local_bing", calls, "好结果不应触发补跑")
         self.assertEqual(calls[0], "anysearch")
 
     def test_wave_path_parallel_rescue(self):
@@ -206,13 +206,13 @@ class TestEarlyStopRescueIntegration(unittest.TestCase):
         def fake(_q: str, eng: str, **_k: Any) -> list:
             if eng == "anysearch":
                 return MORNING_GARBAGE
-            if eng == "duckduckgo":
+            if eng == "local_bing":
                 return GOOD_RESULTS
             return []
 
         out, calls = self._execute(QUERY, decision, fake)
-        self.assertIn("duckduckgo", calls)
-        self.assertIn("duckduckgo", out.get("engines_used", []))
+        self.assertIn("local_bing", calls)
+        self.assertIn("local_bing", out.get("engines_used", []))
 
 
 # ── 3. 路由金标钉（结构契约，与 matrix_search_eval ROUTE_MATRIX 增补同源）──────
@@ -226,10 +226,10 @@ class TestRouteGoldenPins(unittest.TestCase):
         d = route_query(QUERY, mode="fast", depth="fast", context="search")
         self.assertEqual(d.get("domain"), "general_search")
         combo = d.get("engines_combo") or []
-        free_general = {"anysearch", "duckduckgo"}
+        free_general = {"anysearch", "local_bing", "uapi"}
         self.assertGreaterEqual(
             len(free_general & set(combo)), 2,
-            f"fast 兜底 combo 应含 anysearch+duckduckgo，实际 {combo}")
+            f"fast 兜底 combo 应含 ≥2 免费通用源，实际 {combo}")
 
     def test_english_tech_domain_hit(self):
         d = route_query("python asyncio tutorial", mode="fast", depth="fast", context="search")

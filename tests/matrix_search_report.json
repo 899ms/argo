@@ -1120,7 +1120,7 @@
     {
       "name": "route:R_en_pkg_diffuse",
       "status": "PASS",
-      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'duckduckgo'] lang=en",
+      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'local_bing'] lang=en",
       "meta": {
         "id": "R_en_pkg_diffuse",
         "q": "pnpm file: directory dependency no content hash reinstall",
@@ -1130,7 +1130,7 @@
         "engine": "anysearch",
         "combo": [
           "anysearch",
-          "duckduckgo"
+          "local_bing"
         ],
         "primary_lang": "en"
       }
@@ -1194,7 +1194,7 @@
     {
       "name": "route:R_cyr_gen",
       "status": "PASS",
-      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'duckduckgo'] lang=cyrillic",
+      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'local_bing'] lang=cyrillic",
       "meta": {
         "id": "R_cyr_gen",
         "q": "Как написать скрипт",
@@ -1204,7 +1204,7 @@
         "engine": "anysearch",
         "combo": [
           "anysearch",
-          "duckduckgo"
+          "local_bing"
         ],
         "primary_lang": "cyrillic"
       }
@@ -1212,7 +1212,7 @@
     {
       "name": "route:R_ar_gen",
       "status": "PASS",
-      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'duckduckgo'] lang=arabic",
+      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'local_bing'] lang=arabic",
       "meta": {
         "id": "R_ar_gen",
         "q": "أخبار التكنولوجيا",
@@ -1222,7 +1222,7 @@
         "engine": "anysearch",
         "combo": [
           "anysearch",
-          "duckduckgo"
+          "local_bing"
         ],
         "primary_lang": "arabic"
       }
@@ -1230,7 +1230,7 @@
     {
       "name": "route:R_th_gen",
       "status": "PASS",
-      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'duckduckgo'] lang=thai",
+      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'local_bing'] lang=thai",
       "meta": {
         "id": "R_th_gen",
         "q": "อากาศ กรุงเทพ",
@@ -1240,7 +1240,7 @@
         "engine": "anysearch",
         "combo": [
           "anysearch",
-          "duckduckgo"
+          "local_bing"
         ],
         "primary_lang": "thai"
       }
@@ -1248,7 +1248,7 @@
     {
       "name": "route:R_en_gen",
       "status": "PASS",
-      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'duckduckgo'] lang=en",
+      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'local_bing'] lang=en",
       "meta": {
         "id": "R_en_gen",
         "q": "hello world",
@@ -1258,7 +1258,7 @@
         "engine": "anysearch",
         "combo": [
           "anysearch",
-          "duckduckgo"
+          "local_bing"
         ],
         "primary_lang": "en"
       }
@@ -1284,7 +1284,7 @@
     {
       "name": "route:R_en_tech_nodomain",
       "status": "PASS",
-      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'duckduckgo'] lang=en",
+      "detail": "domain=general_search eng=anysearch combo=['anysearch', 'local_bing'] lang=en",
       "meta": {
         "id": "R_en_tech_nodomain",
         "q": "Crawl4AI pruning content filter extraction",
@@ -1294,7 +1294,7 @@
         "engine": "anysearch",
         "combo": [
           "anysearch",
-          "duckduckgo"
+          "local_bing"
         ],
         "primary_lang": "en"
       }
@@ -1338,17 +1338,17 @@
     {
       "name": "rec_l3_no_pollute_film",
       "status": "PASS",
-      "detail": "['anysearch', 'duckduckgo']"
+      "detail": "['anysearch', 'local_bing']"
     },
     {
       "name": "rec_l3_no_pollute_sports",
       "status": "PASS",
-      "detail": "['anysearch', 'duckduckgo']"
+      "detail": "['anysearch', 'local_bing']"
     },
     {
       "name": "rec_l3_same_family_ok",
       "status": "PASS",
-      "detail": "['anysearch', 'duckduckgo']"
+      "detail": "['anysearch', 'local_bing']"
     },
     {
       "name": "rec_cross:アニメ おすすめ",

@@ -28,7 +28,7 @@ class TestGeneralFreeSingleSource(unittest.TestCase):
         from engine_policy import GENERAL_FREE_FALLBACK
         from route import _general_fallback
         enabled = {"local_search", "anysearch", "duckduckgo",
-                   "local_bing", "local_baidu", "wikipedia"}
+                   "local_bing", "uapi", "local_baidu", "wikipedia"}
         fb = _general_fallback(enabled)
         # 本地优先 + 通用免费源顺序与单一真源一致
         self.assertEqual(fb[0], "local_search")

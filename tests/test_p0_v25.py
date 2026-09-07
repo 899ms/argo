@@ -145,8 +145,8 @@ class TestRecovery(unittest.TestCase):
         self.assertIn("react", out.lower())
 
     def test_pick_alternative_engines(self):
-        alt = pick_alternative_engines(["anysearch"], ["duckduckgo"], None)
-        self.assertIn("duckduckgo", alt)
+        alt = pick_alternative_engines(["anysearch"], ["local_bing"], None)
+        self.assertIn("local_bing", alt)
         self.assertNotIn("anysearch", alt)
 
     def test_pick_alternative_blocks_vertical_pollution(self):
@@ -175,7 +175,7 @@ class TestRecovery(unittest.TestCase):
         self.assertNotIn("jin10", alt)
 
     def test_plan_fast_no_l4(self):
-        plan = build_recovery_plan("英伟达 财报", ["anysearch"], ["duckduckgo"], mode="fast")
+        plan = build_recovery_plan("英伟达 财报", ["anysearch"], ["local_bing"], mode="fast")
         levels = {s.level for s in plan}
         self.assertNotIn("L4", levels)
         self.assertTrue(levels <= {"L1", "L2", "L3"})

@@ -367,7 +367,10 @@ def _http_get_raw(url: str, headers: dict, timeout: float) -> str | None:
     if use_client:
         try:
             from http_client import HttpClient
-            resp = HttpClient(timeout=timeout, max_retries=1, jitter=False).get(
+            # max_retries=0：引擎内不做连接级重试——死源一次超时已耗尽预算，
+            # 重试把最坏代价翻倍（OSM 6s 声明实测 11.3s=两次尝试）；重试语义
+            # 上移到编排层（hedged race 换引擎 / 熔断降权 / 串行救援链）
+            resp = HttpClient(timeout=timeout, max_retries=0, jitter=False).get(
                 url, extra_headers=headers, follow_redirects=True,
             )
             status = resp.get("status") or 0
