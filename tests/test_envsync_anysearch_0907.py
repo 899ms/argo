@@ -72,31 +72,31 @@ class TestMultilingualAnysearchInjection(unittest.TestCase):
     """ja/ko 查询 anysearch 前二（策略截断后注入，防 must_keep 换位挤出）。"""
 
     def test_ja_geo_anysearch_front2(self):
-        d = route_query("東京 おすすめ ラーメン 屋 はどこ")
+        d = _isolated_route("東京 おすすめ ラーメン 屋 はどこ")
         combo = d.get("engines_combo") or []
         self.assertIn("anysearch", combo[:2],
                       f"ja 查询 anysearch 应在前二: {combo}")
 
     def test_ko_anysearch_front2(self):
-        d = route_query("서울 최고의 카페 추천 위치")
+        d = _isolated_route("서울 최고의 카페 추천 위치")
         combo = d.get("engines_combo") or []
         self.assertIn("anysearch", combo[:2],
                       f"ko 查询 anysearch 应在前二: {combo}")
 
     def test_ja_catchall_anysearch_front2(self):
-        d = route_query("東京タワー の高さ は いくつ")
+        d = _isolated_route("東京タワー の高さ は いくつ")
         combo = d.get("engines_combo") or []
         self.assertIn("anysearch", combo[:2],
                       f"ja catch-all 也应注入 anysearch: {combo}")
 
     def test_zh_vertical_not_injected(self):
-        d = route_query("贵州茅台 股价")
+        d = _isolated_route("贵州茅台 股价")
         combo = d.get("engines_combo") or []
         self.assertEqual(combo[0], "sina_quote",
                          f"zh 点查域 primary 不得被注入顶掉: {combo}")
 
     def test_domain_primary_stays_first(self):
-        d = route_query("東京 おすすめ ラーメン 屋 はどこ")
+        d = _isolated_route("東京 おすすめ ラーメン 屋 はどこ")
         self.assertEqual(d.get("engines_combo", [None])[0],
                          "local_openstreetmap",
                          f"注入不得顶掉域主源: {d.get('reason')}")
@@ -135,6 +135,41 @@ class TestQuotaProfilesAligned(unittest.TestCase):
             qm._state.pop("_test_null_eng", None)
 
 
+class _AllowAllBreaker:
+    """隔离共享熔断/配额状态：combo 断言只验路由语义，不验运行时健康。"""
+
+    def allow(self, eng):
+        return True, "closed"
+
+    def get_negative(self, *a, **k):
+        return None
+
+    def status(self, eng):
+        return {"state": "closed"}
+
+    def record_success(self, *a, **k):
+        pass
+
+    def record_failure(self, *a, **k):
+        pass
+
+    def set_negative(self, *a, **k):
+        pass
+
+    def clear_negative(self, *a, **k):
+        pass
+
+
+def _isolated_route(query: str, **kwargs):
+    """route_query 但打桩熔断器与配额（并发 live 评测会写共享状态文件，
+    直连真实单例会让 combo 断言偶发抖动）。"""
+    from unittest.mock import MagicMock
+    with patch("circuit_breaker.get_breaker",
+               return_value=_AllowAllBreaker()), \
+         patch("quota.get_quota_manager", return_value=MagicMock()):
+        return route_query(query, **kwargs)
+
+
 class TestZhihuGlobalUtilization(unittest.TestCase):
     """zhihu_global（全网搜 SearchDB=all，5000/天）防饿死回归门。
 
@@ -144,13 +179,13 @@ class TestZhihuGlobalUtilization(unittest.TestCase):
     """
 
     def test_zh_opinion_pair(self):
-        d = route_query("怎么看待 AI 编程工具取代程序员")
+        d = _isolated_route("怎么看待 AI 编程工具取代程序员")
         combo = d.get("engines_combo") or []
         self.assertEqual(combo[:2], ["zhihu", "zhihu_global"],
                          f"观点查询应为站内+全网搜成对: {combo}")
 
     def test_news_intent_pair(self):
-        d = route_query("新能源车 销量 最新新闻")
+        d = _isolated_route("新能源车 销量 最新新闻")
         self.assertEqual(d.get("domain"), "news_realtime")
         combo = d.get("engines_combo") or []
         self.assertIn("zhihu_global", combo[:2],
@@ -165,6 +200,55 @@ class TestZhihuGlobalUtilization(unittest.TestCase):
                         side_effect=urllib.error.HTTPError(
                             "u", 401, "Unauthorized", {}, None)):
             res = engines.search("测试查询", "zhihu_global", n=5, timeout=5)
+        self.assertTrue(res and isinstance(res[0], dict) and "error" in res[0],
+                        f"HTTP 401 应产生 error item: {res}")
+
+
+class TestZhihuUserEngine(unittest.TestCase):
+    """zhihu_user（个人数据：本人创作/收藏/关注）接入回归门。
+
+    查本人数据用 Access Secret 直调无需 OAuth；路由上须压过 social 泛域
+    （收藏/关注是社交平台通用功能词）与 zhihu_content（知乎词面）。
+    """
+
+    def test_registered(self):
+        from config import load_config, get_engines
+        spec = get_engines(load_config()).get("zhihu_user")
+        self.assertIsNotNone(spec, "zhihu_user 未注册")
+        self.assertEqual(spec.get("type"), "zhihu_user")
+        self.assertEqual(spec.get("family"), "personal_data")
+
+    def test_routing_trio_distinct(self):
+        """站内/站外/个人数据三源语义各自路由（知乎源分工的根）。"""
+        d1 = route_query("怎么看待 AI 编程工具取代程序员")
+        self.assertEqual(d1.get("domain"), "zhihu_content", "观点→站内")
+        d2 = route_query("我的收藏")
+        self.assertEqual(d2.get("domain"), "zhihu_user_data", "个人数据意图→个人域")
+        d3 = route_query("我的知乎")
+        self.assertEqual(d3.get("domain"), "zhihu_user_data")
+
+    def test_sub_intent_parsing(self):
+        from engines_builders_cn import _parse_zhihu_user_intent
+        cases = [
+            ("我的回答 点赞最多", ("contents", {"ContentType": "answer"})),
+            ("我的文章", ("contents", {"ContentType": "article"})),
+            ("我的收藏", ("collections", {})),
+            ("我的收藏夹", ("favlists", {})),
+            ("我关注的人", ("followees", {})),
+            ("我的知乎", ("contents", {"ContentType": "all"})),
+        ]
+        for q, (endpoint, extra) in cases:
+            got_endpoint, got_extra, _ = _parse_zhihu_user_intent(q)
+            self.assertEqual((got_endpoint, got_extra), (endpoint, extra), q)
+
+    def test_error_item_not_silent_empty(self):
+        import engines
+        import urllib.error
+        env = patch.dict("os.environ", {"ZHIHU_ACCESS_SECRET": "test_secret"})
+        with env, patch("urllib.request.urlopen",
+                        side_effect=urllib.error.HTTPError(
+                            "u", 401, "Unauthorized", {}, None)):
+            res = engines.search("我的回答", "zhihu_user", n=5, timeout=5)
         self.assertTrue(res and isinstance(res[0], dict) and "error" in res[0],
                         f"HTTP 401 应产生 error item: {res}")
 

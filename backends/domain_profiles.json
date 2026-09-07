@@ -1943,5 +1943,11 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "zhihu_user": {
+    "label": "知乎个人数据",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

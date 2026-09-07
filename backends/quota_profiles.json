@@ -1559,5 +1559,15 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 26
+  },
+  "zhihu_user": {
+    "label": "知乎个人数据",
+    "qps": 2,
+    "limit": 10000,
+    "period": "day",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 5
   }
 }

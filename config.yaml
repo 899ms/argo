@@ -659,6 +659,16 @@ domains:
   - (?i)(维基数据|wikidata|知识实体|实体查询|词条实体|QID|SPARQL|知识图谱|百度百科)
   - (?i)(是哪家公司|哪家机构|什么组织|属于哪个|隶属于|总部在哪)
   primary: wikidata
+- desc: 知乎个人数据（本人创作/收藏/关注——个人创作运营与素材回溯；结构化路径不混 web 源）
+  engines_combo:
+  - zhihu_user
+  fallback: zhihu_user
+  name: zhihu_user_data
+  parallel: false
+  patterns:
+  - (?i)(我的知乎|知乎我的|我的创作|个人主页数据)
+  - (?i)我(的)?(文章|回答|想法|视频|提问|收藏|收藏夹|关注的人|关注列表)
+  primary: zhihu_user
 - desc: 知乎/观点/经验/评测
   engines_combo:
   - zhihu
@@ -3961,6 +3971,20 @@ engines:
     - web
     family: web_general
     desc: 知乎开放平台全网搜索（SearchDB=all 全网索引 + Filter host== 站点限定；需 ZHIHU_ACCESS_SECRET）
+    timeout: 10
+  zhihu_user:
+    type: zhihu_user
+    enabled: true
+    label: 知乎个人数据
+    cost_tier: free
+    qps: 2
+    priority: 5
+    limit: 10000
+    period: day
+    cost_per_call: 0.0
+    cost_unit: free
+    family: personal_data
+    desc: 知乎个人数据（本人创作内容/收藏/关注；Access Secret 直查本人无需 OAuth，user_data 池 10000/天）
     timeout: 10
   zhihu_hot:
     type: http

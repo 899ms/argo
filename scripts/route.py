@@ -322,18 +322,21 @@ _JA_KO_CN_ENGINES = _ZH_CONTENT_ENGINES | frozenset({
 def _social_domain_first(_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """命中列表里有 social 域 → 提到首位（无则原样）。
 
-    redskill_search 命中且排位在 social 之前时保持原序：它是小红书技能
-    垂直域，语义比泛社交域更具体，避免「小红书技能排行」类查询的
-    主域被 social（zhihu 组合）抢占。
+    排位在 social 之前的更具体域保持原序不抢占：「小红书技能排行」的
+    redskill_search（小红书技能垂直域）、「我的收藏/我的回答」的
+    zhihu_user_data（个人数据意图，收藏/关注是社交平台通用功能词，
+    泛 social 域语义更宽）。
     """
     social = [h for h in _hits if h.get("name") == "social"]
     if not social:
         return _hits
     idx_first_social = _hits.index(social[0])
-    idx_redskill = next(
-        (i for i, h in enumerate(_hits) if h.get("name") == "redskill_search"), None
+    _SPECIFIC_BEFORE_SOCIAL = ("redskill_search", "zhihu_user_data")
+    idx_specific = next(
+        (i for i, h in enumerate(_hits)
+         if h.get("name") in _SPECIFIC_BEFORE_SOCIAL), None
     )
-    if idx_redskill is not None and idx_redskill < idx_first_social:
+    if idx_specific is not None and idx_specific < idx_first_social:
         return _hits
     return social + [h for h in _hits if h.get("name") != "social"]
 

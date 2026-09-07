@@ -1768,3 +1768,13 @@ engines:
   status: ok
   recommended: true
   desc: 知乎开放平台热榜 hot_list（日配额约 100；需 ZHIHU_ACCESS_SECRET；原 zhihu skill 迁入）
+- name: zhihu_user
+  tier: T1
+  type: zhihu_user
+  coverage:
+  - general
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  desc: 知乎个人数据（本人创作内容/收藏/关注；Access Secret 直查本人无需 OAuth，user_data 池 10000/天）

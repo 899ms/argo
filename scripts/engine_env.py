@@ -92,6 +92,7 @@ KNOWN_ENV_ALIASES: dict[str, list[str]] = {
     "zhihu": ["ARGO_ZHIHU_ACCESS_SECRET", "ZHIHU_ACCESS_SECRET"],
     "zhihu_global": ["ARGO_ZHIHU_ACCESS_SECRET", "ZHIHU_ACCESS_SECRET"],
     "zhihu_hot": ["ARGO_ZHIHU_ACCESS_SECRET", "ZHIHU_ACCESS_SECRET"],
+    "zhihu_user": ["ARGO_ZHIHU_ACCESS_SECRET", "ZHIHU_ACCESS_SECRET"],
     "anysearch": ["ARGO_ANYSEARCH_API_KEY", "ANYSEARCH_API_KEY"],  # 可选
     "firecrawl": ["ARGO_FIRECRAWL_API_KEY", "FIRECRAWL_API_KEY"],  # 可选（keyless 免费层）
     "weread": ["ARGO_WEREAD_API_KEY", "WEREAD_API_KEY"],  # 微信读书 Agent Gateway

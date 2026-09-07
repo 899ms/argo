@@ -17,6 +17,7 @@ engine_families.py — 搜索源能力族分类（第一性原理重构）
   finance_macro    宏观数据                  fred / worldbank / nbs_stats / eurostat / fx_rate
   news_flash       快讯/电报                 cls_telegraph / em_global_news / jin10 / em_miaoxiang
   social           社区 UGC                 zhihu / zhihu_global / v2ex / juejin / reddit / twitter / xiaohongshu / bilibili / weibo
+  personal_data    个人数据（本人创作/收藏/关注） zhihu_user
   hot_trending     热榜                     baidu_hot / toutiao_hot / bilibili_hot / zhihu_hot / ths_hot
   knowledge        百科/实体                 wikipedia / baidu_baike / zh_wikipedia / wikidata / moegirl / free_dictionary
   science_chem     化学/药学                 pubchem / openfda / clinicaltrials
@@ -237,6 +238,7 @@ FAMILY_LABELS: dict[str, str] = {
     "sports": "体育",
     "archive": "归档/历史",
     "structured_card": "垂直结构化模态卡",
+    "personal_data": "个人数据（本人创作/收藏/关注）",
     "misc_vertical": "其他垂直",
 }
 
@@ -300,6 +302,7 @@ _REFILL_EXCLUDED_FAMILIES = frozenset({
     "hot_trending",
     "media_book",
     "archive",
+    "personal_data",
 })
 
 

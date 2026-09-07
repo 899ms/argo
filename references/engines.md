@@ -16,7 +16,14 @@
 | duckduckgo | free | 通用搜索 |
 | keenable | free | 通用网页搜索（ranked results，含 published_at；ARGO_KEENABLE_API_KEY；现免费至 2026-09 底） |
 | wechat_sogou | free | 微信公众号文章搜索（v2.3） |
-| zhihu / zhihu_global / zhihu_hot | free | 知乎站内/全网/热榜（ZHIHU_ACCESS_SECRET） |
+| zhihu / zhihu_global / zhihu_user / zhihu_hot | free | 知乎四源分工（ZHIHU_ACCESS_SECRET） |
+
+**知乎源语义区分**（选错源=结果同质化）：
+
+- **zhihu（站内搜索）**：SearchDB=zhihu，只搜知乎站内 UGC——观点/经验/评测类查询的主源（「怎么看待/如何评价/哪个好」）。
+- **zhihu_global（站外搜索）**：SearchDB=all 全网索引——中文时事/新闻/多域名泛资讯的主源；支持 `site:域名 关键词` / `host:域名` 语法做站点限定；对英文查询召回弱（中文索引为主）。
+- **zhihu_user（个人数据）**：本人创作内容/收藏/关注（「我的回答」「我的文章」「我的收藏」「我关注的人」，「点赞最多」按赞排序）——个人创作运营与素材回溯，非内容搜索；查本人数据用 Access Secret 直调，无需 OAuth。
+- **zhihu_hot（热榜）**：知乎官方热榜快照（100/天，仅热榜意图）。
 
 ## 社交平台引擎
 

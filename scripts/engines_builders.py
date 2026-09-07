@@ -26,6 +26,7 @@ from engines_builders_cn import (
     _build_toutiao_hot_engine,
     _build_bilibili_hot_engine,
     _build_zhihu_global_engine,
+    _build_zhihu_user_engine,
     _build_bocha_engine,
     _build_bocha_ai_engine,
 )

@@ -1165,6 +1165,132 @@ def _bocha_freshness(query: str) -> str:
     return "noLimit"
 
 
+# ── zhihu_user：知乎个人数据（本人创作/收藏/关注）─────────────────────────
+# 站内搜索/全网搜覆盖「找内容」；本引擎覆盖「看自己」——个人创作运营
+# （哪些回答点赞高、最近发了什么）与素材回溯（收藏夹）。查本人数据用
+# Access Secret 直调（官方文档：不传 X-OAuth-Token 即本人），OAuth 仅在
+# 查其他用户时才需要。/user/* 端点共享 user_data 日额度（10000/天）。
+
+_ZHIHU_USER_API = "https://developer.zhihu.com/api/v1/user"
+
+# 子意图 → 端点与参数（按序匹配，命中即停）
+_ZHIHU_USER_INTENTS: list[tuple[str, str, dict[str, str]]] = [
+    # (pattern, endpoint, extra query params)
+    (r"我的收藏夹|收藏夹(列表|有哪些)", "favlists", {}),
+    (r"我的收藏|收藏的内容", "collections", {}),
+    (r"我关注(的)?(人|列表|谁)?(?!.*动态)", "followees", {}),
+    (r"我的(回答|答主)", "contents", {"ContentType": "answer"}),
+    (r"我的(文章|专栏)", "contents", {"ContentType": "article"}),
+    (r"我的视频", "contents", {"ContentType": "zvideo"}),
+    (r"我的(想法|动态|短内容)", "contents", {"ContentType": "pin"}),
+    (r"我的(提问|问题)", "contents", {"ContentType": "question"}),
+]
+
+
+def _parse_zhihu_user_intent(query: str) -> tuple[str, dict[str, str], str]:
+    """解析子意图，返回 (endpoint, extra_params, 剩余关键词)。"""
+    q = (query or "").strip()
+    for pat, endpoint, extra in _ZHIHU_USER_INTENTS:
+        if re.search(pat, q):
+            leftover = re.sub(pat, " ", q, count=1)
+            return endpoint, extra, leftover
+    # 默认：全部内容（时间倒序）
+    leftover = re.sub(r"(我的知乎|知乎我的|我的(全部)?内容|个人(主页|数据)|我的创作)", " ", q)
+    return "contents", {"ContentType": "all"}, leftover
+
+
+def _build_zhihu_user_engine(spec: dict[str, Any]) -> Any:
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None,
+                **kwargs) -> list[dict[str, Any]]:
+        import urllib.parse as up
+        to = _timeout or timeout
+        secret = os.environ.get("ZHIHU_ACCESS_SECRET") or os.environ.get("ARGO_ZHIHU_ACCESS_SECRET", "")
+        if not secret:
+            return []
+
+        endpoint, extra, leftover = _parse_zhihu_user_intent(query)
+        params: dict[str, Any] = {"Limit": str(min(int(n), 50)), **extra}
+        if endpoint == "contents":
+            # 创作分析语义：点赞最多/最受欢迎 → 按赞排序（默认最新）
+            if re.search(r"点赞(最)?(多|高)|最受欢迎|高赞|表现(最)?好", query):
+                params["SortField"] = "like_count"
+        url = f"{_ZHIHU_USER_API}/{endpoint}?" + up.urlencode(params)
+        headers = {
+            "Authorization": f"Bearer {secret}",
+            "X-Request-Timestamp": str(int(time.time())),
+            "Content-Type": "application/json",
+            "User-Agent": "argo-search/2.6 (unified-search@local)",
+        }
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
+                data = json.loads(resp.read().decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            return [{"error": f"zhihu_user API HTTP {e.code}", "source": "zhihu_user"}]
+        except Exception as e:
+            logger.warning(f"zhihu_user 失败: {e}")
+            return [{"error": f"zhihu_user {type(e).__name__}: {e}", "source": "zhihu_user"}]
+        if data.get("Code") not in (0, None):
+            logger.warning(f"zhihu_user 返回码异常: {data.get('Code')} {data.get('Message')}")
+            return [{"error": f"zhihu_user Code={data.get('Code')} "
+                              f"{str(data.get('Message') or '')[:100]}",
+                     "source": "zhihu_user"}]
+
+        items = (data.get("Data") or {}).get("Items") or []
+        # 剩余关键词做标题/摘要本地过滤（「我的收藏 大模型」→ 只留含大模型的）
+        leftover_kw = re.sub(r"[\s，,。？?的]+", " ", leftover).strip()
+        keywords = [w for w in leftover_kw.split() if len(w) >= 2]
+
+        results: list[dict[str, Any]] = []
+        for item in items[:n]:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("Title") or "").strip()
+            url_ = item.get("Url") or ""
+            if endpoint == "followees":
+                name = str(item.get("Fullname") or "").strip()
+                if not name:
+                    continue
+                results.append({
+                    "title": name[:100],
+                    "url": item.get("Url") or "",
+                    "snippet": str(item.get("Headline") or "")[:300],
+                    "source": "zhihu_user",
+                    "score": max(1.0 - len(results) * 0.1, 0.1),
+                    "social_meta": {"platform": "zhihu_user",
+                                    "content_type": "followee",
+                                    "followers": item.get("FollowerCount") or 0},
+                })
+                continue
+            # 收藏夹列表：Title/Description 为收藏夹本身
+            summary = str(item.get("Summary") or item.get("Description") or "")[:300]
+            if keywords and not any(
+                    k in title or k in summary for k in keywords):
+                continue
+            created = item.get("CreatedAt") or 0
+            results.append({
+                "title": (title[:100] + ("..." if len(title) > 100 else "")) if title else "(无标题)",
+                "url": url_,
+                "snippet": summary,
+                "source": "zhihu_user",
+                "score": max(1.0 - len(results) * 0.1, 0.1),
+                "published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(created)) if created else None,
+                "social_meta": {
+                    "platform": "zhihu_user",
+                    "content_type": str(item.get("ContentType") or endpoint),
+                    "likes": item.get("LikeCount") or 0,
+                    "comments": item.get("CommentCount") or 0,
+                    "favorites": item.get("FavoriteCount") or 0,
+                    "fav_time": item.get("FavTime") or None,
+                },
+            })
+        return results
+
+    return _engine
+
+
 def _bocha_key() -> str:
     return os.environ.get("ARGO_BOCHA_API_KEY") or os.environ.get("BOCHA_API_KEY", "")
 
