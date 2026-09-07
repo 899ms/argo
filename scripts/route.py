@@ -398,6 +398,26 @@ _DIFFUSE_SIGNAL_RE = re.compile(
 _POINTED_MIN_TOKENS = 5
 
 
+def _inject_multilingual_backup(engines_combo: list[str], enabled: set[str],
+                                features: dict) -> list[str]:
+    """ja/ko 查询把多语言主力源 anysearch 送到 combo 前二。
+
+    必须在 _apply_engine_policy（预算截断/must_keep 换位）之后调用：此前的
+    注入会被 must_keep 的尾位替换挤出去（2026-09-07 实测 geo 域 anysearch
+    被 local_bing 顶掉）。hedged 执行下 #2 位=primary 慢或不及格时的第一
+    救援；日韩查询过滤掉中文源后常只剩英文/本地源，缺位=无通用主力。
+    """
+    if features.get("primary_lang") not in ("ja", "ko"):
+        return engines_combo
+    if "anysearch" not in enabled or not engines_combo:
+        return engines_combo
+    if "anysearch" in engines_combo:
+        if engines_combo.index("anysearch") <= 1:
+            return engines_combo
+        engines_combo = [e for e in engines_combo if e != "anysearch"]
+    return engines_combo[:1] + ["anysearch"] + engines_combo[1:]
+
+
 def match_domains(query: str, domains: list[dict[str, Any]] | None = None,
                   max_n: int = 3,
                   primary_lang: str | None = None) -> list[dict[str, Any]]:
@@ -1275,6 +1295,7 @@ def route_query(query: str, engine_override: str = "auto",
         engines_combo = _get_engines_combo(domain, enabled, mode, features)
         # 🔑 ja/ko 查询：域命中路径也剔除中文内容/金融/新闻引擎（补齐 TF-IDF 层过滤缺口，
         # 否则 ja 技术查询落 english_tech 用 octen 返回中文 CSDN）。2026-08 修复。
+        # （anysearch 前二注入在策略/预算截断之后统一做，见 _inject_multilingual_backup）
         if features.get("primary_lang") in ("ja", "ko") and engines_combo:
             _filtered = [e for e in engines_combo if e not in _JA_KO_CN_ENGINES]
             engines_combo = _filtered or [e for e in ["anysearch"] if e in enabled] or engines_combo
@@ -1415,6 +1436,10 @@ def route_query(query: str, engine_override: str = "auto",
             engines_combo, mode=mode, depth=depth, context=context,
             engines_boost=engines_boost, enabled=enabled, must_keep=must_keep,
         )
+        # ja/ko：多语言主力源 anysearch 送到前二（策略截断后注入才不会被
+        # must_keep 换位挤出；primary 扶正前注入，域主源仍居首）
+        engines_combo = _inject_multilingual_backup(engines_combo, enabled,
+                                                    features)
         # 域 primary 扶正：已在 combo 且未熔断时置首（不覆盖冷却中的熔断沉底）
         # open 但 cooldown 已过 → 允许扶正，交给 half-open 探测。
         p = domain.get("primary")
@@ -1516,6 +1541,10 @@ def route_query(query: str, engine_override: str = "auto",
             engines_combo, mode=mode, depth=depth, context=context,
             engines_boost=engines_boost, enabled=enabled, must_keep=must_keep,
         )
+        # ja/ko catch-all 与主域分支同口径：anysearch 前二（TF-IDF 直选路径
+        # 也会把多语言主力挤掉）
+        engines_combo = _inject_multilingual_backup(engines_combo, enabled,
+                                                    features)
         # D4：统一熔断收口（TF-IDF 注入/语言追加可能绕过 _get_engines_combo）
         engines_combo = _filter_breaker_blocked(engines_combo)
         if not engines_combo:

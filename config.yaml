@@ -800,12 +800,12 @@ domains:
   - (?i)[一-鿿].*(编程|代码|算法|架构|框架|框架对比|性能优化|源码分析|实现原理|教程|指南|原理|底层|综述|深入|深挖|架构设计|实现|用法)
   - (?i)[一-鿿].*(Rust|Python|Go|Java|JavaScript|TypeScript|React|Vue|Docker|K8s|Cursor|Copilot|Windsurf|AI编程|LLM|大模型|量子|神经网络|机器学习|深度学习)
   primary: byted
-- desc: 英文技术通用（octen 主搜，低延迟；先于 catch-all）
+- desc: 英文技术通用（octen 主搜，低延迟；anysearch #2 作 hedged 救援；先于 catch-all）
   engines_combo:
   - octen
+  - anysearch
   - exa
   - keenable
-  - anysearch
   fallback: exa
   name: english_tech
   parallel: true
@@ -827,10 +827,11 @@ domains:
   - (?i)\b(company\s*registration|incorporation|registered\s+number|business\s+registry|company\s+search|corporate\s+records)\b
   - (?i)(会社|法人|登記|기업|법인|등록)
   primary: opencorporates
-- desc: 中文通用搜索
+- desc: 中文通用搜索（anysearch #3 作 bocha/byted 弱结果时的多语言救援）
   engines_combo:
   - bocha
   - byted
+  - anysearch
   - octen
   - zhihu_global
   - wechat_sogou
