@@ -1123,7 +1123,8 @@ engines:
     cost_tier: free
     qps: 5
     priority: 1
-    period: second
+    limit: 2000
+    period: day
     cost_per_call: 0.0
     cost_unit: free
     coverage:
@@ -2440,7 +2441,7 @@ engines:
     cost_tier: free
     qps: 2
     priority: 4
-    limit: 1000
+    limit: 5000
     period: day
     cost_per_call: 0.0
     cost_unit: free
@@ -3948,7 +3949,8 @@ engines:
     cost_tier: api
     qps: 2
     priority: 35
-    period: second
+    limit: 5000
+    period: day
     cost_per_call: 0.0
     cost_unit: api
     coverage:

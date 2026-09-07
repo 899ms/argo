@@ -153,6 +153,27 @@ def get_env(names: str | list[str], default: str = "") -> str:
     return default
 
 
+def sync_envfile_to_environ() -> list[str]:
+    """把 ~/.config/argo/env 同步进 os.environ（只填缺失，不覆盖已有值）。
+
+    兼容口径：读取方保持标准 os.environ 直读不动（含其他 AGT/客户端的
+    既有集成，零改动零破坏），由入口（bin/argo / mcp_server）调用本函数
+    把文件密钥「同步一份过去」。os.environ 已有变量永远优先——显式覆盖
+    与测试注入不受影响。幂等，可重复调用。
+    """
+    try:
+        file_env = _envfile_load()
+    except Exception:
+        return []
+    injected: list[str] = []
+    for k, v in file_env.items():
+        cur = os.environ.get(k)
+        if cur is None or cur.strip() == "":
+            os.environ[k] = v
+            injected.append(k)
+    return injected
+
+
 def resolve_env_name(engine_id: str, logical: str = "api_key") -> list[str]:
     """返回某引擎逻辑密钥的候选环境变量名列表。"""
     aliases = KNOWN_ENV_ALIASES.get(engine_id)

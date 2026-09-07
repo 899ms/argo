@@ -3,8 +3,8 @@
   "anysearch": {
     "label": "AnySearch",
     "qps": 5,
-    "limit": null,
-    "period": "second",
+    "limit": 2000,
+    "period": "day",
     "cost_per_call": 0.0,
     "cost_unit": "free",
     "cost_tier": "free",
@@ -1533,7 +1533,7 @@
   "zhihu": {
     "label": "知乎",
     "qps": 2,
-    "limit": 1000,
+    "limit": 5000,
     "period": "day",
     "cost_per_call": 0.0,
     "cost_unit": "free",
@@ -1543,8 +1543,8 @@
   "zhihu_global": {
     "label": "知乎全网搜索",
     "qps": 2,
-    "limit": null,
-    "period": "second",
+    "limit": 5000,
+    "period": "day",
     "cost_per_call": 0.0,
     "cost_unit": "api",
     "cost_tier": "api",

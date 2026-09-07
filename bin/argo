@@ -73,6 +73,16 @@ def main():
     rest = sys.argv[2:]
     py = _pick_python()
 
+    # env 文件 → os.environ 同步（只填缺失，不覆盖已有值）：子进程按标准
+    # os.environ 直读密钥（读取方零改动，含其他 AGT 既有集成），未经
+    # mcp_launch.sh 注入的裸 shell 也能拿到
+    try:
+        sys.path.insert(0, SCRIPTS)
+        from engine_env import sync_envfile_to_environ
+        sync_envfile_to_environ()
+    except Exception:
+        pass
+
     scripts = {
         "search":   ("search.py",   ["--json"]),
         "research": ("research.py", ["--json"]),

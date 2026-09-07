@@ -70,6 +70,9 @@ def search(query: str, n: int = 5) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         title = (item.get("Title") or "").strip()
+        # API 标题统一带「 - 知乎」尾巴：截断前剥掉（先剥再切，尾巴不占正文）
+        if title.endswith(" - 知乎"):
+            title = title[: -len(" - 知乎")].rstrip()
         url_ = item.get("Url") or ""
         snippet = (item.get("ContentText") or title or "")[:300]
         if not title and not url_:

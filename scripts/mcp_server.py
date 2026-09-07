@@ -147,6 +147,13 @@ if __name__ == "__main__":
             env={**os.environ, "PYTHONUTF8": "1"},
         )
         sys.exit(0)
+    # env 文件 → os.environ 同步（只填缺失，不覆盖已有值）：非 mcp_launch.sh
+    # 启动（直跑本文件/裸宿主直连）时密钥仍能到位，读取方零改动
+    try:
+        from engine_env import sync_envfile_to_environ
+        sync_envfile_to_environ()
+    except Exception:
+        pass
     if "--test" in sys.argv:
         test_mode()
     elif "--call" in sys.argv:

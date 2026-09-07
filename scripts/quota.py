@@ -132,15 +132,13 @@ class QuotaManager:
             self._fresh_locked()
             profile = self._profiles.get(engine, {})
             state = self._state.get(engine, {})
-            limit = profile.get("limit")
-            if limit is None:
-                return 1.0
             used = state.get("used", 0)
             period = profile.get("period", "day")
             last_reset = state.get("last_reset", 0)
             now = time.time()
 
-            # 按周期重置
+            # 按周期重置（先于 limit 判空：null 引擎计数也要按周期归零，
+            # 否则遥测永久累计、无周期语义）
             if period == "month" and now - last_reset > 30 * 86400:
                 state["used"] = 0
                 state["last_reset"] = now
@@ -151,6 +149,9 @@ class QuotaManager:
                 state["last_reset"] = now
                 self._save_state()
                 used = 0
+            limit = profile.get("limit")
+            if limit is None:
+                return 1.0
             return max(0.0, (limit - used) / limit)
 
     def mark_remote_exhausted(self, engine: str, reason: str = "",
