@@ -9,6 +9,7 @@ research.py — 深度研究取证机（含社交舆情模式）
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -31,6 +32,53 @@ from research_work_packages import (
     packages_to_sub_queries,
 )
 from research_gates import evaluate_dossier_gates
+
+
+# ── 子查询语言/领域分发（2026-09-07）─────────────────────────────────────
+# 中英混合研究的英文子查询此前只吃 profile 通用组合，英文源基本不参与
+# （实测 11 引擎仅 2 个有结果）。boosts 是加法不替换：语言源前置，profile
+# 组合殿后。与 route 语言表同口径；学术顺序按 references/academic-query.md
+# §2 协议（S2 起步 → arXiv 补预印本 → openalex/crossref 结构化 → GS 兜底）。
+_RESEARCH_EN_BOOSTS: tuple[str, ...] = ("octen", "anysearch", "github", "exa")
+_RESEARCH_JA_KO_BOOSTS: tuple[str, ...] = ("anysearch", "local_bing")
+_RESEARCH_ACADEMIC_BOOSTS: tuple[str, ...] = (
+    "semantic_scholar", "arxiv", "openalex", "crossref", "google_scholar",
+)
+_ACADEMIC_QUERY_RE = re.compile(
+    r"(?i)(论文|文献|综述|引用网络|预印本|学术|期刊|会议论文|研究现状"
+    r"|arxiv|semantic\s*scholar|literature( review)?|survey\b|preprint|"
+    r"citation|doi\b|state.of.the.art)")
+
+
+def _subquery_lang(query: str) -> str:
+    """子查询主语言：ja/ko 按假名/谚文，en 看拉丁字符占比，其余 zh。"""
+    q = query or ""
+    if re.search(r"[\u3040-\u309f\u30a0-\u30ff]", q):
+        return "ja"
+    if re.search(r"[\uac00-\ud7af]", q):
+        return "ko"
+    cjk = sum(1 for ch in q if "\u4e00" <= ch <= "\u9fff")
+    latin = sum(1 for ch in q if ch.isascii() and ch.isalpha())
+    if cjk == 0 and latin > 0:
+        return "en"
+    if cjk > 0 and latin >= cjk * 2:
+        # 拉丁明显占优的混合句（术语/产品名为主体）→ 英文源前置也有效
+        return "en"
+    return "zh"
+
+
+def _subquery_lang_boosts(query: str,
+                          profile: dict[str, Any] | None) -> list[str]:
+    """子查询语言/学术意图 → 引擎前置清单（空 = 不干预）。"""
+    if _ACADEMIC_QUERY_RE.search(query or "") or (
+            profile or {}).get("key") == "academic":
+        return list(_RESEARCH_ACADEMIC_BOOSTS)
+    lang = _subquery_lang(query)
+    if lang == "en":
+        return list(_RESEARCH_EN_BOOSTS)
+    if lang in ("ja", "ko"):
+        return list(_RESEARCH_JA_KO_BOOSTS)
+    return []
 
 
 def collect_sources(sub_queries: list[dict[str, str]], max_results: int = 5,
@@ -75,7 +123,12 @@ def collect_sources(sub_queries: list[dict[str, str]], max_results: int = 5,
             if pref and pref != "auto":
                 prefs_all = [pref]
         if prefs_all:
-            boosts = list(prefs_all) + [e for e in boosts if e not in prefs_all]
+            # 工作包显式指定 > 机器启发（语言/学术/profile）
+            return list(prefs_all) + [e for e in boosts if e not in prefs_all]
+        lang_boosts = _subquery_lang_boosts(sq.get("query") or "", profile)
+        if lang_boosts:
+            boosts = list(lang_boosts) + [e for e in boosts
+                                          if e not in lang_boosts]
         return boosts
 
     def _search_one(sq: dict[str, str], idx: int = 0) -> dict[str, Any]:

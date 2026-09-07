@@ -364,12 +364,41 @@ def _route_ok(case: dict[str, Any], d: dict[str, Any]) -> tuple[bool, str]:
 def run_offline_route(c: Checker) -> None:
     print("\n== offline: route matrix (lang × scenario) ==")
     from route import route_query
+    from unittest.mock import MagicMock, patch
+
+    # 离线金标验的是「路由语义」，不是运行时健康——真实熔断/配额状态
+    # 会随 live 探测漂移（bocha 曾被连续失败自动禁用致金标误报），
+    # 与单测「路由断言须打桩」同一教训。2026-09-07。
+    class _AllowAll:
+        def allow(self, eng):
+            return True, "closed"
+
+        def get_negative(self, *a, **k):
+            return None
+
+        def status(self, eng):
+            return {"state": "closed"}
+
+        def record_success(self, *a, **k):
+            pass
+
+        def record_failure(self, *a, **k):
+            pass
+
+        def set_negative(self, *a, **k):
+            pass
+
+        def clear_negative(self, *a, **k):
+            pass
 
     by_scenario: dict[str, list[bool]] = {}
     by_lang: dict[str, list[bool]] = {}
 
     for case in ROUTE_MATRIX:
-        d = route_query(case["q"], mode="auto", depth="fast", context="search")
+        with patch("circuit_breaker.get_breaker", return_value=_AllowAll()), \
+             patch("quota.get_quota_manager", return_value=MagicMock()):
+            d = route_query(case["q"], mode="auto", depth="fast",
+                            context="search")
         ok, detail = _route_ok(case, d)
         soft = bool(case.get("soft"))
         c.check(
