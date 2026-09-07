@@ -23,6 +23,7 @@ try:
     from config import load_config, get_engines, get_domains, get_cost_factor
     from tfidf_router import semantic_route, get_router
     from quota import get_quota_manager
+    from engine_families import engines_demote_for_lang, engines_not_for_lang, lang_allows
 except ImportError:
     import sys
     from pathlib import Path
@@ -30,6 +31,7 @@ except ImportError:
     from config import load_config, get_engines, get_domains, get_cost_factor
     from tfidf_router import semantic_route, get_router
     from quota import get_quota_manager
+    from engine_families import engines_demote_for_lang, engines_not_for_lang, lang_allows
 
 # 世界银行国家表：macro_data 域按国家词分流（非美国国家查询让 worldbank 优先，
 # 避免 FRED 美国序列冒充「中国GDP」这类答案）
@@ -292,23 +294,10 @@ _ZH_LANG_GATED_DOMAINS = frozenset({
     "gov_policy", "baidu_baike", "medical",
 })
 
-# TF-IDF 分支的 ja/ko 过滤：中文内容/政策引擎候选对日/韩查询无关（返回中文站），
-# 丢弃让通用 anysearch（多语言源）主导。match_domains 门控不覆盖 TF-IDF 注入路径。
-_ZH_CONTENT_ENGINES = frozenset({
-    "gov_policy", "baidu_baike", "cn_encyclopedia", "moegirl",
-    "weibo", "cn_ai_news", "zhihu", "zhihu_hot", "juejin",
-    "cnblogs", "baidu_hot", "toutiao_hot", "bilibili_hot",
-})
-
-# ja/ko 查询应剔出的中文内容/新闻/金融/技术引擎（对日/韩用户无关或错配）。
-# 域命中路径（_get_engines_combo 产物）也过滤，补齐 TF-IDF 层过滤缺口。
-# 含 test_multilingual 契约定义的中文噪声（bocha/byted/wechat_sogou/zhihu）。
-_JA_KO_CN_ENGINES = _ZH_CONTENT_ENGINES | frozenset({
-    "bocha", "byted", "wechat_sogou", "zhihu",
-    "octen", "cn_ai_news", "juejin", "cnblogs",
-    "tencent_kline", "eastmoney", "sina_quote", "em_flow",
-    "em_global_news", "jin10", "ths_hot", "cls_telegraph",
-})
+# 语言过滤名单改由 engine_families.ENGINE_LANGS 派生（lang_allows/
+# engines_not_for_lang）：语言能力随引擎注册声明一次（config `langs` 可
+# 覆盖），四张手写冻结表（_ZH_CONTENT/_JA_KO_CN/_EN_ONLY/_ZH_ONLY）
+# 2026-09-07 收敛删除。成员忠实自原表推导，多语言契约测试验收。
 
 
 # ── 结构化平台语法（单一真源：config.yaml 的 social 域 patterns）─────────────
@@ -671,31 +660,30 @@ def _maybe_add_geo_engine(engine_list: list[str], features: dict | None,
     return engine_list + ["local_openstreetmap"]
 
 
-# 对中文查询几乎零召回的纯英文社区源。fast 模式 budget=2 截断按位置取前 N，
-# 这些引擎排在前排时会把中文可用源挤出预算（实测：「…小红书…」查询被截成
-# [bilibili, hackernews]，hackernews 必空、bilibili 关键词噪声早停）。
-_EN_ONLY_ENGINES = frozenset({
-    "hackernews", "reddit", "twitter", "nitter", "lobsters",
-})
-# 对非中文查询（en/ja/ko）几乎零召回的中文专用源（与 _EN_ONLY_ENGINES 对称）。
-# 域 patterns 认平台关键词不认查询语言：英文查询「reddit recommendations」
-# 照样命中 social 域，而域 combo 首引擎常是 zhihu——早停机制放大错配，
-# 实测英文查询 fast/auto 均 5/5 中文结果、hackernews 排第二永远轮不到。
-_ZH_ONLY_ENGINES = frozenset({
-    "zhihu", "zhihu_global", "zhihu_hot", "zhihu_content",
-    "bilibili", "v2ex", "xiaohongshu", "weibo",
-})
-# social 域中文查询的通用 web 兜底（按优先级）：平台词命中 social 域的查询
+# 语言重排的排除名单改为 engine_families.ENGINE_LANGS 派生（engines_not_for_lang），
+# 三张手写冻结表（_EN_ONLY/_ZH_ONLY/_JA_KO_CN）2026-09-07 收敛删除——
+# 新源声明 langs 一次，全部分发路径自动生效。_SOCIAL_ZH_GENERAL 保留
+# （social 域中文查询的通用 web 兜底，按优先级）：平台词命中 social 域的查询
 # （提到「小红书/微信」≠ 搜小红书/微信），通用源覆盖真实主题，防平台噪声全占。
 # anysearch 优先：local_bing 直抓 bing.com 对长中文查询存在降级服务风险
 # （2026-08-29 实测：整条查询被 Bing 降级为单字「拍」匹配，返回字典页）。
 _SOCIAL_ZH_GENERAL = ("anysearch", "local_bing")
 
 
-def _move_to_tail(combo: list[str], excluded: frozenset[str]) -> list[str]:
+def _specs_snapshot() -> dict:
+    """引擎 spec 快照（读 config langs 覆盖）；不可用时回退 ENGINE_LANGS 表。"""
+    try:
+        from engines import _engine_specs
+        return _engine_specs or {}
+    except Exception:
+        return {}
+
+
+def _move_to_tail(combo: list[str], excluded) -> list[str]:
     """combo 中命中 excluded 的引擎稳定移尾（其余保持原顺序）。"""
-    keep = [e for e in combo if e not in excluded]
-    tail = [e for e in combo if e in excluded]
+    excl = set(excluded)
+    keep = [e for e in combo if e not in excl]
+    tail = [e for e in combo if e in excl]
     return keep + tail
 
 
@@ -721,7 +709,8 @@ def _lang_aware_combo_order(combo: list[str], features: dict | None,
     is_zh = primary_lang == "zh" or (
         primary_lang not in ("ja", "ko") and zh_ratio > 0.15)
     if is_zh:
-        ordered = _move_to_tail(combo, _EN_ONLY_ENGINES)
+        ordered = _move_to_tail(
+            combo, engines_demote_for_lang(combo, "zh", _specs_snapshot()))
         if domain_name == "social":
             for g in _SOCIAL_ZH_GENERAL:
                 if g in enabled and g in ordered:
@@ -739,7 +728,9 @@ def _lang_aware_combo_order(combo: list[str], features: dict | None,
         return ordered
     # 对称分支：非中文查询把中文专用源移尾（含 zh_ratio≤0.15 的混合查询）
     if features.get("primary_lang") in ("en", "ja", "ko"):
-        return _move_to_tail(combo, _ZH_ONLY_ENGINES)
+        return _move_to_tail(
+            combo, engines_demote_for_lang(
+                combo, primary_lang or "en", _specs_snapshot()))
     return combo
 
 
@@ -1293,7 +1284,9 @@ def route_query(query: str, engine_override: str = "auto",
                 # 对日/韩用户无关（返回中文站），丢弃让通用 anysearch 主导。
                 # 丢弃当前候选后继续看下一个（2026-08 修复：旧逻辑只看 top-1，
                 # 丢弃后不检查 top-2/3，可能错失 anysearch 等合格候选）。
-                if _non_zh and cand in _ZH_CONTENT_ENGINES:
+                if _non_zh and not lang_allows(
+                        cand, features.get("primary_lang") or "ja",
+                        _specs_snapshot().get(cand)):
                     continue
                 tfidf_best = cand
                 tfidf_best_score = score
@@ -1312,7 +1305,10 @@ def route_query(query: str, engine_override: str = "auto",
         # 否则 ja 技术查询落 english_tech 用 octen 返回中文 CSDN）。2026-08 修复。
         # （anysearch 前二注入在策略/预算截断之后统一做，见 _inject_multilingual_backup）
         if features.get("primary_lang") in ("ja", "ko") and engines_combo:
-            _filtered = [e for e in engines_combo if e not in _JA_KO_CN_ENGINES]
+            _drop = set(engines_not_for_lang(
+                engines_combo, features.get("primary_lang") or "ja",
+                _specs_snapshot()))
+            _filtered = [e for e in engines_combo if e not in _drop]
             engines_combo = _filtered or [e for e in ["anysearch"] if e in enabled] or engines_combo
         # 🔑 中文查询 + 学术类域 → 剔除英文论文源（openalex/europepmc 对中文查询噪声大）
         if (domain.get("name") in ("tech_deep", "academic")

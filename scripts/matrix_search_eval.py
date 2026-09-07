@@ -607,12 +607,65 @@ def run_offline_lang_pref(c: Checker) -> None:
         reset_habit_for_tests()
 
 
+def run_offline_reachability(c: Checker) -> None:
+    """可达性门：enabled 引擎必须被 ≥1 分发路径可达，防死源复发。
+
+    五条分发路径：域 combo / 兜底清单 / 选题 profiles / 研究 boosts /
+    TF-IDF 语义画像（documents 非空）。local_* 视为经 local_search 展开
+    可达。不可达引擎逐个 WARN（soft）——anysearch/zhihu_global/uapi 三次
+    死源事故的系统性防线。2026-09-07。
+    """
+    print("\n== offline: engine reachability gate ==")
+    import json as _json
+    from pathlib import Path as _Path
+    from config import load_config, get_engines, get_domains
+    from topic_research_profiles import list_profiles
+    from engine_policy import GENERAL_FREE_FALLBACK
+    import research as _research
+
+    specs = get_engines(load_config(), routable_only=False)
+    domains = get_domains(load_config())
+
+    reachable: set[str] = set()
+    for d in domains:
+        reachable |= set(d.get("engines_combo") or [])
+    reachable |= set(GENERAL_FREE_FALLBACK)
+    for p in list_profiles():
+        reachable |= set(p.get("engines") or [])
+    reachable |= (set(_research._RESEARCH_EN_BOOSTS)
+                  | set(_research._RESEARCH_ACADEMIC_BOOSTS)
+                  | set(_research._RESEARCH_JA_KO_BOOSTS))
+    reachable |= {"local_search"}
+
+    try:
+        dp = _json.loads(
+            (_Path(__file__).resolve().parent.parent
+             / "backends" / "domain_profiles.json").read_text(encoding="utf-8"))
+        reachable |= {k for k, v in dp.items()
+                      if isinstance(v, dict) and (v.get("documents") or [])}
+    except Exception:
+        pass
+
+    unreachable = sorted(
+        n for n, s in specs.items()
+        if isinstance(s, dict) and s.get("enabled", True)
+        and n not in reachable and not n.startswith("local_"))
+    for n in unreachable:
+        c.check(f"reach:{n}", False,
+                detail="五条分发路径均不可达（死源）——接线或转 explicit-only",
+                soft=True)
+    c.check("reach:summary", len(unreachable) == 0,
+            detail=f"不可达 {len(unreachable)} 个: {', '.join(unreachable) or '无'}",
+            soft=True)
+
+
 def run_offline(c: Checker) -> None:
     run_offline_lang(c)
     run_offline_route(c)
     run_offline_recovery(c)
     run_offline_families(c)
     run_offline_lang_pref(c)
+    run_offline_reachability(c)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

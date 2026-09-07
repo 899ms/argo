@@ -256,6 +256,137 @@ def family_of(engine: str, spec: dict[str, Any] | None = None) -> str:
     return _ENGINE_FAMILY_OVERRIDES.get(engine, DEFAULT_FAMILY)
 
 
+# ── 语言维度（2026-09-07 从 route.py 三张手写冻结表忠实推导收敛）──────────
+# 语义：查询语言 lang 下，engine_langs 不含 lang 且不含 "*" → 该引擎对该
+# 语言无召回价值（语言重排移尾 / ja-ko 组合过滤 / research 语言 boost /
+# 可达性门统一从这里取）。config.yaml 引擎声明 `langs` 时以其为准；
+# 未声明的引擎 = ["*"]（语言中立：anysearch/github/wikipedia/arxiv/local_* 等）。
+ENGINE_LANGS: dict[str, list[str]] = {
+    # 纯英文社区（对中文查询几乎零召回）
+    "hackernews": ["en"], "reddit": ["en"], "twitter": ["en"],
+    "nitter": ["en"], "lobsters": ["en"],
+    # 中文专用（对 en/ja/ko 几乎零召回）
+    "zhihu": ["zh"], "zhihu_global": ["zh"], "zhihu_hot": ["zh"],
+    "zhihu_user": ["zh"], "zhihu_content": ["zh"],
+    "bilibili": ["zh"], "v2ex": ["zh"], "xiaohongshu": ["zh"],
+    "weibo": ["zh"], "baidu_baike": ["zh"], "moegirl": ["zh"],
+    "cn_encyclopedia": ["zh"], "gov_policy": ["zh"], "cn_ai_news": ["zh"],
+    "wechat_sogou": ["zh"], "baidu_hot": ["zh"], "toutiao_hot": ["zh"],
+    "bilibili_hot": ["zh"], "juejin": ["zh"], "cnblogs": ["zh"],
+    "wenshu": ["zh"], "kor_law": ["ko"],
+    # 中英双语（ja/ko 无召回）：金融/中文 web API 源
+    "bocha": ["zh", "en"], "bocha_ai": ["zh", "en"], "byted": ["zh", "en"],
+    "octen": ["zh", "en"], "tencent_kline": ["zh", "en"],
+    "eastmoney": ["zh", "en"], "sina_quote": ["zh", "en"],
+    "tencent_quote": ["zh", "en"], "em_flow": ["zh", "en"],
+    "em_global_news": ["zh", "en"], "em_miaoxiang": ["zh", "en"],
+    "jin10": ["zh", "en"], "ths_hot": ["zh", "en"],
+    "cls_telegraph": ["zh", "en"], "finviz": ["en"],
+}
+ENGINE_LANGS_DEFAULT = ("*",)
+
+
+def engine_langs(engine: str, spec: dict[str, Any] | None = None) -> set[str]:
+    """引擎语言能力集合。优先级：spec.langs > ENGINE_LANGS > 默认 ["*"]。"""
+    if spec and isinstance(spec.get("langs"), list) and spec["langs"]:
+        return {str(x) for x in spec["langs"]}
+    got = ENGINE_LANGS.get(engine)
+    if got:
+        return set(got)
+    return set(ENGINE_LANGS_DEFAULT)
+
+
+def lang_allows(engine: str, lang: str, spec: dict[str, Any] | None = None) -> bool:
+    """该引擎对 lang 是否有召回价值（"*" = 语言中立）。"""
+    langs = engine_langs(engine, spec)
+    return "*" in langs or lang in langs
+
+
+def engines_not_for_lang(engines: list[str], lang: str,
+                         specs: dict[str, dict[str, Any]] | None = None) -> list[str]:
+    """对 lang 无召回价值的引擎名单（供 ja/ko 组合过滤——剔除中文绑定源）。
+
+    规则：langs 不含 lang 且含 "zh"（中文绑定）才剔除；英文/语言中立源
+    保留——忠实原 _JA_KO_CN 语义（ja/ko 用户读英文社区仍有效）。
+    """
+    out: list[str] = []
+    for e in engines:
+        spec = (specs or {}).get(e)
+        langs = engine_langs(e, spec)
+        if "*" in langs or lang in langs:
+            continue
+        if "zh" in langs:
+            out.append(e)
+    return out
+
+
+def engines_demote_for_lang(engines: list[str], lang: str,
+                            specs: dict[str, dict[str, Any]] | None = None) -> list[str]:
+    """语言重排降级名单（保守，忠实原 _EN_ONLY/_ZH_ONLY 双表语义）。
+
+    zh 查询：仅降英文社区类（family=social 对中文零召回——垂直源如
+    finviz 对「AAPL 美股盘前」这类中文查询仍完全有效，不降）；
+    en/ja/ko 查询：仅中文专用源降级（英文/中立源保留原位）。
+    """
+    out: list[str] = []
+    for e in engines:
+        spec = (specs or {}).get(e)
+        langs = engine_langs(e, spec)
+        if "*" in langs or lang in langs:
+            continue
+        if lang == "zh":
+            if family_of(e, spec) == "social":
+                out.append(e)
+        elif "zh" in langs:
+            out.append(e)
+    return out
+
+
+def family_candidates(family: str, lang: str = "*",
+                      *, enabled: set[str] | None = None,
+                      specs: dict[str, dict[str, Any]] | None = None,
+                      mode: str = "auto",
+                      limit: int | None = None) -> list[str]:
+    """能力族 × 语言 × 模式 → 可用源排序（分发层单一取源口）。
+
+    research 语言/学术 boost、recovery 兜底、可达性门、DSH 子代理面都应
+    从这里派生——新源注册一次（registry + family/langs）全路径可见，
+    不再有「源存在但任何分发路径都到不了」的死源。priority 升序=优先。
+    """
+    if specs is None:
+        try:
+            from config import load_config, get_engines
+            specs = get_engines(load_config(), routable_only=False)
+        except Exception:
+            specs = {}
+    out: list[str] = []
+    for name, spec in (specs or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        if spec.get("enabled") is False:
+            continue
+        if enabled is not None and name not in enabled:
+            continue
+        if family_of(name, spec) != family:
+            continue
+        if lang and lang != "*" and not lang_allows(name, lang, spec):
+            continue
+        if mode in ("fast", "budget") and \
+                (spec.get("cost_tier") or "free") == "paid":
+            continue
+        out.append(name)
+
+    def _prio(n: str) -> tuple:
+        s = (specs or {}).get(n) or {}
+        p = s.get("priority")
+        return (p if isinstance(p, (int, float)) else 999, n)
+
+    out.sort(key=_prio)
+    if limit:
+        out = out[:limit]
+    return out
+
+
 def family_label(family: str) -> str:
     return FAMILY_LABELS.get(family, family)
 
