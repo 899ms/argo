@@ -2392,7 +2392,8 @@ engines:
     body:
       count: '{n}'
       query: '{query}'
-    enabled: false
+    # 2026-09-07 复测：端点存活、结构化返回（score/publish_time）、历史 521 次 0% 错误，重新启用
+    enabled: true
     label: UAPI
     cost_tier: free
     coverage:

@@ -1522,7 +1522,7 @@ engines:
   - general
   latency_ms: 2000
   cost: free
-  status: disabled
+  status: ok
   recommended: true
   desc: UAPI 聚合搜索
 - name: uniprot
