@@ -120,6 +120,7 @@ python3 scripts/search.py "贵州茅台股价" --verify 3
 | 深度研究协议：契约、工作包、dossier vs 判断稿、可判定门禁 | `references/research-protocol.md` |
 | 契约 / 工作包 / 判断稿骨架 | `references/research-templates.md` |
 | 引擎全景：垂直域/社交/学术/本地引擎表 + 路由规则 | `references/engines.md` |
+| 学术检索：查询构造（arXiv/S2/GS 语法）、相关性五因子排序、引用网络挖掘、学术反模式与证据分级 | `references/academic-query.md` |
 | 架构：文件结构、证据流水线、量化公式、输出 JSON Schema、内容质量信号 | `references/architecture.md` |
 | MCP 多客户端注入详解 | `docs/MCP_SETUP.md` |
 
