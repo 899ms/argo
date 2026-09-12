@@ -16,6 +16,12 @@ cost_tier: free
 timeout: 8
 canary_query: "https://x.com/elonmusk/status/1585841080431321088"
 desc: "X/Twitter 单条推文（syndication 通道，免登录零 key，含正文/作者/时间/媒体计数）"
+coverage: [social]
+recommended: false
+# explicit_only：关键词查询永不触发（无搜索端点），只能按 URL/ID 显式调用；
+# known-url 交接会提示该通道。声明在此，不计入死源。
+explicit_only: true
+latency_ms: 2000
 
 # 抽取型引擎：查询词是推文 URL 而非关键词。质量自述集用真实推文 URL，
 # 避免默认关键词探针对单条抽取引擎误判「零结果」

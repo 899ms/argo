@@ -126,8 +126,38 @@ class TestFailureClassification:
             assert ef.classify(status_code=code)["category"] == ef.AUTH
 
     def test_http_404_410_and_5xx_are_upstream(self):
-        for code in (404, 410, 500, 502, 503):
+        for code in (404, 410, 500, 502):
             assert ef.classify(status_code=code)["category"] == ef.UPSTREAM
+
+    def test_http_503_is_transient_not_upstream(self):
+        """503 是源站暂时不受理，与 429 同族。
+
+        HTTP 层已把 503 当「合规等待信号」处理（带 Retry-After 则等，
+        见 test_stop_signal.py），归因层若判 upstream 会给出「需更新解析
+        实现」的错误方向——两者必须同口径。
+        """
+        assert ef.classify(status_code=503)["category"] == ef.RATE_LIMITED
+
+    def test_http_403_with_quota_message_is_not_auth(self):
+        """403 里写着「套餐/额度不足」时不该让人去重新登录（登录改不了套餐）。
+
+        实测来源：博查 AI Search 端点对本机 key 返回
+        403 {"message":"You do not have enough money or package quota"}，
+        结构化模态卡因此长期静默降级成普通网页结果。
+        """
+        for body in ('{"message":"You do not have enough money or package quota"}',
+                     "insufficient quota", "套餐额度不足"):
+            r = ef.classify(status_code=403, output=body)
+            assert r["category"] == ef.RATE_LIMITED, (body, r["category"])
+        # 反例：纯 403 / 反爬页特征仍按原语义
+        assert ef.classify(status_code=403)["category"] == ef.AUTH
+        assert ef.classify(status_code=403,
+                           output="enable javascript and cookies")["category"] == ef.BLOCKED
+
+    def test_http_408_and_connection_failure_are_network(self):
+        # 408 是请求超时，状态码 0 表示连接层就没成（DNS/拒绝/重置）
+        assert ef.classify(status_code=408)["category"] == ef.NETWORK
+        assert ef.classify(status_code=0)["category"] == ef.NETWORK
 
     def test_text_auth_patterns(self):
         for txt in ("401 Unauthorized", "login required",

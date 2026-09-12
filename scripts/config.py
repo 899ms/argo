@@ -368,19 +368,28 @@ def get_budget_config(mode: str = "auto") -> dict[str, Any]:
     return budgets.get(mode, budgets.get("auto", {}))
 
 
-def get_cost_factor(engine: str) -> float:
-    """获取引擎的 cost_factor：free=1.0, low=0.7, paid=0.3。
-
-    由 get_cost_tiers 聚合结果驱动；未声明 cost_tier 的引擎按 free 兜底。
-    """
+def cost_tier_of(engine: str) -> str:
+    """引擎的成本档位：free / low / api / paid（未声明按 free 兜底）。"""
     tiers = get_cost_tiers()
-    if engine in tiers.get("free", []):
-        return 1.0
-    if engine in tiers.get("low", []):
-        return 0.7
-    if engine in tiers.get("paid", []):
-        return 0.3
-    return 1.0  # 未分级默认为 free
+    for tier in ("free", "low", "api", "paid"):
+        if engine in tiers.get(tier, []):
+            return tier
+    return "free"
+
+
+# 成本因子单一真源：越低越少被优先选中。
+# 语义打分（tfidf_router）与 n 桶化判定（engines）都从这里取，不再各维护一套表
+# ——此前 config 是 {free 1.0, low 0.7, paid 0.3}、tfidf_router 是
+# {free 1.0, low 0.85, paid 0.6}，同一个概念两个值。
+# api 档（需密钥、按量计费，如 exa/octen/tavily/zhihu_global）保持 1.0：
+# 额度消耗由配额表按 limit/period 跟踪并降权，这里不叠加惩罚；但**它们不参与
+# n 桶化**（见 engines._free_engine）——按量计费的源把 n 从 5 放大到 10 是直接放大账单。
+_COST_FACTOR_BY_TIER = {"free": 1.0, "low": 0.85, "api": 1.0, "paid": 0.6}
+
+
+def get_cost_factor(engine: str) -> float:
+    """获取引擎的 cost_factor（按 cost_tier 查表，见上）。"""
+    return _COST_FACTOR_BY_TIER.get(cost_tier_of(engine), 1.0)
 
 
 # ── CLI 调试用 ─────────────────────────────────────────────────────────────────

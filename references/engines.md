@@ -1,115 +1,114 @@
-# Argo 引擎全景（v2.8.0）
+# Argo 路由速查与选源经验
 
-> 引擎声明真源为 `config.yaml`（外置 `engines/specs/*.yaml` 优先覆盖）。本页是 Agent 路由速查。
-> 全量清单运行：`python3 scripts/search.py --list-engines`
+> **全量引擎清单、费用、密钥、状态、域组合在 `docs/ENGINE_CATALOG.md`**（由
+> `scripts/gen_engine_catalog.py` 从声明生成，有门禁防漂移）——本页不重复清单，
+> 只放「清单生成不出来」的东西：语义分工与选源判断。
+>
+> 声明真源：`config.yaml` ＋ `engines/specs/*.yaml`（外置 spec 启动时合并、优先覆盖）。
+> 本机此刻哪些源就绪：`argo search --list-engines --detail`。
 
-## 通用引擎（API/免 Key）
+## 一、选源第一原则：先看语义，再看名字
 
-| 引擎 | cost_tier | 特点 |
-|------|-----------|------|
-| anysearch | free | 匿名兜底，垂直域结构化 |
-| byted / bocha / bocha_ai | low | 中文综合搜索（BYTED/BOCHA_API_KEY） |
-| exa | api | 语义搜索引擎，embedding 匹配（EXA_API_KEY） |
-| tavily | paid | 通用搜索（TAVILY_API_KEY） |
-| octen | low | 高速语义搜索（OCTEN_API_KEY） |
-| felo / metaso | low | AI 搜索（FELO/METASO_API_KEY） |
-| duckduckgo | free | 通用搜索 |
-| keenable | free | 通用网页搜索（ranked results，含 published_at；ARGO_KEENABLE_API_KEY；现免费至 2026-09 底） |
-| wechat_sogou | free | 微信公众号文章搜索（v2.3） |
-| zhihu / zhihu_global / zhihu_user / zhihu_hot | free | 知乎四源分工（ZHIHU_ACCESS_SECRET） |
+同一个「搜索」在不同意图下要的不是同一批源。选错源的典型症状是**结果同质化**
+（十条来自同一家）或**答非所问**（要数据集却给论文）。
 
-**知乎源语义区分**（选错源=结果同质化）：
+### 知乎四源（同一密钥，四种语义）
 
-- **zhihu（站内搜索）**：SearchDB=zhihu，只搜知乎站内 UGC——观点/经验/评测类查询的主源（「怎么看待/如何评价/哪个好」）。
-- **zhihu_global（站外搜索）**：SearchDB=all 全网索引——中文时事/新闻/多域名泛资讯的主源；支持 `site:域名 关键词` / `host:域名` 语法做站点限定；对英文查询召回弱（中文索引为主）。
-- **zhihu_user（个人数据）**：本人创作内容/收藏/关注（「我的回答」「我的文章」「我的收藏」「我关注的人」，「点赞最多」按赞排序）——个人创作运营与素材回溯，非内容搜索；查本人数据用 Access Secret 直调，无需 OAuth。
-- **zhihu_hot（热榜）**：知乎官方热榜快照（100/天，仅热榜意图）。
+| 源 | 搜的是 | 什么时候用 |
+|---|---|---|
+| `zhihu` | 知乎站内 UGC | 观点 / 经验 / 评测（「怎么看待」「如何评价」「哪个好」） |
+| `zhihu_global` | 全网索引（中文为主） | 中文时事、泛资讯；支持 `site:域名` / `host:域名` 限定；英文召回弱 |
+| `zhihu_user` | 本人创作 / 收藏 / 关注 | 「我的回答」「我的收藏」「我关注的人」——个人运营与素材回溯，不是内容搜索 |
+| `zhihu_hot` | 官方热榜快照 | 只看热榜时（100/天） |
 
-## 社交平台引擎
+### 内容类型先分清（2026-09-12 拆开的三组）
 
-| 引擎 | cost_tier | 特点 | 认证 |
-|------|-----------|------|------|
-| twitter | free | Twitter/X 推文搜索 | 可选（nitter 兜底） |
-| reddit | free | Reddit 帖子+评论 | 无需 |
-| xiaohongshu | free | 小红书笔记+评论 | xhs login |
-| bilibili | free | B站视频+弹幕 | 无需 |
-| weibo | free | 微博帖子+话题 | 无需 |
+- **论文 ≠ 数据集**：`academic` 域（arXiv / OpenAlex / Crossref / EuropePMC / DBLP /
+  Semantic Scholar）管论文；`dataset_search` 域（DataCite / Zenodo）管数据集、开放数据。
+  一句话里出现「数据集 / 开放数据 / dataset」才走后者。
+- **行情 ≠ 申报原文**：`us_stock` / `stock_query` 管报价与资金流；`sec_filings` 域
+  （SEC EDGAR）管 10-K / 10-Q / 8-K / 招股书这类申报文件原文。
+- **推文关键词 ≠ 单条推文**：`fxtwitter`（在 `social` 域内）做 X 关键词搜索；
+  单条推文按 URL 取正文走 `twitter_syndication` 通道（见下「URL 类查询」）。
 
-社交引擎统一输出 `social_meta` 字段（作者/互动/平台元信息）。
+## 二、URL 类查询：不是搜索，是交接
 
-## 垂直内容引擎（梗/热榜）
+输入是 URL 时，搜索层不会硬搜——`classify_input_kind` 判为 `known-url` 后返回
+`handoff_required`，并给建议工具：
 
-| 引擎 | 特点 | 数据源 |
-|------|------|--------|
-| itotii | 中文流行语/网络梗词条 | geng.itotii.com |
-| urban_dictionary | 英文俚语定义+例句 | api.urbandictionary.com |
-| know_your_meme | 英文 meme 溯源 | knowyourmeme.com |
-| zh_wikipedia | 中文维基百科 | zh.wikipedia.org |
-| baidu_hot / toutiao_hot / bilibili_hot / ths_hot | 各平台实时热搜榜 | 官方页面/API |
+- 普通网页 → `argo_fetch` / `argo_pdf`；
+- **单条推文 URL → 提示 `argo_search(engine=twitter_syndication)`**（免登录、零密钥）。
 
-路由：`meme_slang` 域 → itotii + urban_dictionary + know_your_meme；`hot_trending` 域 → baidu_hot + toutiao_hot + bilibili_hot + ths_hot。
+想强行当关键词搜（用 URL 找相关讨论），加 `--input-kind url-seed`。
 
-## 广义垂直引擎（媒体/图书/包管理/实体/词典/百科/加密）
+## 三、通用兜底链的层次（`engine_policy.GENERAL_FREE_FALLBACK`）
 
-itunes（音乐影视）、openverse（开放版权图片）、coingecko（加密）、wikidata（结构化实体）、crates（Rust 包）、musicbrainz（音乐元数据，1rps）、open_library（图书）、free_dictionary（英英词典）、moegirl（萌娘百科）。
+`anysearch` → `local_bing` → `uapi` → `local_baidu` → `firecrawl` → `wikipedia`。
+顺序有讲究：通用检索优先，本地零成本引擎居中，百科殿后；
+`firecrawl` 排在自由额度型源（1000 credits/月）**末位**，日常 fast/auto 的 combo 预算
+（2 / 3 个）够不到它，只在 deep / research 无截断时参战，共享免费层不会被烧穿。
+`duckduckgo` 2026-09 移出（实测 45% 错误率 + 11 秒 0 条）。
 
-## P0/P1 扩展引擎（学术/代码/文档/医学/游戏）
+## 四、本地零成本引擎（`local_search` 聚合，25 个子引擎声明）
 
-| 域 | 引擎 |
-|----|------|
-| 学术 | arxiv / openalex / crossref / europepmc / dblp / google_scholar / semantic_scholar / local_pubmed / rcsb_pdb / uniprot |
-| 包管理/代码 | pypi / npm / crates / docker_hub / github / huggingface / models_dev / stackoverflow / juejin / devto / v2ex / qiita / mdn / rfc_editor |
-| 百科/词典 | baidu_baike / wikipedia / zh_wikipedia / wikidata / wikiquote / wiktionary / free_dictionary / open_library |
-| 医学 | clinicaltrials / openfda / pubchem |
-| 游戏/预测 | steam / polymarket |
-| 档案 | archive_org / wayback_cdx |
-| 新闻 | hackernews / jin10 / cls_telegraph / cn_ai_news / cnii / gov_policy / em_global_news |
-| 宏观/金融 | fred / worldbank / nbs_stats / eurostat / eastmoney / em_flow / tencent_quote / sina_quote / finviz / seeking_alpha / tencent_kline / fx_rate / gold_analyzer 系 |
-| 影视/体育 | itunes / opensky / electricity_maps / usda / tatoeba / gbif / nasa_cmr / usgs / open_meteo / qweather / aviation_weather |
-| 法律 | courtlistener / wenshu / kor_law |
-| 技能生态 | redskill（小红书 REDSkill 排行榜 + 47650 技能全量检索，data.json 每日 08:05 更新，本地缓存免认证；榜单命令 `python3 scripts/redskill/redskill_engine.py rank use`） |
-| 长尾/独立 | marginalia / wiby / searchmysite / lieu |
+`local_bing` / `local_baidu` / `local_sogou` / `local_duckduckgo` / `local_google` /
+`local_yandex` / `local_mojeek` / `local_startpage` / `local_github` / `local_gitlab` /
+`local_npm` / `local_stackoverflow` / `local_arxiv` / `local_pubmed` /
+`local_semantic_scholar` / `local_crossref` / `local_wikipedia` / `local_wikiquote` /
+`local_wiktionary` / `local_imdb` / `local_openstreetmap` / `local_bing_news` /
+`local_google_news` / `local_goodreads` / `local_search`（聚合入口）。
 
-路由（先匹配先命中）：`package_search` → pypi+npm+crates+docker_hub+github；`web_docs` → mdn+stackoverflow；`ml_models` → huggingface+github；`cn_tech_community` → juejin+v2ex+devto；`medical` → clinicaltrials+openfda+local_pubmed；`academic` → arxiv+openalex+crossref+europepmc+dblp+semantic_scholar；`game_search` → steam；`prediction_market` → polymarket；`web_archive` → archive_org。
+`--local-first` 强制本地聚合优先；fast / budget 模式自动前置 `local_search`。
+零密钥、零额度，语言相关的查询由它兜（`setlang` 按查询语言下推）。
 
-## 本地零成本引擎（local_search 聚合，33 个）
+## 五、选源反模式（都是踩过的坑）
 
-web_general（duckduckgo/bing/yandex/brave/yahoo/mojeek/startpage）、chinese（baidu/sogou）、academic（arxiv/pubmed/semantic_scholar/crossref/wikipedia/wikiquote/wiktionary）、news（google_news/bing_news/ddgs_news）、code（github/gitlab/stackoverflow/npm）、reference、vertical（images/videos/books 等）。10 个走 ddgs CLI（text 五后端 + news/images/videos/books），结构化 JSON 输出，按查询语言自动下推 region，失败自动重试 1 次。
+1. **窄意图域必须排在宽泛域之前**：多意图查询按 `config.yaml` 域的顺序取主域。
+   写新域时先看有没有更宽泛的域会先命中（`english_tech` / `chinese_general` 最容易抢）。
+2. **抢词要收窄**：`dataset_search` 不写裸 `DOI`（论文也用 DOI），`sec_filings` 不写裸
+   `财报`（那是 `financial_news` 的）。触发词只留能区分意图的那几个。
+3. **引擎有「能力标签」才有话题信号**：`coverage` 写在 spec 里（不是注册表文档里）——
+   互补回填要求主引擎带 coverage 才工作。
+4. **付费档不进自动路由**：`paid` 档只有显式 `--engine` 才会用到；
+   `low` / `api` 档有若干在自动路径上（见 catalog 的表），想完全避开用 `--mode budget`
+   或显式指定免费源。
+5. **别用「关键词」调抽取型引擎**：`twitter_syndication` 没有搜索端点，
+   关键词查询诚实返回空——这是设计，不是故障。
 
-`--local-first` 强制本地聚合优先；fast/budget 模式自动前置 local_search。
-
-## 招聘聚合（argo job）
-
-免 key 后端：remotive / himalayas / jobicy / arbeitnow / greenhouse / ashby（Ashby ATS 免 Key，notion/openai 等）；平台白名单：BOSS/猎聘/智联/前程无忧/597/今日招聘 + 卓博/鱼泡/中华英才/智通/58/国聘/24365/91job/yingjiesheng/JobsDB/JobStreet/苏州人社局；人社局域名通用识别。
-
-常用：`python3 scripts/job.py --engine free -n 5 --platforms zhipin,liepin,zhaopin,51job,597,jrzp --loose --json --fetch N --watch`（`--watch` 增量监控存快照到 data/jobs/）。
-
-## 常用引擎调用示例
+## 六、常用调用
 
 ```bash
-python3 scripts/search.py "查询词" --engine anysearch
-python3 scripts/search.py "查询词" --engine byted
-python3 scripts/search.py "查询词" --engine arxiv
-python3 scripts/search.py "查询词" --engine eastmoney
-python3 scripts/search.py "查询词" --engine zhihu
-python3 scripts/search.py "知乎热榜" --engine zhihu_hot
-python3 scripts/search.py "查询词" --engine bocha
-python3 scripts/search.py "查询词" --engine exa
-python3 scripts/search.py "查询词" --engine wechat_sogou
-python3 scripts/search.py "查询词" --engine hackernews
-python3 scripts/search.py "查询词" --engine stackoverflow
-python3 scripts/search.py "查询词" --engine google_scholar
-python3 scripts/search.py "查询词" --engine v2ex
-python3 scripts/search.py "查询词" --engine realtime_index   # 实时索引源，结构化输出带发布时间
-python3 scripts/search.py "这是什么梗" --engine itotii
-python3 scripts/search.py "httpx" --engine pypi
-python3 scripts/search.py "Fetch API" --engine mdn
-python3 scripts/search.py "bert" --engine huggingface
-python3 scripts/search.py "查询词" --engine ths_hot --engine cls_telegraph --engine em_global_news
-python3 scripts/search.py "小红书技能 封面" --engine redskill
-python3 scripts/redskill/redskill_engine.py rank use -n 10   # 小红书 REDSkill 技能榜（use|new|today|author）
+# 通用
+python3 scripts/search.py "查询词" --json
+python3 scripts/search.py "查询词" --engine anysearch          # 指定引擎
+python3 scripts/search.py "查询词" --engine zhihu              # 知乎站内
+python3 scripts/search.py "阿里 财报 研报" --engine eastmoney
+python3 scripts/search.py "苹果 10-K" --json                   # 自动进 sec_filings 域
+python3 scripts/search.py "climate dataset" --json              # 自动进 dataset_search 域
+
+# 抽取 / 抓取
+python3 scripts/search.py "https://x.com/user/status/1585841080431321088" \
+    --engine twitter_syndication --json                        # 单条推文（免登录）
+python3 scripts/fetch_v3.py "https://example.com"               # 单页正文（四级降级）
+python3 scripts/batch_probe.py "url1" "url2" --probe            # 批量预检
+
+# 深度研究 / 证据
+python3 scripts/research.py "问题" --json
+python3 scripts/search.py "查询词" --verify 3                   # 核验 top-3 正文
+
+# 小红书技能榜（redskill，本地缓存免认证）
+python3 scripts/redskill/redskill_engine.py rank use -n 10      # use|new|today|author
 ```
 
-## 外置引擎声明（engines/specs/*.yaml，启动时合并、优先覆盖）
+## 七、招聘聚合（`argo job`，独立于搜索）
 
-aviation_weather / cn_ai_news / datacite / firecrawl / fxtwitter / realtime_index / sec_edgar / train / weather / zenodo（10 个）。
+免 key 后端：`remotive` / `himalayas` / `jobicy` / `arbeitnow` / `greenhouse` / `ashby`；
+平台白名单：BOSS / 猎聘 / 智联 / 前程无忧 / 597 / 今日招聘 + 卓博 / 鱼泡 / 中华英才 /
+智通 / 58 / 国聘 / 24365 / 91job / yingjiesheng / JobsDB / JobStreet / 苏州人社局。
+
+```bash
+python3 scripts/job.py "岗位 城市" --engine free -n 5 \
+  --platforms zhipin,liepin,zhaopin,51job,597,jrzp --loose --json --fetch 5 --watch
+```
+
+`--watch` 增量监控，快照存 `data/jobs/`；`--engine free` 只走免 key 后端。

@@ -13,6 +13,9 @@ cost_tier: free
 timeout: 15
 canary_query: "中国 8541 2023"
 desc: "UN Comtrade 双边贸易（国家+HS 码+年份+流向；preview 免 key）"
+coverage: [macro, finance]
+recommended: false
+latency_ms: 4000
 
 quality_queries:
   - query: "中国 8541 2023"

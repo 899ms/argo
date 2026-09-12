@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""test_engine_catalog.py — 搜索源使用文档的防漂移门禁。
+
+文档是生成的（scripts/gen_engine_catalog.py），本测试确保它**与当前引擎声明
+一致**。没有这道门，文档会退化成「某天写过一次的说明」——本仓真实发生过：
+README 写「12 个 MCP 工具」而实际 14 个、写「150+ 引擎」而分不清收录与可用。
+
+门禁从真实入口取事实（运行时函数 + CLI），不读文档里的自述数字。
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+SKILL_DIR = SCRIPT_DIR.parent
+SCRIPTS_DIR = SKILL_DIR / "scripts"
+BIN_ARGO = SKILL_DIR / "bin" / "argo"
+DOC = SKILL_DIR / "docs" / "ENGINE_CATALOG.md"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+
+def _run_argo(*args, timeout=180):
+    return subprocess.run([sys.executable, str(BIN_ARGO), "search", *args],
+                          capture_output=True, text=True, timeout=timeout)
+
+
+def test_doc_exists():
+    assert DOC.exists(), "搜索源使用文档缺失：docs/ENGINE_CATALOG.md"
+
+
+def test_doc_not_stale():
+    """文档必须与当前声明一致（改引擎不重新生成 → 这里失败）。"""
+    r = subprocess.run([sys.executable, str(SCRIPTS_DIR / "gen_engine_catalog.py"), "--check"],
+                       capture_output=True, text=True, timeout=180)
+    assert r.returncode == 0, (
+        "文档已过期，重新生成：python3 scripts/gen_engine_catalog.py\n"
+        f"{r.stdout}{r.stderr}")
+
+
+def test_declared_totals_match_runtime():
+    """文档里的「收录 / 开箱可用」必须等于照声明算出来的数。
+
+    只比声明口径：文档要能跨机器生成复核，不能把「本机此刻配没配密钥、
+    有没有被熔断」写进去——那样换个环境生成就会与磁盘不符，门禁随机变红。
+    """
+    from config import load_config
+    cfg = load_config()
+    specs = {n: s for n, s in (cfg.get("engines") or {}).items()
+             if isinstance(s, dict)}
+    enabled = {n: s for n, s in specs.items() if s.get("enabled", True)}
+    from engine_status import list_engines_detail
+    detail = {r["engine_id"]: r for r in list_engines_detail()}
+    usable = [n for n in enabled
+              if not detail[n]["required_env"] and not detail[n]["requires"]]
+    text = DOC.read_text(encoding="utf-8")
+    assert f"收录 {len(specs)} 个源" in text, f"文档收录数 ≠ 声明 {len(specs)}"
+    assert f"开箱可用 {len(usable)} 个" in text, \
+        f"文档可用数 ≠ 声明口径可用 {len(usable)}（{len(enabled)} 启用 - 需密钥/需工具）"
+
+
+def test_routable_only_flag_actually_filters():
+    """--routable-only 必须真筛（曾因 available_engines 不收参数而静默失效）。"""
+    plain = _run_argo("--list-engines")
+    routable = _run_argo("--list-engines", "--routable-only")
+    assert plain.returncode == 0 and routable.returncode == 0
+    all_ids = json.loads(plain.stdout[plain.stdout.index("["):])
+    ro_ids = json.loads(routable.stdout[routable.stdout.index("["):])
+    assert len(ro_ids) < len(all_ids), (
+        f"--routable-only 没有筛掉任何东西（{len(ro_ids)}/{len(all_ids)}）")
+    from engine_status import list_routable_engine_ids
+    assert set(ro_ids) == set(list_routable_engine_ids()), \
+        "--routable-only 的结果与 routable 判定不一致"
+
+
+def test_dead_sources_are_zero_or_declared_explicit_only():
+    """可达性门：没有未声明的死源。
+
+    真死源（既不可达、又没声明 explicit_only）会让这条测试失败——这是
+    「新增引擎忘了接线」的兜底网。
+    """
+    from config import load_config, get_engines, get_domains
+    from engine_policy import GENERAL_FREE_FALLBACK
+    from topic_research_profiles import list_profiles
+    import research as _research
+
+    specs = get_engines(load_config(), routable_only=False)
+    reachable = set(GENERAL_FREE_FALLBACK) | {"local_search"}
+    for d in get_domains(load_config()):
+        reachable |= set(d.get("engines_combo") or [])
+    for p in list_profiles():
+        reachable |= set(p.get("engines") or [])
+    reachable |= (set(_research._RESEARCH_EN_BOOSTS)
+                  | set(_research._RESEARCH_ACADEMIC_BOOSTS)
+                  | set(_research._RESEARCH_JA_KO_BOOSTS))
+    dp = json.loads((SKILL_DIR / "backends" / "domain_profiles.json")
+                    .read_text(encoding="utf-8"))
+    reachable |= {k for k, v in dp.items()
+                  if isinstance(v, dict) and (v.get("documents") or [])}
+
+    dead = sorted(
+        n for n, s in specs.items()
+        if isinstance(s, dict) and s.get("enabled", True)
+        and n not in reachable and not n.startswith("local_")
+        and not s.get("explicit_only"))
+    assert not dead, f"未声明的不达源（接线或声明 explicit_only）: {dead}"
+
+
+def test_explicit_only_not_also_auto_routed():
+    """声明与实际必须一致：声明 explicit_only 又进了自动路径就是有一边说谎。"""
+    from config import load_config, get_engines, get_domains
+    from engine_policy import GENERAL_FREE_FALLBACK
+
+    specs = get_engines(load_config(), routable_only=False)
+    declared = {n for n, s in specs.items()
+                if isinstance(s, dict) and s.get("enabled", True) and s.get("explicit_only")}
+    auto = set(GENERAL_FREE_FALLBACK)
+    for d in get_domains(load_config()):
+        auto |= set(d.get("engines_combo") or [])
+    conflict = sorted(declared & auto)
+    assert not conflict, f"既声明 explicit_only 又在自动路径上: {conflict}"

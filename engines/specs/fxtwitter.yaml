@@ -14,6 +14,8 @@ timeout: 10
 query_param: q
 canary_query: "OpenAI"
 desc: "FxTwitter 公开 API：X/Twitter 推文搜索（零认证，含互动元数据）"
+coverage: [social, english]
+recommended: false
 
 headers:
   User-Agent: argo-search/1.0 (+fxtwitter)

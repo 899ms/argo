@@ -14,6 +14,9 @@ timeout: 12
 query_param: term
 canary_query: "LLM agents"
 desc: "OpenReview 顶会论文（含评审可见性与 PDF，AI/ML 研究为主）"
+coverage: [academic]
+recommended: false
+latency_ms: 3000
 
 headers:
   User-Agent: argo-search/1.0 (+openreview)

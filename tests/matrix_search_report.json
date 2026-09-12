@@ -1,12 +1,12 @@
 {
   "summary": {
-    "ok": 131,
+    "ok": 132,
     "fail": 0,
-    "warn": 11,
+    "warn": 1,
     "by_status": {
-      "PASS": 131,
+      "PASS": 132,
       "FAIL": 0,
-      "WARN": 11
+      "WARN": 1
     },
     "by_section": {
       "lang": {
@@ -125,9 +125,9 @@
         "WARN": 0
       },
       "reach": {
-        "PASS": 0,
+        "PASS": 1,
         "FAIL": 0,
-        "WARN": 10
+        "WARN": 0
       }
     },
     "route_by_scenario": {
@@ -1676,54 +1676,9 @@
       "detail": ""
     },
     {
-      "name": "reach:datacite",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:firecrawl",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:fxtwitter",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:sec_edgar",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:tinyfish",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:tinyfish_news",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:tinyfish_paper",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:twitter_syndication",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
-      "name": "reach:zenodo",
-      "status": "WARN",
-      "detail": "五条分发路径均不可达（死源）——接线或转 explicit-only"
-    },
-    {
       "name": "reach:summary",
-      "status": "WARN",
-      "detail": "不可达 9 个: datacite, firecrawl, fxtwitter, sec_edgar, tinyfish, tinyfish_news, tinyfish_paper, twitter_syndication, zenodo"
+      "status": "PASS",
+      "detail": "死源 0 个: 无；声明 explicit_only 4 个: tinyfish, tinyfish_news, tinyfish_paper, twitter_syndication"
     }
   ]
 }

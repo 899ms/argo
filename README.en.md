@@ -25,7 +25,7 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.6-informational">
-  <img alt="engines" src="https://img.shields.io/badge/engines-150+-orange">
+  <img alt="engines" src="https://img.shields.io/badge/engines-175-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-12%20tools-purple">
 </p>
 
@@ -281,7 +281,7 @@ python3 scripts/search.py --list-engines
 - **One-command MCP inject (new in v2.8.4)**: `argo mcp inject` for Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (atomic write + backup + undo; source `mcp/clients.yaml`)
 - **Structured search upgrades (new in v2.8.4)**: query normalize + variants + complexity gate; social-syntax first; TF-IDF keeps looking after dropping a Chinese engine; `--include-local`
 - **Keenable (new in v2.8.4)**: extra general web engine (L1 declarative HTTP, free trial, `ARGO_KEENABLE_API_KEY`)
-- **~150+ sources, 70+ domains**: general web + finance / macro / film / sports / geo / orgs / media / chemistry / academic / code (source of truth: `config.yaml`)
+- **175 sources (143 usable with no key), 78 domains**: general web + finance / macro / film / sports / geo / orgs / media / chemistry / academic / code (source of truth: `config.yaml`)
 - **14 MCP tools**: search, research, evidence, clarify, fetch, screenshot, PDF, social, local files, crawl, local preview, recompute, WeChat article full text, job aggregation
 - **Multilingual search**: Chinese, English, Japanese, Korean, Cyrillic, Thai, Arabic, Hebrew, Greek, Devanagari, …; routing and engine params follow language; non-Chinese queries avoid Chinese-only sources (Zhihu / Sogou WeChat / A-share snapshots, etc.)
 - **Vertical recovery gates**: empty-result recovery will not “leak” pypi / npm / flash news into film or sports
@@ -291,7 +291,7 @@ python3 scripts/search.py --list-engines
 
 ## Engines & routing
 
-Config currently has about **150+** sources and **70+** domains (see `config.yaml` and `--list-engines`).
+Config currently has **175** sources (**143** usable with no key) and **78** domains (see `config.yaml` and `--list-engines`).
 
 ### Direct & vertical (excerpt)
 

@@ -81,10 +81,13 @@ _BLOCKED_PATTERNS = (
     r"验证码", r"安全验证", r"滑动验证",
 )
 
-# 限流类信号
+# 限流类信号（含「额度/套餐」——源端说「现在不能用」，动作同为止损等待/升配额，
+# 不是改代码、也不是重新登录）
 _RATE_LIMITED_PATTERNS = (
     r"\b429\b", r"too many requests", r"rate limit", r"ratelimit",
     r"quota.*(exceed|exhausted| depleted)", r"请求过于频繁", r"限流", r"访问频率",
+    r"not enough money", r"package quota", r"insufficient (funds|balance|credit|quota)",
+    r"(余额|额度|配额).{0,4}(不足|不够|耗尽)", r"(套餐|package).{0,12}(到期|用尽|不足|quota)",
 )
 
 # 上游改版类信号
@@ -200,14 +203,48 @@ def classify(*,
 
     # 5. HTTP 状态码
     if status_code is not None:
-        if status_code == 429:
+        # 0 = 连接层就没成（DNS 失败/拒绝/重置），没有 HTTP 响应可解释
+        if status_code == 0:
+            return {
+                "category": NETWORK,
+                "reason": "connection-failed",
+                "evidence": "未收到 HTTP 响应",
+                "action": _ACTIONS[NETWORK],
+                "confidence": "high",
+            }
+        # 429 与 503 同族：源站「现在不受理，稍后再说」。503 在 HTTP 层已按
+        # 合规等待信号处理（带 Retry-After 则等待，见 http_client 的 stop-signal
+        # 契约与 test_stop_signal.py）；归因层若判 upstream，会把人支去「改解析
+        # 代码」，方向错误。故二者合并，动作同为止损等待。
+        if status_code in (429, 503):
             return {
                 "category": RATE_LIMITED,
-                "reason": "http-429",
-                "evidence": "HTTP 429",
+                "reason": f"http-{status_code}",
+                "evidence": f"HTTP {status_code}",
                 "action": _ACTIONS[RATE_LIMITED],
                 "confidence": "high",
             }
+        if status_code == 408:
+            return {
+                "category": NETWORK,
+                "reason": "http-408",
+                "evidence": "HTTP 408 请求超时",
+                "action": _ACTIONS[NETWORK],
+                "confidence": "high",
+            }
+        # 额度/套餐文案优先于鉴权仲裁：403 里写着「套餐额度不足」时，
+        # 让人「重新登录」是错误方向（登录改不了套餐）。search.py 的
+        # _QUOTA_ERROR_KEYWORDS 早就把 quota 排在 auth 之前，这里对齐。
+        if status_code in (401, 402, 403) and blob_probe:
+            hit = _matches(_RATE_LIMITED_PATTERNS, blob_probe)
+            if hit:
+                return {
+                    "category": RATE_LIMITED,
+                    "reason": f"http-{status_code}+quota-sign",
+                    "evidence": blob_probe[:200],
+                    "action": _ACTIONS[RATE_LIMITED],
+                    "confidence": "high",
+                }
         if status_code == 401:
             return {
                 "category": AUTH,
@@ -242,6 +279,9 @@ def classify(*,
                 "action": _ACTIONS[UPSTREAM],
                 "confidence": "high",
             }
+        # 其余 4xx（400/402/405/406/409/413…）请求被源站拒绝，但理由无法从
+        # 状态码还原（参数不符？欠费？方法不对？）。按本模块纪律不硬猜：
+        # 继续走第 6 步找文本证据，找不到就是 unknown。
 
     # 6. 文本模式：auth 最具体先判，封锁次之（封锁特征与 auth 语义几乎不重叠），
     #    限流再后，依赖、上游、网络殿后

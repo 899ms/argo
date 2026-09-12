@@ -11,6 +11,9 @@ cost_tier: free
 timeout: 10
 canary_query: "npm express"
 desc: "deps.dev 包依赖（npm/pypi/go/maven/cargo；版本/弃用/发布时间）"
+coverage: [code, package]
+recommended: false
+latency_ms: 2000
 
 quality_queries:
   - query: "npm express"

@@ -1291,6 +1291,28 @@ def _build_zhihu_user_engine(spec: dict[str, Any]) -> Any:
     return _engine
 
 
+def _bocha_http_error(exc: Exception, source: str) -> list[dict[str, Any]]:
+    """把博查的 HTTP 失败转成 error 记录（错误体一并带上）。
+
+    为什么不能直接抛给 safe_search：safe_search 吞掉异常返回空列表，
+    「接口 403」与「这个词真没结果」在下游看起来一模一样。博查 AI Search
+    端点要单独套餐，本机 key 只有 web-search 权限，实测
+    `HTTP 403 {"message":"You do not have enough money or package quota"}`——
+    此前这条被吃成空结果，引擎一直显示 ready，结构化卡静默降级成普通网页结果。
+    这里把状态码与错误体交出去，search.py 的 `_QUOTA_ERROR_KEYWORDS`（含
+    "quota"）就能判成 quota-exhausted，配额状态机据此停用该源。
+    """
+    detail = ""
+    if isinstance(exc, urllib.error.HTTPError):
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:200]
+        except Exception:
+            detail = ""
+        return [{"error": f"HTTP {exc.code}: {detail}" if detail else f"HTTP {exc.code}",
+                 "source": source}]
+    return [{"error": f"{type(exc).__name__}: {str(exc)[:160]}", "source": source}]
+
+
 def _bocha_key() -> str:
     return os.environ.get("ARGO_BOCHA_API_KEY") or os.environ.get("BOCHA_API_KEY", "")
 
@@ -1333,8 +1355,11 @@ def _build_bocha_engine(spec: dict[str, Any]) -> Any:
             data=json.dumps(body).encode("utf-8"),
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=to) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(req, timeout=to) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError) as e:
+            return _bocha_http_error(e, "bocha")
         pages = (data.get("data") or {}).get("webPages") or {}
         return [_bocha_web_item(i) for i in (pages.get("value") or [])]
     return _engine
@@ -1397,8 +1422,11 @@ def _build_bocha_ai_engine(spec: dict[str, Any]) -> Any:
             data=json.dumps(body).encode("utf-8"),
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=to) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(req, timeout=to) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError) as e:
+            return _bocha_http_error(e, "bocha_ai")
 
         results: list[dict[str, Any]] = []
         for message in data.get("messages") or []:

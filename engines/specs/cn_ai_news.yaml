@@ -17,6 +17,8 @@ timeout: 10
 query_param: q
 canary_query: "人工智能"
 desc: "中文 AI 垂直资讯检索（模型/产品/行业/论文，含发布时间与上游来源）"
+coverage: [chinese, news, ml]
+recommended: false
 
 family: news_flash
 

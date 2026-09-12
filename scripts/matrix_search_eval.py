@@ -624,6 +624,12 @@ def run_offline_reachability(c: Checker) -> None:
     TF-IDF 语义画像（documents 非空）。local_* 视为经 local_search 展开
     可达。不可达引擎逐个 WARN（soft）——anysearch/zhihu_global/uapi 三次
     死源事故的系统性防线。2026-09-07。
+
+    explicit_only 例外（2026-09-12）：引擎声明 `explicit_only: true` 表示
+    「设计上不进自动路由，按 --engine / 交接提示显式调用」——例如需密钥的
+    付费源、或输入形态特殊（单条推文 URL 走 known-url 交接）的抽取型引擎。
+    这类不算死源，但要求声明显式存在：漏声明会继续 WARN，防止把「忘了接线」
+    伪装成「有意显式」。声明项单独列出，保持可见。
     """
     print("\n== offline: engine reachability gate ==")
     import json as _json
@@ -656,16 +662,29 @@ def run_offline_reachability(c: Checker) -> None:
     except Exception:
         pass
 
+    declared_explicit = {
+        n for n, s in specs.items()
+        if isinstance(s, dict) and s.get("enabled", True) and s.get("explicit_only")}
+    # 声明与实际必须一致：声明了 explicit_only 却又进了自动分发路径，
+    # 说明两边有一边说谎（声明忘了撤，或接线时没看声明）。
+    contradictory = sorted(declared_explicit & reachable)
+    for n in contradictory:
+        c.check(f"reach_explicit_conflict:{n}", False, soft=True,
+                detail="声明 explicit_only 却进了自动分发路径——声明与实际不一致")
+    explicit_only = sorted(declared_explicit - reachable)
     unreachable = sorted(
         n for n, s in specs.items()
         if isinstance(s, dict) and s.get("enabled", True)
-        and n not in reachable and not n.startswith("local_"))
+        and n not in reachable and not n.startswith("local_")
+        and not s.get("explicit_only"))
     for n in unreachable:
         c.check(f"reach:{n}", False,
-                detail="五条分发路径均不可达（死源）——接线或转 explicit-only",
+                detail="五条分发路径均不可达（死源）——接线或声明 explicit_only",
                 soft=True)
     c.check("reach:summary", len(unreachable) == 0,
-            detail=f"不可达 {len(unreachable)} 个: {', '.join(unreachable) or '无'}",
+            detail=(f"死源 {len(unreachable)} 个: {', '.join(unreachable) or '无'}"
+                    f"；声明 explicit_only {len(explicit_only)} 个: "
+                    f"{', '.join(explicit_only) or '无'}"),
             soft=True)
 
 

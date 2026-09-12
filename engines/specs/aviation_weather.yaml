@@ -18,6 +18,8 @@ query_param: ids
 format: json
 canary_query: "KLAX"
 desc: "航空气象（METAR 实时例行天气报告，按 ICAO 机场代码查询）"
+coverage: [aviation, weather, forecast]
+recommended: false
 
 family: misc_vertical
 

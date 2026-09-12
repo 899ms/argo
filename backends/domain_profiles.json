@@ -1949,5 +1949,113 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "aviation_weather": {
+    "label": "aviation_weather",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "biorxiv": {
+    "label": "biorxiv",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "cn_ai_news": {
+    "label": "cn_ai_news",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "datacite": {
+    "label": "datacite",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "deps_dev": {
+    "label": "deps_dev",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "endoflife": {
+    "label": "endoflife",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "firecrawl": {
+    "label": "Firecrawl",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "fxtwitter": {
+    "label": "fxtwitter",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "keenable": {
+    "label": "Keenable",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "nvd": {
+    "label": "nvd",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "openreview": {
+    "label": "openreview",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "realtime_index": {
+    "label": "实时索引搜索",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "sec_edgar": {
+    "label": "sec_edgar",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "train": {
+    "label": "火车余票",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "twitter_syndication": {
+    "label": "twitter_syndication",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "un_comtrade": {
+    "label": "un_comtrade",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "weather": {
+    "label": "weather",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "zenodo": {
+    "label": "zenodo",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

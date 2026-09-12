@@ -1,5 +1,5 @@
 {
-  "_description": "各引擎的配额/成本/限频配置。由 scripts/sync_backends.py 从 config.yaml 派生，勿手工修改。",
+  "_description": "各引擎的配额/成本/限频配置。由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。",
   "anysearch": {
     "label": "AnySearch",
     "qps": 5,
@@ -29,6 +29,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 7
+  },
+  "aviation_weather": {
+    "label": "aviation_weather",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "baidu_baike": {
     "label": "百度百科",
@@ -69,6 +79,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 29
+  },
+  "biorxiv": {
+    "label": "biorxiv",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "bocha": {
     "label": "博查搜索",
@@ -130,6 +150,16 @@
     "cost_tier": "free",
     "priority": 21
   },
+  "cn_ai_news": {
+    "label": "cn_ai_news",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "cnii": {
     "label": "CiNii Research 日文学术",
     "qps": 2,
@@ -190,6 +220,16 @@
     "cost_tier": "free",
     "priority": 40
   },
+  "datacite": {
+    "label": "datacite",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "dblp": {
     "label": "DBLP",
     "qps": 1,
@@ -199,6 +239,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 48
+  },
+  "deps_dev": {
+    "label": "deps_dev",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "devto": {
     "label": "DEV.to",
@@ -310,6 +360,16 @@
     "cost_tier": "free",
     "priority": 2
   },
+  "endoflife": {
+    "label": "endoflife",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "eu_opendata": {
     "label": "EU Open Data Portal",
     "qps": 2,
@@ -390,6 +450,16 @@
     "cost_tier": "free",
     "priority": 56
   },
+  "firecrawl": {
+    "label": "Firecrawl",
+    "qps": 1,
+    "limit": 1000,
+    "period": "month",
+    "cost_per_call": 0.001,
+    "cost_unit": "credit",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "fr_opendata": {
     "label": "法国政府开放数据",
     "qps": 2,
@@ -429,6 +499,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 3
+  },
+  "fxtwitter": {
+    "label": "fxtwitter",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "gbif": {
     "label": "GBIF 物种",
@@ -589,6 +669,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 46
+  },
+  "keenable": {
+    "label": "Keenable",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "know_your_meme": {
     "label": "Know Your Meme",
@@ -970,6 +1060,16 @@
     "cost_tier": "free",
     "priority": 43
   },
+  "nvd": {
+    "label": "nvd",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "octen": {
     "label": "Octen",
     "qps": 3,
@@ -1022,6 +1122,16 @@
   },
   "openfda": {
     "label": "openFDA",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "openreview": {
+    "label": "openreview",
     "qps": 2,
     "limit": null,
     "period": "second",
@@ -1130,6 +1240,16 @@
     "cost_tier": "free",
     "priority": 12
   },
+  "realtime_index": {
+    "label": "实时索引搜索",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "reddit": {
     "label": "Reddit",
     "qps": 2,
@@ -1172,6 +1292,16 @@
   },
   "searxng": {
     "label": "SearXNG",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "sec_edgar": {
+    "label": "sec_edgar",
     "qps": 2,
     "limit": null,
     "period": "second",
@@ -1247,7 +1377,7 @@
     "period": "month",
     "cost_per_call": 0.001,
     "cost_unit": "credit",
-    "cost_tier": "paid",
+    "cost_tier": "api",
     "priority": 5
   },
   "tencent_kline": {
@@ -1330,6 +1460,16 @@
     "cost_tier": "free",
     "priority": 28
   },
+  "train": {
+    "label": "火车余票",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "twitter": {
     "label": "Twitter/X",
     "qps": 2,
@@ -1340,8 +1480,28 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "twitter_syndication": {
+    "label": "twitter_syndication",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "uapi": {
     "label": "UAPI",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "un_comtrade": {
+    "label": "un_comtrade",
     "qps": 2,
     "limit": null,
     "period": "second",
@@ -1409,6 +1569,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 15
+  },
+  "weather": {
+    "label": "weather",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "wechat_sogou": {
     "label": "搜狗微信搜索",
@@ -1519,6 +1689,16 @@
     "cost_unit": "free",
     "cost_tier": "api",
     "priority": 12
+  },
+  "zenodo": {
+    "label": "zenodo",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "zh_wikipedia": {
     "label": "中文维基百科",

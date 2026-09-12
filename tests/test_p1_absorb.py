@@ -27,12 +27,13 @@ class TestGeneralFreeSingleSource(unittest.TestCase):
     def test_route_fallback_local_first(self):
         from engine_policy import GENERAL_FREE_FALLBACK
         from route import _general_fallback
-        enabled = {"local_search", "anysearch", "duckduckgo",
-                   "local_bing", "uapi", "local_baidu", "wikipedia"}
+        # 取样集合从单一真源推导，不写死名单：名单增删时这条守的是
+        # 「本地优先 + 顺序与真源一致」这个契约，而不是某天的某个快照。
+        enabled = {"local_search", "duckduckgo"} | set(GENERAL_FREE_FALLBACK)
         fb = _general_fallback(enabled)
-        # 本地优先 + 通用免费源顺序与单一真源一致
         self.assertEqual(fb[0], "local_search")
         self.assertEqual(fb[1:], list(GENERAL_FREE_FALLBACK))
+        self.assertNotIn("duckduckgo", fb)
 
     def test_route_fallback_filters_disabled(self):
         from route import _general_fallback

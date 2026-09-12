@@ -46,8 +46,12 @@ FORCE_DAILY_CORE: frozenset[str] = frozenset({
 # 再引用本清单；recovery 直接按本顺序遍历。预算截断由调用方完成。
 # 2026-09-07：duckduckgo 移出——遥测 45% 错误率 + 实测 11.1s 0 条（本机网络
 # 限流），串行兜底链里它是最大死重；uapi 顶入（免 key 聚合，历史 521 次 0% 错）。
+# 2026-09-12：firecrawl 顶入（免 key 云搜索，JS 渲染/PDF/学术垂直）——它的声明
+# 一直写着「免费池可路由（daily_support）」，但没有接进任何分发路径，属死源；
+# 排在通用检索源末位 + spec 的 tier=daily_support，日常 fast/auto 的 combo 预算
+# （2/3 个）够不到它，只在 deep/research 无截断时参战，共享免费层不被烧穿。
 GENERAL_FREE_FALLBACK: tuple[str, ...] = (
-    "anysearch", "local_bing", "uapi", "local_baidu", "wikipedia",
+    "anysearch", "local_bing", "uapi", "local_baidu", "firecrawl", "wikipedia",
 )
 
 

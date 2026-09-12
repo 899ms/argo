@@ -14,6 +14,8 @@ timeout: 15
 query_param: query
 canary_query: "genome"
 desc: "DataCite 科研数据集搜索（Dryad/Figshare/Dataverse/OSF 等仓储，免认证）"
+coverage: [dataset, academic, opendata]
+recommended: false
 
 extra_params:
   page[size]: "{n}"

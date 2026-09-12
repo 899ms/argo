@@ -1,7 +1,7 @@
 ---
 name: argo
-description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；约 150+ 引擎 TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡（火车票/油价/贵金属/万年历/星座/手机/汽车/挂号）；日常 combo 预算与深度研究 boost；recovery 防污染；Selection×Absorption。CLI：argo search|research|fetch|crawl|article|job|evidence（同引擎 MCP 14 工具按需启用，默认关）。
-version: 2.8.6
+description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；175 个源（143 个免密钥开箱可用）TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡（火车票/油价/贵金属/万年历/星座/手机/汽车/挂号）；日常 combo 预算与深度研究 boost；recovery 防污染；Selection×Absorption。CLI：argo search|research|fetch|crawl|extract|article|job|evidence|clarify|preflight|mcp（同引擎 MCP 14 工具按需启用，默认关）。
+version: 2.8.7
 triggers:
   - 搜索
   - 查一下
@@ -123,5 +123,6 @@ python3 scripts/search.py "贵州茅台股价" --verify 3
 | 学术检索：查询构造（arXiv/S2/GS 语法）、相关性五因子排序、引用网络挖掘、学术反模式与证据分级 | `references/academic-query.md` |
 | 架构：文件结构、证据流水线、量化公式、输出 JSON Schema、内容质量信号 | `references/architecture.md` |
 | MCP 多客户端注入详解 | `docs/MCP_SETUP.md` |
+| **搜索源使用文档**：全量清单（费用 / 密钥 / 状态 / 域组合）+ 特别能力 + 打开方式 | `docs/ENGINE_CATALOG.md`（生成，勿手改） |
 
 > 工程纪律（单一真源：代码真源=本仓库、引擎声明真源=config.yaml、宿主入口用 link_source.py symlink、新增搜索源流程）见 `references/operations.md` 末尾。

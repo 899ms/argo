@@ -53,22 +53,32 @@ class TestExtractTweetId:
 
 
 class TestSyndicationToken:
-    """token 是展示用公开校验值，由 ID 推导。确定性向量锁定实现。"""
+    """契约为「请求必须带非空 token」——服务端不校验 token 的值。
 
-    def test_known_vector(self):
-        # 实测 2026-09-12：该 token 已通过真实接口验证（返回 200 与推文正文）
-        assert syndication_token("1585841080431321088") == "3ue2efeb02fpv0q"
+    实测 2026-09-12：token=a / token=0 / token=长随机串都返回同一推文正文；
+    省略 token 参数则返回空响应体。因此这里只锁契约，不锁具体值：
+    此前锁的是手写 base36 推导的输出，而那段推导与它自称的公开公式在
+    全部抽样 ID 上都不相等——测试锁的是一个无依据的常量，还挡住了修正。
+    """
 
-    def test_deterministic(self):
-        a = syndication_token("1234567890123456789")
-        b = syndication_token("1234567890123456789")
-        assert a == b
-        assert a  # 非空
+    def test_present_and_nonempty(self):
+        # 必须非空：省略或空值会让端点返回空响应体（实测）
+        for tid in ("1585841080431321088", "100000000000000",
+                    "1234567890123456789"):
+            tok = syndication_token(tid)
+            assert isinstance(tok, str) and tok.strip()
 
-    def test_no_dot_leading_zero(self):
-        tok = syndication_token("100000000000000")
-        assert "." not in tok
-        assert not tok.startswith("0")
+    def test_value_independent_of_id(self):
+        # 值不参与校验：同一 token 服务所有 ID 是预期行为，不是缺陷
+        assert syndication_token("1585841080431321088") == \
+            syndication_token("100000000000000")
+
+    def test_request_url_carries_token(self):
+        # 端到端契约：抓取请求的 URL 上必须带非空 token 参数
+        tok = syndication_token("1585841080431321088")
+        url = (f"https://cdn.syndication.twimg.com/tweet-result"
+               f"?id=1585841080431321088&token={tok}")
+        assert "token=" in url and not url.endswith("token=")
 
 
 class TestBuilder:

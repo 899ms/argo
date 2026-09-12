@@ -456,30 +456,20 @@ def _http_get_raw(url: str, headers: dict, timeout: float,
 
 
 def _note_http_failure(engine: str, status: int, body: str) -> None:
-    """按状态码 + 响应体特征归因，写入寄存器（与 engine_failure 分类对齐）。"""
-    body_low = (body or "")[:2000].lower()
-    if status == 429 or status == 503:
-        note_failure(engine, "rate_limited", f"http-{status}", body_low[:120])
+    """按状态码 + 响应体特征归因，写入寄存器。
+
+    判定委托给 engine_failure.classify（唯一真源）。此前这里复刻了一份状态码
+    分支表，与 classify 在 97/201 个状态码上给出不同答案（503 一边说限流、
+    一边说上游改版），同一引擎的归因会随「你看哪个界面」而变。
+    """
+    try:
+        from engine_failure import classify
+    except ImportError:  # 模块缺失时退化为最小事实，不猜类别
+        note_failure(engine, "unknown", f"http-{status}", (body or "")[:120])
         return
-    if status == 403:
-        try:
-            from engine_failure import _BLOCKED_PATTERNS, _matches
-            if _matches(_BLOCKED_PATTERNS, body_low):
-                note_failure(engine, "blocked", "http-403+block-sign",
-                             body_low[:120])
-                return
-        except ImportError:
-            pass
-        note_failure(engine, "auth", "http-403", body_low[:120])
-        return
-    if status in (401,):
-        note_failure(engine, "auth", "http-401", body_low[:120])
-        return
-    if status == 0:
-        note_failure(engine, "network", "connection-failed", body_low[:120])
-        return
-    if status >= 400:
-        note_failure(engine, "upstream", f"http-{status}", body_low[:120])
+    res = classify(status_code=status, output=(body or "")[:2000])
+    note_failure(engine, res["category"], res["reason"],
+                 res.get("evidence") or (body or "")[:120])
 
 
 def _envelope_error(data: Any) -> str:

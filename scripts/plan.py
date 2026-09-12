@@ -119,6 +119,20 @@ def is_pure_url(text: str) -> bool:
     return bool(re.fullmatch(r"https?://[^\s]+", t, flags=re.I))
 
 
+def _is_single_tweet(url: str) -> bool:
+    """该 URL 是否单条推文（有免登录抽取通道）。
+
+    推文 ID 提取复用引擎侧实现（engines_builders_intl.extract_tweet_id），
+    不在这里重写一套 URL 正则——两处解析必然漂移。懒加载，只在 known-url
+    交接分支里发生（罕见路径，约 39ms）。
+    """
+    try:
+        from engines_builders_intl import extract_tweet_id
+        return extract_tweet_id(url) is not None
+    except Exception:
+        return False
+
+
 def canonicalize_url(url: str) -> str:
     """去掉明确追踪参数；失败则原样返回。"""
     if not url:
@@ -176,6 +190,17 @@ def build_plan(
     # ── known-url：交接 fetch，不联网搜索 ──
     if kind == "known-url":
         target = urls[0] if urls else query.strip()
+        # 单条推文有免登录抽取通道（twitter_syndication 走 syndication 接口）：
+        # 只提示 argo_fetch 会让用户以为得靠浏览器/登录才拿得到，而这条通道
+        # 恰好是为「按 URL 取单条」设计的。能力可发现性属于交接内容的一部分。
+        suggested = ["argo_fetch", "argo_pdf"]
+        extra_limits: list[str] = []
+        if _is_single_tweet(target):
+            suggested.insert(0, "argo_search(engine=twitter_syndication)")
+            extra_limits.append(
+                "Single tweet: the twitter_syndication channel fetches it without login "
+                "(argo_search with engine=twitter_syndication, query = tweet URL or ID)."
+            )
         return {
             "schema_version": "1.0",
             "status": "handoff_required",
@@ -188,7 +213,7 @@ def build_plan(
                 "action": "fetch_or_archive",
                 "url": target,
                 "canonical_url": canonicalize_url(target),
-                "suggested_tools": ["argo_fetch", "argo_pdf"],
+                "suggested_tools": suggested,
             },
             "route": None,
             "steps": [
@@ -201,6 +226,7 @@ def build_plan(
             "limitations": [
                 "Known URL reading/download/archive is outside multi-engine search.",
                 "Use argo_fetch / argo_pdf for content; use --input-kind url-seed only to discover related public pages.",
+                *extra_limits,
             ],
             "mode": mode,
             "depth": depth,

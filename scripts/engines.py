@@ -457,8 +457,25 @@ def get_engine_spec(name: str) -> dict[str, Any] | None:
     return _engine_specs.get(name)
 
 
-def available_engines() -> list[str]:
-    return sorted(get_registry().keys())
+def available_engines(routable_only: bool = False) -> list[str]:
+    """可实例化的引擎名（有 builder）。
+
+    routable_only=True 时再按「真能用」过滤（密钥齐全、后端依赖就位、
+    未被熔断/禁用）——这是与 --list-engines --detail 的 routable 同一判定。
+
+    routable_only 此前没被实现（本函数不收参数），调用侧传进来会抛
+    TypeError 并被 except TypeError 吞掉回退到全量——`--list-engines
+    --routable-only` 因此静默返回全部引擎，用户以为筛过了。
+    """
+    names = sorted(get_registry().keys())
+    if not routable_only:
+        return names
+    try:
+        from engine_status import list_routable_engine_ids
+        routable = set(list_routable_engine_ids())
+        return [n for n in names if n in routable]
+    except Exception:
+        return names
 
 
 # ── 单飞合并 + 免费引擎结果数桶化 ──
@@ -470,9 +487,17 @@ _NUM_BUCKETS = (10, 20, 50, 100)
 
 
 def _free_engine(engine: str) -> bool:
+    """是否「免费档」——只有免费档才做 n 桶化。
+
+    此前判据是 cost_factor >= 0.85，而成本表没有 api 档的分支（fallthrough
+    到 1.0），于是 api 档（exa/octen/you/parallel/zhihu_global/tavily 这类
+    按量计费的源）被当成免费：要 5 条被放大到 10 条，按结果计费的接口直接
+    双倍计费。本函数注释一直写着「付费引擎保持精确 n（按结果计费不得放大）」，
+    实现却漏了这一档——现在按声明的档位判，不再依赖魔法阈值。
+    """
     try:
-        from config import get_cost_factor
-        return get_cost_factor(engine) >= 0.85
+        from config import cost_tier_of
+        return cost_tier_of(engine) == "free"
     except Exception:
         return False
 

@@ -11,6 +11,9 @@ cost_tier: free
 timeout: 10
 canary_query: "python 生命周期"
 desc: "产品生命周期（版本/最新/支持期/EOL，endoflife.date 200+ 产品）"
+coverage: [tech]
+recommended: false
+latency_ms: 2000
 
 quality_queries:
   - query: "python 生命周期"

@@ -119,6 +119,18 @@ domains:
   - (?i)\b(ETF|LOF|FOF)\b
   primary: eastmoney
   quote: true
+- desc: 美股申报文件（SEC EDGAR 官方全文检索）
+  engines_combo:
+  - sec_edgar
+  - anysearch
+  fallback: anysearch
+  name: sec_filings
+  parallel: false
+  patterns:
+  - (?i)\b(10-K|10-Q|8-K|13F|DEF 14A|S-1)\b
+  - (?i)(sec\s+filing|edgar|form\s+10-?[kq]|proxy\s+statement)
+  - (招股书|财报申报|年报申报|季报申报|证券申报|申报文件)
+  primary: sec_edgar
 - desc: 美股筛选/分析（Finviz + Seeking Alpha；须排在 stock_query 前，避免「美股/ticker」被 A 股域吸走）
   engines_combo:
   - finviz
@@ -287,6 +299,18 @@ domains:
   - (?i)(进口|出口|import|export).{0,12}\bHS?\s?\d{4}\b
   primary: un_comtrade
 
+- desc: 科研数据集检索（DataCite + Zenodo；排在 academic 前，数据集≠论文）
+  engines_combo:
+  - datacite
+  - zenodo
+  - anysearch
+  fallback: datacite
+  name: dataset_search
+  parallel: true
+  patterns:
+  - (?i)(数据集|科研数据|开放数据|数据仓库|数据下载|数据论文|数据共享)
+  - (?i)\b(dataset|datasets|datacite|zenodo|figshare|dryad|dataverse|open\s+data)\b
+  primary: datacite
 - desc: 财经资讯/研报/公告
   engines_combo:
   - em_miaoxiang
@@ -969,6 +993,7 @@ domains:
   - bilibili
   - v2ex
   - twitter
+  - fxtwitter
   - reddit
   - xiaohongshu
   - weibo
@@ -1014,6 +1039,10 @@ engines:
     - '{n}'
     env: {}
   tinyfish:
+    # 需要自配 ARGO_TINYFISH_API_KEY；未配置时不可用。
+    # explicit_only：不参与默认 fan-out，配好 key 后用 --engine 显式调用；
+    # 声明在此，避免被可达性门禁当成「死源」误报。
+    explicit_only: true
     enabled: true
     label: TinyFish 实时搜索
     cost_tier: free
@@ -1045,6 +1074,10 @@ engines:
       item_source: site_name
       item_published_at: date
   tinyfish_news:
+    # 需要自配 ARGO_TINYFISH_API_KEY；未配置时不可用。
+    # explicit_only：不参与默认 fan-out，配好 key 后用 --engine 显式调用；
+    # 声明在此，避免被可达性门禁当成「死源」误报。
+    explicit_only: true
     enabled: true
     label: TinyFish 实时新闻
     cost_tier: free
@@ -1074,6 +1107,10 @@ engines:
       item_source: site_name
       item_published_at: date
   tinyfish_paper:
+    # 需要自配 ARGO_TINYFISH_API_KEY；未配置时不可用。
+    # explicit_only：不参与默认 fan-out，配好 key 后用 --engine 显式调用；
+    # 声明在此，避免被可达性门禁当成「死源」误报。
+    explicit_only: true
     enabled: true
     label: TinyFish 论文搜索
     cost_tier: free
@@ -2451,7 +2488,7 @@ engines:
       include_answer: basic
     enabled: true
     label: Tavily
-    cost_tier: paid
+    cost_tier: api
     qps: 1.67
     priority: 5
     limit: 1000
@@ -2460,7 +2497,7 @@ engines:
     cost_unit: credit
     coverage:
     - general
-    desc: Tavily AI 搜索 API
+    desc: Tavily AI 搜索 API（免费层 1000 次/月，按 credit 计费；与 exa 同为 api 档）
     headers:
       Content-Type: application/json
     method: POST

@@ -1,6 +1,6 @@
-_generated: 由 scripts/sync_backends.py 从 config.yaml 派生，勿手工修改。
+_generated: 由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。
 version: 2
-last_updated: '2026-09-07'
+last_updated: '2026-09-12'
 engines:
 - name: anysearch
   tier: T1
@@ -12,6 +12,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 通用搜索主力，进程内 JSON-RPC（HttpClient），零 token
 - name: archive_org
   tier: T1
@@ -24,6 +25,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Internet Archive 高级搜索（免认证）
 - name: arxiv
   tier: T1
@@ -34,7 +36,21 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: arXiv 论文搜索
+- name: aviation_weather
+  tier: T1
+  type: http
+  coverage:
+  - aviation
+  - weather
+  - forecast
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 航空气象（METAR 实时例行天气报告，按 ICAO 机场代码查询）
 - name: baidu_baike
   tier: T1
   type: baidu_baike
@@ -46,6 +62,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 百度百科词条（suggest + OpenAPI 卡片，免认证）
 - name: baidu_hot
   tier: T1
@@ -59,6 +76,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 百度热搜（实时热搜榜，HTML 解析，免认证）
 - name: bilibili
   tier: T1
@@ -69,6 +87,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: B站
 - name: bilibili_hot
   tier: T1
@@ -82,9 +101,10 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: B站热搜（search/square 热搜词，免认证）
 - name: biorxiv
-  tier: T2
+  tier: T1
   type: biorxiv
   coverage:
   - academic
@@ -93,8 +113,8 @@ engines:
   cost: free
   status: ok
   recommended: false
-  desc: bioRxiv/medRxiv 预印本（DOI 单篇 / 最近 3 天列表，免认证）
-
+  explicit_only: false
+  desc: bioRxiv/medRxiv 预印本（DOI 单篇详情 / 最近 3 天列表）
 - name: bocha
   tier: T1
   type: bocha
@@ -105,6 +125,7 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: 博查搜索 API（中文，freshness 按查询时效动态化）
 - name: bocha_ai
   tier: T1
@@ -117,6 +138,7 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: 博查 AI 搜索（统一语义识别 + 垂直结构化模态卡：天气/股票/汇率/油价/火车/万年历/贵金属/星座/医疗等）
 - name: brave
   tier: T1
@@ -127,6 +149,7 @@ engines:
   cost: api
   status: disabled
   recommended: true
+  explicit_only: false
   desc: Brave Search API
 - name: byted
   tier: T1
@@ -139,6 +162,7 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: 字节搜索 API，中文通用/news
 - name: clinicaltrials
   tier: T1
@@ -150,6 +174,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: ClinicalTrials.gov v2 临床试验（免认证）
 - name: cls_telegraph
   tier: T1
@@ -163,7 +188,21 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 财联社电报（全市场实时快讯，v1 API+本地签名零key）
+- name: cn_ai_news
+  tier: T1
+  type: http
+  coverage:
+  - chinese
+  - news
+  - ml
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 中文 AI 垂直资讯检索（模型/产品/行业/论文，含发布时间与上游来源）
 - name: cnii
   tier: T1
   type: cnii
@@ -174,6 +213,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 日本国立情报学研究所学术总库（论文/博士论文/科研项目，JSON-LD）
 - name: cninfo
   tier: T1
@@ -184,6 +224,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 巨潮资讯网官方公告（A股公告第一官方源，免认证）
 - name: coingecko
   tier: T1
@@ -195,6 +236,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: CoinGecko 币种搜索（免认证）
 - name: courtlistener
   tier: T1
@@ -206,6 +248,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: CourtListener 美国判例全文检索（匿名可用，2026-05 起约 5 次/分限额）
 - name: crates
   tier: T1
@@ -218,6 +261,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: crates.io Rust 包搜索（免认证，需 UA）
 - name: crossref
   tier: T1
@@ -228,7 +272,21 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Crossref DOI 元数据 API（免认证，礼貌池 mailto）
+- name: datacite
+  tier: T1
+  type: http
+  coverage:
+  - dataset
+  - academic
+  - opendata
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: DataCite 科研数据集搜索（Dryad/Figshare/Dataverse/OSF 等仓储，免认证）
 - name: dblp
   tier: T1
   type: http
@@ -239,9 +297,10 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: DBLP 计算机科学文献（免认证，偶发 SSL 抖动）
 - name: deps_dev
-  tier: T2
+  tier: T1
   type: deps_dev
   coverage:
   - code
@@ -250,8 +309,8 @@ engines:
   cost: free
   status: ok
   recommended: false
-  desc: deps.dev 包依赖（npm/pypi/go/maven/cargo 版本与弃用状态，免认证）
-
+  explicit_only: false
+  desc: deps.dev 包依赖（npm/pypi/go/maven/cargo；版本/弃用/发布时间）
 - name: devto
   tier: T1
   type: http
@@ -263,6 +322,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: DEV.to 技术文章搜索（免认证）
 - name: dnb
   tier: T1
@@ -275,6 +335,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 德语出版物最全书目（SRU/RDF XML）
 - name: doaj
   tier: T1
@@ -287,6 +348,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 开放获取期刊全球总库（80+ 语种，元数据统一英文）
 - name: docker_hub
   tier: T1
@@ -299,6 +361,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Docker Hub 镜像搜索（免认证）
 - name: douban_book
   tier: T1
@@ -309,6 +372,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 豆瓣读书搜索（评分/出版社/年份/价格，免认证）
 - name: duckduckgo
   tier: T1
@@ -319,6 +383,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: DuckDuckGo Instant Answer API（T2 替代）
 - name: eastmoney
   tier: T1
@@ -331,6 +396,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 东方财富，金融数据首选
 - name: electricity_maps
   tier: T1
@@ -343,6 +409,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 全球电网分区目录（zones 免 key）
 - name: em_flow
   tier: T1
@@ -353,6 +420,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 东财资金流向（个股主力/北向/板块，push2.eastmoney.com 免认证）
 - name: em_global_news
   tier: T1
@@ -366,6 +434,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 东财全球资讯（7×24 财经快讯）
 - name: em_miaoxiang
   tier: T1
@@ -376,9 +445,10 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 东财妙想搜索（官方研报/公告/政策，需 EASTMONEY_APIKEY）
 - name: endoflife
-  tier: T2
+  tier: T1
   type: endoflife
   coverage:
   - tech
@@ -386,8 +456,8 @@ engines:
   cost: free
   status: ok
   recommended: false
-  desc: 产品生命周期（endoflife.date 200+ 产品，版本/支持期/EOL，免认证）
-
+  explicit_only: false
+  desc: 产品生命周期（版本/最新/支持期/EOL，endoflife.date 200+ 产品）
 - name: eu_opendata
   tier: T1
   type: eu_opendata
@@ -398,6 +468,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 欧盟开放数据目录（24 语言元数据）
 - name: europeana
   tier: T1
@@ -410,6 +481,7 @@ engines:
   cost: free
   status: disabled
   recommended: true
+  explicit_only: false
   desc: 欧洲 27 国文化遗产聚合（官方公开 demo key）
 - name: europepmc
   tier: T1
@@ -421,6 +493,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Europe PMC 生物医学文献（免认证，SS 429 后备）
 - name: eurostat
   tier: T1
@@ -431,6 +504,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 欧盟统计局宏观数据（EU 国家 GDP/人均GDP/失业率/人口，ec.europa.eu SDMX 免认证）
 - name: exa
   tier: T1
@@ -444,6 +518,7 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: Exa 语义搜索（embedding 匹配 + 内容摘要，1000次/月免费）
 - name: felo
   tier: T1
@@ -455,6 +530,7 @@ engines:
   cost: api
   status: disabled
   recommended: true
+  explicit_only: false
   desc: Felo AI 搜索 API
 - name: figshare
   tier: T1
@@ -467,6 +543,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 科研数据集检索（论文/数据/图表）
 - name: finviz
   tier: T1
@@ -478,7 +555,19 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Finviz 美股快照（HTML，免认证）
+- name: firecrawl
+  tier: T1
+  type: http
+  coverage:
+  - general
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: Firecrawl 云搜索（search+全文markdown，JS渲染/学术/PDF垂直，keyless 免费层 1000 credits/月）
 - name: fr_opendata
   tier: T1
   type: http
@@ -489,6 +578,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 法国政府开放数据目录（data.gouv.fr）
 - name: fred
   tier: T1
@@ -500,6 +590,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: FRED 宏观时序数据（CPI/失业率/国债收益率/GDP/M2，免认证）
 - name: free_dictionary
   tier: T1
@@ -512,6 +603,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: dictionaryapi.dev 英英词典（免认证，响应为数组）
 - name: fx_rate
   tier: T1
@@ -522,7 +614,20 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 实时汇率（open.er-api.com 免认证）
+- name: fxtwitter
+  tier: T1
+  type: http
+  coverage:
+  - social
+  - english
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: FxTwitter 公开 API：X/Twitter 推文搜索（零认证，含互动元数据）
 - name: gbif
   tier: T1
   type: gbif
@@ -533,6 +638,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 全球生物多样性物种检索（学名/俗名，api.gbif.org 免认证）
 - name: gdelt
   tier: T1
@@ -545,6 +651,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: GDELT 全球新闻事件数据库（事件/舆情/地理维度，免认证）
 - name: github
   tier: T1
@@ -555,6 +662,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: GitHub 代码搜索 API
 - name: google_patents
   tier: T1
@@ -567,6 +675,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Google Patents 专利搜索（技术尽调/竞品分析，免认证）
 - name: google_scholar
   tier: T1
@@ -579,6 +688,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Google Scholar（学术论文搜索，HTTP 页面解析）
 - name: gov_policy
   tier: T1
@@ -591,6 +701,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 中国政府网政策文件库（国务院文件，带发布日期）
 - name: gutenberg
   tier: T1
@@ -602,6 +713,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Project Gutenberg 公版书全文检索（gutendex.com 免认证）
 - name: hackernews
   tier: T1
@@ -615,6 +727,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Hacker News（Algolia API，科技新闻+讨论）
 - name: hal
   tier: T1
@@ -626,6 +739,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 法国全国科研机构开放仓储（Solr JSON）
 - name: hatena_bookmark
   tier: T1
@@ -639,6 +753,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 日本技术圈书签搜索（RDF RSS，带收藏日期）
 - name: huggingface
   tier: T1
@@ -652,6 +767,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Hugging Face 模型搜索（免认证）
 - name: imdb
   tier: T1
@@ -665,6 +781,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: IMDb suggestion API（电影/剧集/人物，免认证）
 - name: itotii
   tier: T1
@@ -678,6 +795,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: itotii 梗百科（中文流行语/网络梗溯源，WordPress REST，免认证）
 - name: itunes
   tier: T1
@@ -691,6 +809,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: iTunes Search API（中文 country=cn；专辑问 entity=album，免认证）
 - name: jin10
   tier: T1
@@ -702,6 +821,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 金十数据财经快讯（免认证）
 - name: juejin
   tier: T1
@@ -714,7 +834,19 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 掘金技术文章搜索（免认证）
+- name: keenable
+  tier: T1
+  type: http
+  coverage:
+  - general
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: Keenable 通用网页搜索（ranked results，含 published_at，按 credits 计费）
 - name: know_your_meme
   tier: T1
   type: html
@@ -726,6 +858,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Know Your Meme（英文 meme 词条溯源，HTML 解析）
 - name: kor_law
   tier: T1
@@ -738,6 +871,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 韩国国家法令信息中心判例全文检索（官方公开 demo 账号，韩文 XML）
 - name: lieu
   tier: T1
@@ -751,6 +885,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: webring 专用搜索（只索引加入 webring 的小众站点，HTML 解析）
 - name: local_arxiv
   tier: T2
@@ -761,6 +896,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: arXiv本地（http）
 - name: local_baidu
   tier: T2
@@ -771,6 +907,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 百度本地（html）
 - name: local_bing
   tier: T2
@@ -781,6 +918,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Bing本地（html）
 - name: local_bing_news
   tier: T2
@@ -791,6 +929,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Bing News本地（http）
 - name: local_crossref
   tier: T2
@@ -801,6 +940,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Crossref本地（http）
 - name: local_duckduckgo
   tier: T2
@@ -811,6 +951,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: DuckDuckGo本地（html）
 - name: local_github
   tier: T2
@@ -821,6 +962,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: GitHub本地（http）
 - name: local_gitlab
   tier: T2
@@ -831,6 +973,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: GitLab本地（http）
 - name: local_goodreads
   tier: T2
@@ -841,6 +984,7 @@ engines:
   cost: free
   status: disabled
   recommended: true
+  explicit_only: false
   desc: Goodreads本地（html）
 - name: local_google
   tier: T2
@@ -851,6 +995,7 @@ engines:
   cost: free
   status: disabled
   recommended: true
+  explicit_only: false
   desc: Google本地（html）
 - name: local_google_news
   tier: T2
@@ -861,6 +1006,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Google News本地（http）
 - name: local_imdb
   tier: T2
@@ -873,6 +1019,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: IMDb suggestion API（local-search 垂直别名，与 imdb 同源）
 - name: local_mojeek
   tier: T2
@@ -883,6 +1030,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Mojeek本地（html）
 - name: local_npm
   tier: T2
@@ -893,6 +1041,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: NPM本地（http）
 - name: local_openstreetmap
   tier: T2
@@ -905,6 +1054,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Nominatim 地理编码/地点搜索（OSM，免认证，须带 User-Agent）
 - name: local_pubmed
   tier: T2
@@ -915,6 +1065,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: PubMed本地（http）
 - name: local_search
   tier: T2
@@ -925,6 +1076,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Local Search 聚合
 - name: local_semantic_scholar
   tier: T2
@@ -935,6 +1087,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Semantic Scholar本地（http）
 - name: local_sogou
   tier: T2
@@ -945,6 +1098,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 搜狗本地（html）
 - name: local_stackoverflow
   tier: T2
@@ -955,6 +1109,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: StackOverflow本地（http）
 - name: local_startpage
   tier: T2
@@ -965,6 +1120,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Startpage本地（html）
 - name: local_wikipedia
   tier: T2
@@ -975,6 +1131,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Wikipedia本地（http）
 - name: local_wikiquote
   tier: T2
@@ -985,6 +1142,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Wikiquote本地（http）
 - name: local_wiktionary
   tier: T2
@@ -995,6 +1153,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Wiktionary本地（http）
 - name: local_yandex
   tier: T2
@@ -1005,6 +1164,7 @@ engines:
   cost: free
   status: disabled
   recommended: true
+  explicit_only: false
   desc: Yandex本地（html）
 - name: marginalia
   tier: T1
@@ -1018,6 +1178,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Marginalia 独立爬虫索引（非大厂代理，专挖长尾非商业页面，JSON 免认证）
 - name: mdn
   tier: T1
@@ -1032,6 +1193,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: MDN Web Docs 搜索（en/官方 API，免认证）
 - name: metaso
   tier: T1
@@ -1043,6 +1205,7 @@ engines:
   cost: api
   status: disabled
   recommended: true
+  explicit_only: false
   desc: 秘塔搜索 API（中文 AI 搜索）
 - name: models_dev
   tier: T1
@@ -1055,6 +1218,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: models.dev AI 模型目录（全量缓存，免认证）
 - name: moegirl
   tier: T1
@@ -1068,6 +1232,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 萌娘百科（zh.moegirl.org.cn 搜索页 HTML 解析，免认证）
 - name: musicbrainz
   tier: T1
@@ -1080,6 +1245,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: MusicBrainz 音乐人/作品元数据（免认证，限速 1rps）
 - name: nasa_cmr
   tier: T1
@@ -1091,6 +1257,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: NASA CMR 地球科学数据目录（MODIS/遥感，cmr.earthdata.nasa.gov 免认证）
 - name: nbs_stats
   tier: T1
@@ -1102,6 +1269,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 国家统计局分省/全国宏观数据（GDP/CPI/PPI/人口，data.stats.gov.cn V2 免认证）
 - name: ndl
   tier: T1
@@ -1114,6 +1282,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 全日本出版物书目总汇（OpenSearch RSS）
 - name: npm
   tier: T1
@@ -1126,9 +1295,10 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: npm 包搜索（registry.npmjs.org，免认证）
 - name: nvd
-  tier: T2
+  tier: T1
   type: http
   coverage:
   - security
@@ -1137,8 +1307,8 @@ engines:
   cost: free
   status: ok
   recommended: false
-  desc: NVD 漏洞情报（CVE/CVSS/KEV，免认证 5 请求/30 秒）
-
+  explicit_only: false
+  desc: NVD 漏洞情报（CVE 编号/描述/CVSS 与 KEV 标记；免认证 5 请求/30 秒）
 - name: octen
   tier: T1
   type: octen
@@ -1150,6 +1320,7 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: Octen AI 高速搜索（需 OCTEN_API_KEY；支持 broad-search）
 - name: open_library
   tier: T1
@@ -1161,6 +1332,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Open Library 图书搜索（免认证）
 - name: open_meteo
   tier: T1
@@ -1173,6 +1345,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 全球天气（城市/地名 → 坐标 → 当前天气，免认证）
 - name: openalex
   tier: T1
@@ -1183,6 +1356,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: OpenAlex 2.5亿+论文索引（免认证，礼貌池 mailto）
 - name: opencorporates
   tier: T1
@@ -1195,6 +1369,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: OpenCorporates 全球公司注册（尽调/反欺诈，免认证）
 - name: openfda
   tier: T1
@@ -1206,9 +1381,10 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: openFDA 药品标签（免认证）
 - name: openreview
-  tier: T2
+  tier: T1
   type: http
   coverage:
   - academic
@@ -1216,8 +1392,8 @@ engines:
   cost: free
   status: ok
   recommended: false
-  desc: OpenReview 顶会论文（含评审可见性与 PDF，免认证）
-
+  explicit_only: false
+  desc: OpenReview 顶会论文（含评审可见性与 PDF，AI/ML 研究为主）
 - name: opensky
   tier: T1
   type: opensky
@@ -1229,6 +1405,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 全球 ADS-B 实时航班（主要都会区 bbox，免 key）
 - name: openverse
   tier: T1
@@ -1241,6 +1418,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Openverse 开放版权图库（免认证，CC 素材）
 - name: parallel
   tier: T1
@@ -1253,6 +1431,7 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: Parallel AI 批量搜索（excerpts 长文摘录，结果自带正文省 fetch）
 - name: polymarket
   tier: T1
@@ -1264,6 +1443,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Polymarket 预测市场搜索（叙事源，非事实真值）
 - name: pubchem
   tier: T1
@@ -1275,6 +1455,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 化学/药学化合物检索（分子式/分子量/IUPAC/SMILES，pubchem.ncbi.nlm.nih.gov 免认证）
 - name: pypi
   tier: T1
@@ -1287,6 +1468,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: PyPI 包查询（/pypi/{name}/json 精确解析，免认证）
 - name: qiita
   tier: T1
@@ -1299,6 +1481,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Qiita 日本最大技术社区（匿名 60 req/h）
 - name: qq_music
   tier: T1
@@ -1311,6 +1494,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: QQ 音乐曲库搜索（歌手/歌曲/专辑）
 - name: qweather
   tier: T1
@@ -1321,6 +1505,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 和风天气实时天气（需 QWEATHER_KEY）
 - name: rcsb_pdb
   tier: T1
@@ -1332,7 +1517,19 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: RCSB PDB 蛋白质结构检索（search.rcsb.org v2 免认证）
+- name: realtime_index
+  tier: T1
+  type: cli
+  coverage:
+  - general
+  latency_ms: 2000
+  cost: free
+  status: disabled
+  recommended: true
+  explicit_only: false
+  desc: 实时索引数据源（免 Key，结构化输出，带发布时间维度与时间窗过滤）
 - name: reddit
   tier: T1
   type: cli
@@ -1342,6 +1539,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Reddit
 - name: redskill
   tier: T1
@@ -1353,6 +1551,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 小红书 REDSkill 排行榜与全量技能检索（47650 技能，data.json 本地缓存，免认证）
 - name: rfc_editor
   tier: T1
@@ -1364,6 +1563,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: RFC/互联网标准文档检索（datatracker.ietf.org 免认证）
 - name: searchmysite
   tier: T1
@@ -1377,6 +1577,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 人工审核准入的个人独立站索引（非商业博客，HTML 解析）
 - name: searxng
   tier: T1
@@ -1387,7 +1588,22 @@ engines:
   cost: free
   status: disabled
   recommended: true
+  explicit_only: false
   desc: SearXNG 直连（已废弃，由 T3 替代）
+- name: sec_edgar
+  tier: T1
+  type: http
+  coverage:
+  - finance
+  - us_stock
+  - legal
+  - company
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: SEC EDGAR 美国证监会官方全文检索（公司/财报/申报，免认证）
 - name: seeking_alpha
   tier: T1
   type: seeking_alpha
@@ -1398,6 +1614,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Seeking Alpha 美股分析（HTML，反爬较强）
 - name: semantic_scholar
   tier: T1
@@ -1408,6 +1625,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Semantic Scholar API（备选）
 - name: sina_quote
   tier: T1
@@ -1419,6 +1637,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 新浪实时行情快照（现价/涨跌/成交量，免认证）
 - name: stackoverflow
   tier: T1
@@ -1432,6 +1651,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Stack Overflow（Stack Exchange API，编程问答）
 - name: steam
   tier: T1
@@ -1443,6 +1663,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Steam 商店搜索（免认证）
 - name: tatoeba
   tier: T1
@@ -1455,6 +1676,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 400+ 语言对真实句子语料（翻译/语言学习）
 - name: tavily
   tier: T1
@@ -1465,7 +1687,8 @@ engines:
   cost: api
   status: ok
   recommended: true
-  desc: Tavily AI 搜索 API
+  explicit_only: false
+  desc: Tavily AI 搜索 API（免费层 1000 次/月，按 credit 计费；与 exa 同为 api 档）
 - name: tencent_kline
   tier: T1
   type: tencent_kline
@@ -1478,6 +1701,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 腾讯财经前复权日 K 线（A股+港股+美股）
 - name: tencent_quote
   tier: T1
@@ -1488,6 +1712,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 腾讯实时行情（qt.gtimg.cn 免认证，含换手率/市盈率/五档）
 - name: thesportsdb
   tier: T1
@@ -1501,6 +1726,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: TheSportsDB 球员/球队/赛事（公开 test key，免认证）
 - name: ths_hot
   tier: T1
@@ -1514,6 +1740,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 同花顺热点（当日强势股+题材归因，独家能力）
 - name: tinyfish
   tier: T1
@@ -1527,6 +1754,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: true
   desc: TinyFish 实时网页搜索（免费，浏览器渲染，结果含原文摘要，X-API-Key 认证）
 - name: tinyfish_news
   tier: T1
@@ -1538,6 +1766,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: true
   desc: TinyFish 实时新闻搜索（免费，含 publisher 与发布日期）
 - name: tinyfish_paper
   tier: T1
@@ -1549,6 +1778,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: true
   desc: TinyFish 学术论文搜索（免费，含作者/发表处/年份/被引/pdf_url）
 - name: toutiao_hot
   tier: T1
@@ -1562,7 +1792,19 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 今日头条热榜（hot-board JSON，免认证）
+- name: train
+  tier: T1
+  type: cli
+  coverage:
+  - general
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: 火车余票查询（免 Key：12306 官方接口，车次时刻+余票）
 - name: twitter
   tier: T1
   type: cli
@@ -1572,9 +1814,10 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Twitter/X
 - name: twitter_syndication
-  tier: T2
+  tier: T1
   type: twitter_syndication
   coverage:
   - social
@@ -1582,7 +1825,8 @@ engines:
   cost: free
   status: ok
   recommended: false
-  desc: X 单条推文抽取（syndication 免登录通道；查询词为推文 URL 或裸 ID）
+  explicit_only: true
+  desc: X/Twitter 单条推文（syndication 通道，免登录零 key，含正文/作者/时间/媒体计数）
 - name: uapi
   tier: T1
   type: http
@@ -1592,9 +1836,10 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: UAPI 聚合搜索
 - name: un_comtrade
-  tier: T2
+  tier: T1
   type: un_comtrade
   coverage:
   - macro
@@ -1603,8 +1848,8 @@ engines:
   cost: free
   status: ok
   recommended: false
-  desc: UN Comtrade 双边贸易（国家+HS 码查询，preview 免 key）
-
+  explicit_only: false
+  desc: UN Comtrade 双边贸易（国家+HS 码+年份+流向；preview 免 key）
 - name: uniprot
   tier: T1
   type: uniprot
@@ -1616,6 +1861,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: UniProt 蛋白质/基因组检索（rest.uniprot.org 免认证）
 - name: urban_dictionary
   tier: T1
@@ -1628,6 +1874,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Urban Dictionary（英文俚语定义与例句，官方 API）
 - name: usda
   tier: T1
@@ -1640,6 +1887,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 美国农业部食品营养成分（官方 DEMO_KEY）
 - name: usgs
   tier: T1
@@ -1651,6 +1899,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: USGS 地震目录（最近 30 天 M2.5+，earthquake.usgs.gov 免认证）
 - name: v2ex
   tier: T1
@@ -1664,7 +1913,8 @@ engines:
   cost: free
   status: ok
   recommended: true
-  desc: V2EX（中文技术社区搜索）
+  explicit_only: false
+  desc: V2EX（中文技术社区，官方 API 候选池 + 本地相关性过滤）
 - name: wayback_cdx
   tier: T1
   type: wayback_cdx
@@ -1675,7 +1925,21 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Wayback Machine CDX 历史快照检索（web.archive.org 免认证）
+- name: weather
+  tier: T1
+  type: cli
+  coverage:
+  - weather
+  - forecast
+  - geo
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 天气查询（免 Key：wttr.in 主用 + Open-Meteo 兜底，当前+未来预报）
 - name: wechat_sogou
   tier: T1
   type: wechat_sogou
@@ -1687,6 +1951,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 搜狗微信搜索引擎（公众号文章，免登录）
 - name: weibo
   tier: T1
@@ -1697,6 +1962,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 微博
 - name: wenshu
   tier: T1
@@ -1707,6 +1973,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 中国裁判文书网（反爬较强，尽力而为）
 - name: weread
   tier: T1
@@ -1717,6 +1984,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 微信读书图书搜索（中文书目/评分/在读，需 WEREAD_API_KEY）
 - name: wiby
   tier: T1
@@ -1730,6 +1998,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Wiby 老式手工网页索引（专收非商业化页面，JSON 免认证）
 - name: wikidata
   tier: T1
@@ -1742,6 +2011,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Wikidata 实体搜索（wbsearchentities，免认证，限流较严）
 - name: wikipedia
   tier: T1
@@ -1753,6 +2023,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: Wikipedia API（T2 替代）
 - name: wolframalpha
   tier: T1
@@ -1764,6 +2035,7 @@ engines:
   cost: free
   status: disabled
   recommended: true
+  explicit_only: false
   desc: WolframAlpha 计算知识引擎
 - name: worldbank
   tier: T1
@@ -1775,6 +2047,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 世界银行宏观指标（GDP/通胀/失业/人口，api.worldbank.org 免认证）
 - name: xiaohongshu
   tier: T1
@@ -1785,6 +2058,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 小红书
 - name: you
   tier: T1
@@ -1798,7 +2072,22 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: You.com 网页+新闻搜索（时效性强，官方一手源，web/news 合并）
+- name: zenodo
+  tier: T1
+  type: http
+  coverage:
+  - dataset
+  - academic
+  - opendata
+  - paper
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: Zenodo 科研数据集搜索（CERN 托管，免认证，DOI 可引用）
 - name: zh_wikipedia
   tier: T1
   type: http
@@ -1810,6 +2099,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 中文维基百科（MediaWiki API，与 en.wikipedia 同构）
 - name: zhihu
   tier: T1
@@ -1822,6 +2112,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 知乎搜索，中文观点/评测
 - name: zhihu_global
   tier: T1
@@ -1834,6 +2125,7 @@ engines:
   cost: api
   status: ok
   recommended: true
+  explicit_only: false
   desc: 知乎开放平台全网搜索（SearchDB=all 全网索引 + Filter host== 站点限定；需 ZHIHU_ACCESS_SECRET）
 - name: zhihu_hot
   tier: T1
@@ -1847,6 +2139,7 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 知乎开放平台热榜 hot_list（日配额约 100；需 ZHIHU_ACCESS_SECRET；原 zhihu skill 迁入）
 - name: zhihu_user
   tier: T1
@@ -1857,4 +2150,5 @@ engines:
   cost: free
   status: ok
   recommended: true
+  explicit_only: false
   desc: 知乎个人数据（本人创作内容/收藏/关注；Access Secret 直查本人无需 OAuth，user_data 池 10000/天）

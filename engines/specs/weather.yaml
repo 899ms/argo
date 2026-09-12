@@ -21,5 +21,7 @@ output_format: yaml
 timeout: 15
 canary_query: "Shanghai"
 desc: "天气查询（免 Key：wttr.in 主用 + Open-Meteo 兜底，当前+未来预报）"
+coverage: [weather, forecast, geo]
+recommended: false
 
 family: misc_vertical

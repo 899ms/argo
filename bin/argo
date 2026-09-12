@@ -36,39 +36,53 @@ def _pick_python() -> str:
     return sys.executable
 
 
-def _engine_count() -> int:
-    """从 config.yaml 动态读取启用的引擎数（唯一真源），避免手工同步。"""
+def _engine_count() -> int | None:
+    """收录的引擎数（config.yaml + engines/specs/*.yaml 合并口径，单一真源）。
+
+    只报「收录数」这个便宜且不随环境变的数：以前这里报的是「启用数」，
+    既与文档里的收录数对不上，配置不可读时还回退到一个写死的旧值（87），
+    用户看到的是个假数字。真读不出来就不显示数量，别编。
+    """
     try:
         sys.path.insert(0, SCRIPTS)
-        from config import get_engines
-        return len(get_engines())
+        from config import load_config
+        engines = load_config().get("engines") or {}
+        return len([k for k, v in engines.items() if isinstance(v, dict)]) or None
     except Exception:
-        return 87  # 兜底：配置不可读时退回近期规模
+        return None
 
 
 def _usage() -> str:
     n = _engine_count()
-    return f"""argo — {n}-engine unified search CLI
+    head = f"{n} 个源" if n else "多源"
+    # 花括号在 f-string 里是替换字段语法：字面量花括号必须写成 {{ }}，
+    # 漏写会抛 NameError（{status|inject|undo} 曾让 --help 直接崩溃）。
+    return f"""argo — 统一搜索与证据核验 CLI（收录 {head}）
 
 Usage:
-  argo search    "query"          统一搜索（{n}引擎，TF-IDF路由+RRF融合）
+  argo search    "query"          统一搜索（{head}，TF-IDF路由+RRF融合）
   argo research  "query"          深度研究（问题分解→多源采集→综合报告）
   argo evidence  "query"          可信度评估（自动搜索 → 评分，或 pipe 搜索结果）
   argo clarify   "query"          意图消歧（歧义检测+意图分类+路由建议）
+  argo fetch     "url"            抓取单页正文（四级降级：md 变体→HTTP→TLS 指纹→浏览器）
   argo crawl     "url"            站点爬取（sitemap/BFS，多页抓取）
   argo extract   "url"            结构化提取（表格/Meta/JSON-LD）
   argo article   "url"            微信公众号文章全文抓取（标题/正文/图片）
   argo job       "query"          招聘岗位多平台聚合（BOSS/猎聘/智联/前程无忧/597/今日招聘）
   argo preflight "url1 url2 ..."  批量 URL 预检（登录墙/已死/已归档分类，--probe 联网探测）
-  argo mcp       {status|inject|undo}   多客户端 MCP 一键注入/诊断/还原
+  argo mcp       {{status|inject|undo}}   多客户端 MCP 一键注入/诊断/还原
 
 Common flags: --json --mode {{fast|auto|deep|budget}} --max-results N --depth {{fast|balanced|deep}}
+
+本机此刻可用几个源：argo search --list-engines --routable-only
+逐源费用/密钥/状态：docs/ENGINE_CATALOG.md
 """
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
         print(_usage())
-        sys.exit(1)
+        # 帮助不是错误：--help/help 正常退出（0），无参数调用才是用法错误（1）
+        sys.exit(0 if len(sys.argv) >= 2 else 1)
 
     sub = sys.argv[1]
     rest = sys.argv[2:]
@@ -89,6 +103,9 @@ def main():
         "research":  ("research.py",   ["--json"]),
         "evidence":  ("evidence.py",   ["--stdin", "--json"]),
         "clarify":   ("clarify.py",    ["--json"]),
+        # fetch 对应 MCP 的 argo_fetch（正文抓取）：CLI 与 MCP 工具面保持一一对应，
+        # 少一个入口就意味着该能力只能靠 MCP（默认关）或 --engine 绕路才够得着。
+        "fetch":     ("fetch_v3.py",   []),
         "crawl":     ("crawl.py",      []),
         "extract":   ("extract.py",    []),
         "article":   ("article.py",    ["--json"]),

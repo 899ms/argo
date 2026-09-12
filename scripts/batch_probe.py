@@ -56,6 +56,24 @@ _KNOWN_LOGIN_WALLS = (
     "linux.do", "bbs.zhihu.com",
 )
 
+# 登录墙里的例外：单条推文有免登录通道（twitter_syndication 引擎走
+# cdn.syndication.twimg.com）。判 needs_auth 会把用户支去「补凭证」，
+# 而这条 URL 其实现在就能抓——同一批次里两个功能互相打架。
+_LOGIN_WALL_EXEMPT_HOSTS = ("x.com", "twitter.com")
+
+
+def _has_login_free_channel(host: str, url: str) -> bool:
+    """该 URL 是否走 argo 已有的免登录通道（目前仅单条推文）。"""
+    if not any(host == d or host.endswith("." + d)
+               for d in _LOGIN_WALL_EXEMPT_HOSTS):
+        return False
+    try:
+        from engines_builders_intl import extract_tweet_id
+    except ImportError:
+        return False
+    return extract_tweet_id(url) is not None
+
+
 _TIER_LIMITS = {"probe": 8}
 
 
@@ -71,6 +89,9 @@ def classify_url(url: str, known_urls: set[str] | None = None) -> str:
     if known_urls and u in known_urls:
         return ALREADY_HAVE
     if any(host == d or host.endswith("." + d) for d in _KNOWN_LOGIN_WALLS):
+        # 例外的判定要用原始 URL（推文 ID 在路径/查询串里，不是 host 的一部分）
+        if _has_login_free_channel(host, u):
+            return UNKNOWN
         return NEEDS_AUTH
     return UNKNOWN
 

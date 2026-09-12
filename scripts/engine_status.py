@@ -135,6 +135,9 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         "type": spec.get("type", "cli"),
         "cost_tier": _cost_tier_of(engine_id, tiers),
         "status": status,
+        # 设计上不进自动路由（需密钥的付费源 / 输入形态特殊），按 --engine 显式调用；
+        # 可达性门禁据此区分「有意显式」与「忘了接线」。
+        "explicit_only": bool(spec.get("explicit_only")),
         "env_ready": env_ok,
         "required_env": env["required_env"],
         "missing_env": env["missing_env"],

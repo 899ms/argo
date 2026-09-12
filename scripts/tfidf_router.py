@@ -115,7 +115,6 @@ _quota_state_cache: dict | None = None
 _quota_state_mtime: float = -1.0
 _cost_profiles_cache: dict | None = None
 _cost_profiles_mtime: float = -1.0
-_COST_TIER_FACTOR = {"free": 1.0, "low": 0.85, "paid": 0.6}
 
 
 def _load_quota_state() -> dict:
@@ -176,7 +175,12 @@ def _cost_factor(engine: str, profiles: dict | None = None) -> float:
     if not isinstance(profile, dict):
         return 1.0
     tier = profile.get("cost_tier", "free")
-    return _COST_TIER_FACTOR.get(tier, 1.0)
+    # 成本因子查 config 的单一真源（此前本模块自带一张表，与 config 的值不一致）
+    try:
+        from config import _COST_FACTOR_BY_TIER
+        return _COST_FACTOR_BY_TIER.get(tier, 1.0)
+    except Exception:
+        return 1.0
 
 
 # ── 主路由引擎 ─────────────────────────────────────────────────────────────────

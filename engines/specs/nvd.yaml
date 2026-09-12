@@ -14,6 +14,9 @@ timeout: 12
 query_param: keywordSearch
 canary_query: "log4j"
 desc: "NVD 漏洞情报（CVE 编号/描述/CVSS 与 KEV 标记；免认证 5 请求/30 秒）"
+coverage: [security, tech]
+recommended: false
+latency_ms: 2500
 
 headers:
   User-Agent: argo-search/1.0 (+nvd)

@@ -194,8 +194,18 @@ class TestFreshness(unittest.TestCase):
             self.assertEqual(_bocha_freshness(q), "noLimit", q)
 
 
-class TestBochaHttp403Safe(unittest.TestCase):
-    """403 / 网络错误应由 safe_search 吞掉，返回空列表（不抛、不污染）。"""
+class TestBochaHttpErrorVisible(unittest.TestCase):
+    """403 / 网络错误：不抛异常，但要留下可归因的 error 记录。
+
+    原策略是「吞成空列表」（本类旧名 TestBochaHttp403Safe）。实测暴露了它的
+    代价：博查 AI Search 端点对本机 key 返回
+    403 {"message":"You do not have enough money or package quota"}
+    （套餐额度不足，非鉴权问题），空列表让这条与「这个词真没结果」毫无区别——
+    引擎长期显示 ready、结构化模态卡静默降级成普通网页结果、归因寄存器记成
+    insufficient-signal。现在返回一条带状态码与上游错误体的 error 记录：
+    不抛（原意保留）、不进结果集（不污染，error 记录无 url/title），
+    由 search.py 的 _classify_engine_outcome 判成 quota-exhausted 并停用该源。
+    """
 
     def setUp(self):
         self._saved_keys = {
@@ -220,8 +230,12 @@ class TestBochaHttp403Safe(unittest.TestCase):
 
         eng = _build_bocha_engine({"timeout": 3})
         with patch("urllib.request.urlopen", _boom):
-            results = eng("今日金价", 3)
-        self.assertEqual(results, [])
+            results = eng("今日金价", 3)   # 不抛异常
+        self.assertEqual(len(results), 1)
+        self.assertIn("403", results[0]["error"])
+        # 不污染结果集：错误记录不带 url/title，融合与去重只看 goods
+        self.assertNotIn("url", results[0])
+        self.assertNotIn("title", results[0])
 
     def test_ai_403_returns_empty(self):
         import urllib.error
@@ -234,7 +248,19 @@ class TestBochaHttp403Safe(unittest.TestCase):
         eng = _build_bocha_ai_engine({"timeout": 3})
         with patch("urllib.request.urlopen", _boom):
             results = eng("今日金价", 3)
-        self.assertEqual(results, [])
+        self.assertEqual(len(results), 1)
+        self.assertIn("403", results[0]["error"])
+
+    def test_quota_message_is_classified_not_auth(self):
+        """套餐额度不足 → quota-exhausted（不是 auth：重登录改不了套餐）。"""
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from search import _classify_engine_outcome
+        rec = [{"error": 'HTTP 403: {"message":"You do not have enough money '
+                         'or package quota"}', "source": "bocha_ai"}]
+        out = _classify_engine_outcome("bocha_ai", rec, 100)
+        self.assertEqual(out["status"], "quota-exhausted")
+        self.assertIn("quota", out.get("detail", ""))
 
 
 class TestModalCardRouting(unittest.TestCase):

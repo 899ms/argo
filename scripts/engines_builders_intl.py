@@ -960,34 +960,24 @@ def extract_tweet_id(text: str) -> str | None:
     return None
 
 
-def syndication_token(tweet_id: str) -> str:
-    """syndication 展示 token：由推文 ID 本地推导，无需任何凭证。
+# syndication 端点要求 token 参数存在，但值不参与校验。
+# 实测 2026-09-12（推文 1585841080431321088）：token=a、token=0、
+# token=aaaaaaaaaaaa 三者都返回完整推文，省略 token 参数则返回空响应体。
+# 因此这里用固定值——按 id 推导 base36 没有意义：那段手写浮点实现既与服务端
+# 口径无关（服务端不校验），也与它自己声称的公式不一致（固定 12 位小数 vs
+# 最短往返表示；只去首尾 0 vs 去所有 0），测试还把它锁成了金标。
+# 若将来服务端真的开始校验，再按公开公式
+#   ((id / 1e15) * π).toString(36) 去掉所有 '0' 与 '.'
+# 重做推导，并在此处补真实向量测试。
+_SYNDICATION_TOKEN = "argo"
 
-    推导式：id 除以 1e15 后乘圆周率，转 36 进制（小数部分保留 12 位），
-    去掉小数点与首尾的 '0'。ID 与结果都是 IEEE 754 双精度浮点运算，
-    与服务端校验口径一致。token 是给嵌入页展示用的公开校验值，
-    不是鉴权密钥——这是 syndication 通道免登录的根本原因。
+
+def syndication_token(tweet_id: str) -> str:
+    """syndication 展示参数（服务端不校验值，见上方常量注释）。
+
+    保留函数签名：调用方与测试按「请求必须带非空 token」这一契约依赖它。
     """
-    import math
-    raw = (float(tweet_id) / 1e15) * math.pi
-    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-    int_part = int(raw)
-    frac = raw - int_part
-    out = "0" if int_part == 0 else ""
-    n = int_part
-    while n > 0:
-        out = digits[n % 36] + out
-        n //= 36
-    if frac > 0:
-        out += "."
-        for _ in range(12):
-            frac *= 36
-            d = int(frac)
-            out += digits[d]
-            frac -= d
-            if frac <= 0:
-                break
-    return out.replace(".", "").strip("0")
+    return _SYNDICATION_TOKEN
 
 
 def _build_twitter_syndication_engine(spec: dict[str, Any]) -> Any:

@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-sync_backends.py — 注册表派生与一致性校验（单一真源：config.yaml）
+sync_backends.py — 注册表派生与一致性校验（单一真源：运行时合并后的引擎声明）
 
-设计目标：新增引擎只改 config.yaml 一处，其余注册表自动派生，消灭 9 处手工同步。
+设计目标：新增引擎只改一处声明，其余注册表自动派生，消灭手工同步。
+
+真源口径（与运行时一致）：`config.load_config()` 合并后的 engines 段，即
+  config.yaml engines + engines/*.yaml + engines/specs/*.yaml
+只读 config.yaml 是不够的——外置 spec 声明的引擎运行时可见、可路由，
+若派生时看不见，派生件就会与运行时事实脱钩（batch7 收录的 7 个引擎
+曾因此只出现在人工维护的 registry 里，而 quota/domain 两份漏侧）。
 
 派生关系：
-  config.yaml engines 段（唯一真源）
+  运行时合并后的 engines 段（唯一真源）
     ├── backends/quota_profiles.json    配额/成本/限频（由引擎声明的元数据派生）
     ├── backends/engine_registry.yaml   引擎注册表文档（由引擎声明派生）
     └── backends/domain_profiles.json   TF-IDF 领域文档（校验引擎名集合，缺失补空模板）
@@ -16,6 +22,10 @@ sync_backends.py — 注册表派生与一致性校验（单一真源：config.y
   python3 scripts/sync_backends.py --list      # 输出引擎清单与统计
 
 退出码：0=一致，1=校验发现不一致（--check 模式）。
+
+--check 读的是磁盘上的三份派生件，与重新派生的结果逐项比对。比对对象必须是
+「磁盘现状」而不是「本次派生结果」——后者等于拿结果和自己比，永远一致，
+校验形同虚设（本文件 2026-09-12 前的实际状态）。
 """
 
 from __future__ import annotations
@@ -60,7 +70,21 @@ def _load_yaml(path: Path) -> dict:
 
 
 def load_engines() -> dict[str, dict[str, Any]]:
-    """从 config.yaml 读取全部引擎声明（含禁用）。"""
+    """读取运行时合并后的全部引擎声明（含禁用）。
+
+    与运行时同一入口（config.load_config 合并 config.yaml + engines/*.yaml +
+    engines/specs/*.yaml）；config 模块不可用时（缺依赖/语法错）退回只读
+    config.yaml，并在 stderr 明示——静默退回会让派生件少一批引擎却不报错。
+    """
+    try:
+        from config import load_config
+        merged = load_config().get("engines", {})
+        if merged:
+            return {n: s for n, s in merged.items() if isinstance(s, dict)}
+    except Exception as e:  # noqa: BLE001 — 退回单源并留痕，不吞错误
+        print(f"⚠️  config 模块不可用（{type(e).__name__}: {e}），"
+              f"退回只读 config.yaml——派生件将不含外置 spec 引擎",
+              file=sys.stderr)
     cfg = _load_yaml(CONFIG_PATH)
     engines = cfg.get("engines", {})
     return {name: spec for name, spec in engines.items() if isinstance(spec, dict)}
@@ -79,7 +103,7 @@ def engine_meta(spec: dict[str, Any], name: str) -> dict[str, Any]:
 
 def derive_quota_profiles(engines: dict[str, dict[str, Any]]) -> dict[str, Any]:
     profiles: dict[str, Any] = {
-        "_description": "各引擎的配额/成本/限频配置。由 scripts/sync_backends.py 从 config.yaml 派生，勿手工修改。",
+        "_description": "各引擎的配额/成本/限频配置。由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。",
     }
     for name, spec in sorted(engines.items()):
         meta = engine_meta(spec, name)
@@ -107,6 +131,11 @@ def derive_registry(engines: dict[str, dict[str, Any]]) -> dict[str, Any]:
         cost_tier = spec.get("cost_tier", "free")
         # tier 口径：T1 直连 API / T2 local-search 本地引擎
         tier = "T2" if name.startswith("local_") else "T1"
+        # desc 优先级：声明自述 → label 兜底。spec 侧 desc 是权威自述（外置 spec
+        # 只声明 engine_id/desc，没有 label），此前只认 label 导致 14 个引擎
+        # 的 desc 派生为空——外置声明的引擎在注册表里集体失语。
+        label = spec.get("label")
+        desc = spec.get("desc") or (f"{label}（{etype}）".replace("（cli）", "") if label else "")
         entries.append({
             "name": name,
             "tier": tier,
@@ -116,10 +145,13 @@ def derive_registry(engines: dict[str, dict[str, Any]]) -> dict[str, Any]:
             "cost": spec.get("cost", _COST_TIER_TO_REGISTRY_COST.get(cost_tier, "free")),
             "status": "ok" if enabled else "disabled",
             "recommended": spec.get("recommended", True),
-            "desc": spec.get("desc", f"{label}（{etype}）".replace("（cli）", "")) if (label := spec.get("label")) else "",
+            # explicit_only：设计上不进自动路由（需密钥的源 / 输入形态特殊），
+            # 按 --engine 显式调用；可达性门禁据此区分「有意显式」与「忘了接线」
+            "explicit_only": bool(spec.get("explicit_only")),
+            "desc": desc,
         })
     return {
-        "_generated": "由 scripts/sync_backends.py 从 config.yaml 派生，勿手工修改。",
+        "_generated": "由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。",
         "version": 2,
         "last_updated": __import__("datetime").date.today().isoformat(),
         "engines": entries,
@@ -165,11 +197,17 @@ def patch_domain_profiles(engines: dict[str, dict[str, Any]], profiles: dict[str
 def collect_issues(engines: dict[str, dict[str, Any]],
                    quota: dict[str, Any], registry: dict[str, Any],
                    domain: dict[str, Any]) -> list[str]:
-    """汇总所有一致性检查问题。"""
+    """汇总所有一致性检查问题（引擎名 + 字段值双层）。
+
+    只比引擎名是不够的：名字都在、值被手改（firecrawl.qps 1→99）同样会让
+    派生件与真源脱钩，而限流/配额恰恰是靠这些值生效的。第一版校验只比名字，
+    变异测试（把 qps 改成 99）直接漏报。
+    """
     issues = []
     config_names = set(engines.keys())
     quota_names = set(k for k in quota if not k.startswith("_"))
-    reg_names = {e["name"] for e in registry.get("engines", [])}
+    reg_entries = {e["name"]: e for e in registry.get("engines", [])}
+    reg_names = set(reg_entries)
 
     if missing := sorted(config_names - quota_names):
         issues.append(f"quota_profiles 缺失引擎: {missing}")
@@ -180,13 +218,30 @@ def collect_issues(engines: dict[str, dict[str, Any]],
     if stale := sorted(reg_names - config_names):
         issues.append(f"engine_registry 含 config 已不存在的引擎: {stale}")
 
-    # quota 字段一致性（cost_tier 与 config 引擎声明对齐）
-    for name in sorted(config_names):
-        spec = engines[name]
-        declared = spec.get("cost_tier", "free")
-        current = quota.get(name, {}).get("cost_tier", "free")
-        if declared != current:
-            issues.append(f"引擎 {name} cost_tier 不一致: config={declared} vs quota={current}")
+    # quota 值级一致性：声明的运营元数据必须逐字段落到派生件上
+    expected_quota = derive_quota_profiles(engines)
+    for name in sorted(config_names & quota_names):
+        exp = expected_quota.get(name, {})
+        cur = quota.get(name, {})
+        if not isinstance(cur, dict):
+            issues.append(f"quota_profiles {name} 不是对象: {type(cur).__name__}")
+            continue
+        for key, want in exp.items():
+            if cur.get(key) != want:
+                issues.append(
+                    f"quota_profiles {name}.{key} 不一致: 真源={want!r} 派生件={cur.get(key)!r}")
+
+    # registry 值级一致性（跳过生成时间戳：它不是声明派生的）
+    expected_reg = {e["name"]: e for e in derive_registry(engines)["engines"]}
+    for name in sorted(config_names & reg_names):
+        exp = expected_reg.get(name, {})
+        cur = reg_entries.get(name, {})
+        for key in ("tier", "type", "coverage", "latency_ms", "cost",
+                    "status", "recommended", "explicit_only", "desc"):
+            if exp.get(key) != cur.get(key):
+                issues.append(
+                    f"engine_registry {name}.{key} 不一致: 真源={exp.get(key)!r} "
+                    f"派生件={cur.get(key)!r}")
 
     issues.extend(check_domain_profiles(engines, domain))
     return issues
@@ -211,42 +266,32 @@ def write_domain(domain: dict[str, Any]) -> None:
 
 def main() -> int:
     import argparse
-    parser = argparse.ArgumentParser(description="注册表派生与一致性校验（真源：config.yaml）")
+    parser = argparse.ArgumentParser(
+        description="注册表派生与一致性校验（真源：运行时合并后的引擎声明）")
     parser.add_argument("--check", action="store_true", help="只校验不写，不一致退出码 1")
     parser.add_argument("--list", action="store_true", help="输出引擎清单与统计")
     args = parser.parse_args()
 
     engines = load_engines()
     if args.list:
-        enabled = [n for n, s in engines.items() if s.get("enabled", True)]
         tiers: dict[str, list[str]] = {}
         for n, s in engines.items():
             tiers.setdefault(s.get("cost_tier", "free"), []).append(n)
-        # D7：对账四数字——config 原始 / 合并外部 specs / env 就绪启用 / 禁用。
-        # 此前 136/124/126 口径反复数错，统一在此收敛：registry_merged 与
-        # enabled_ready 的差即 disabled（enabled:false + env gating 禁用的），
-        # 三方（config / specs / env）对账一次给出，杜绝再次数错。
-        registry_merged = dict(engines)
-        ready_names = set(enabled)
+        # 口径收敛（D7）：默认数字只有一个——「声明合并后的引擎数」。
+        # enabled 与 disabled 由同一入口的 env 就绪判定派生，不再各自成数。
+        declared = len(engines)
         try:
-            from config import load_config, get_engines
-            merged_cfg = load_config()
-            registry_merged = {
-                k: v for k, v in merged_cfg.get("engines", {}).items()
-                if isinstance(v, dict)
-            }
-            ready = get_engines(merged_cfg) or {}
-            ready_names = set(ready.keys())
+            from config import get_engines
+            ready_names = set(get_engines() or {})
         except Exception:
-            pass  # config 模块不可用时回退到 config.yaml 单源口径
+            ready_names = {n for n, s in engines.items() if s.get("enabled", True)}
+        enabled_declared = {n for n, s in engines.items() if s.get("enabled", True)}
         print(json.dumps({
-            "config_raw": len(engines),
-            "registry_merged": len(registry_merged),
-            "enabled_ready": len(ready_names),
-            "disabled": len(registry_merged) - len(ready_names),
-            # 兼容旧字段
-            "total": len(registry_merged),
+            # 默认口径：运行时可见的引擎声明总数
+            "total": declared,
             "enabled": len(ready_names),
+            "disabled": declared - len(ready_names),
+            "enabled_declared": len(enabled_declared),
             "by_cost_tier": {k: len(v) for k, v in tiers.items()},
             "engines": sorted(engines),
         }, ensure_ascii=False, indent=2))
@@ -264,20 +309,29 @@ def main() -> int:
             domain_cur = json.loads(DOMAIN_PROFILES_PATH.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             pass
+    # registry 现状也要读：校验必须拿「磁盘上的派生件」比对，而不是拿本次
+    # 派生结果比对——后者是拿结果跟自己比，恒等，校验永远绿。
+    registry_cur: dict[str, Any] = {}
+    if REGISTRY_PATH.exists():
+        registry_cur = _load_yaml(REGISTRY_PATH)
 
     quota_new = derive_quota_profiles(engines)
     registry_new = derive_registry(engines)
     domain_new = patch_domain_profiles(engines, domain_cur)
 
-    issues = collect_issues(engines, quota_new, registry_new, domain_new)
+    # 校验对象是「磁盘现状 vs 真源」，与本次派生了什么无关——派生结果在这里
+    # 只用于写入，不用于自证。
+    issues = collect_issues(engines, quota_cur, registry_cur, domain_cur)
 
     if args.check:
         if issues:
             print("❌ 一致性校验失败：", file=sys.stderr)
             for issue in issues:
                 print(f"  - {issue}", file=sys.stderr)
+            print("  修复：python3 scripts/sync_backends.py", file=sys.stderr)
             return 1
-        print(f"✅ 一致性校验通过：{len(engines)} 个引擎，注册表与 config.yaml 完全一致。")
+        print(f"✅ 一致性校验通过：{len(engines)} 个引擎，"
+              f"三份派生件与运行时声明一致。")
         return 0
 
     write_quota(quota_new)
@@ -287,8 +341,10 @@ def main() -> int:
     print(f"  quota_profiles.json   {len(quota_new) - 1} 条")
     print(f"  engine_registry.yaml  {len(registry_new['engines'])} 条")
     print(f"  domain_profiles.json  {len([k for k in domain_new if not k.startswith('_')])} 条（缺失已补空模板）")
-    for issue in issues:
-        print(f"  ⚠️  {issue}", file=sys.stderr)
+    if issues:
+        print(f"  已修复 {len(issues)} 处此前与真源不一致的项：", file=sys.stderr)
+        for issue in issues:
+            print(f"  ⚠️  {issue}", file=sys.stderr)
     return 0
 
 
