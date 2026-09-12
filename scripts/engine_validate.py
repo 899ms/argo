@@ -223,10 +223,27 @@ def run_quality(engine_id: str, *, queries: list[dict[str, str]] | None = None,
 
     if queries is not None:
         base_qs = queries
-    elif profile == "cn":
-        base_qs = QUALITY_QUERIES_CN
     else:
-        base_qs = QUALITY_QUERIES
+        # 引擎自述的适用查询集优先：候选池型引擎（如 v2ex 只能取官方 API 的
+        # 热帖/最新帖再本地过滤）对通用技术查询天然空结果，用通用集评估会把
+        # 「检索模式不匹配」误判成「引擎质量差」。让引擎声明自己的适用集，
+        # 比放宽阈值诚实——标准不降，只是问对问题。
+        declared = spec.get("quality_queries")
+        declared_qs: list[dict[str, str]] = []
+        if isinstance(declared, list):
+            declared_qs = [
+                {"id": q.get("id") or f"declared_{i}",
+                 "query": q["query"],
+                 "category": q.get("category") or "declared"}
+                for i, q in enumerate(declared)
+                if isinstance(q, dict) and q.get("query")
+            ]
+        if declared_qs:
+            base_qs = declared_qs
+        elif profile == "cn":
+            base_qs = QUALITY_QUERIES_CN
+        else:
+            base_qs = QUALITY_QUERIES
     qs = base_qs[:max_queries]
     runs: list[dict[str, Any]] = []
     for item in qs:

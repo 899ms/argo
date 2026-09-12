@@ -29,9 +29,11 @@ import re
 import socket
 import ssl
 import subprocess
+import threading
 import time
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from typing import Any
 
 try:
@@ -126,6 +128,181 @@ def retry_after_seconds(status: int, headers: dict | None,
     return max(0.0, wait)
 
 
+# ─── 主机域族节流（并发桶 + 最小间隔）──────────────────────────────────────
+#
+# 背景：fan-out 并行查询时，同一引擎可能被多个工作线程同时命中，聚合起来
+# 对源站形成密集连击，换来 429 与封锁。配额表管的是「一天能用多少次」，
+# 管不了「这一秒打了多少次」——这里补上后者。
+#
+# 两条原则：
+#   1. 同一家源站的多个域名（主站 / API 域 / CDN 域）共享同一个桶。站点
+#      感受到的压力来自「这一家」，不是一个个孤立域名；按域名分桶会让
+#      主站限流而 CDN 域继续冲锋，压力算总账时必然超。
+#   2. 并发桶与最小间隔缺一不可：只有并发上限、间隔为 0，请求会在瞬间
+#      齐发；只有间隔、没有并发上限，前序请求变慢时在途请求照样堆积。
+#
+# 只对声明的域族生效，未声明的域名不受影响——免费 API 有明确配额契约，
+# 不需要进程内节流；节流是给「按网页语义访问、对突发敏感」的源用的。
+
+# (组名, 域名后缀元组)，按声明顺序匹配，host 以任一后缀结尾即归入该组
+_HOST_GROUP_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("zhihu", ("zhihu.com",)),
+    ("weibo", ("weibo.com", "weibo.cn", "sinaimg.cn", "sina.com.cn")),
+    ("xhs", ("xiaohongshu.com", "xhscdn.com")),
+    ("bilibili", ("bilibili.com", "bilivideo.com", "hdslb.com", "b23.tv")),
+    ("x", ("x.com", "twitter.com", "twimg.com", "t.co")),
+    ("douyin", ("douyin.com", "iesdouyin.com", "douyinpic.com", "douyinvod.com")),
+    ("baidu", ("baidu.com", "bdstatic.com", "bcebos.com")),
+    ("byted", ("bytedance.com", "toutiao.com", "ibyteimg.com")),
+    ("sogou", ("sogou.com",)),
+    ("bing", ("bing.com",)),
+    ("google", ("google.com", "gstatic.com")),
+    ("duckduckgo", ("duckduckgo.com",)),
+    ("yandex", ("yandex.com", "yandex.ru")),
+    ("startpage", ("startpage.com",)),
+    ("mojeek", ("mojeek.com",)),
+    ("juejin", ("juejin.cn", "juejin.im")),
+    ("v2ex", ("v2ex.com",)),
+    ("linuxdo", ("linux.do",)),
+)
+
+# 每组默认节流参数：并发桶 / 相邻请求最小间隔。
+# 经验起点：中文社交与内容平台风控最紧（2 并发 / 1s+）；搜索引擎页
+# 次之（2 并发 / 800ms）；其余声明组放宽（3 并发 / 500ms）。
+_HOST_GROUP_DEFAULTS: dict[str, tuple[int, int]] = {
+    "zhihu": (2, 1200),
+    "weibo": (2, 1200),
+    "xhs": (2, 1500),
+    "bilibili": (2, 1000),
+    "x": (2, 1500),
+    "douyin": (2, 1500),
+    "baidu": (3, 800),
+    "byted": (3, 800),
+    "sogou": (2, 1000),
+    "bing": (2, 800),
+    "google": (2, 1000),
+    "duckduckgo": (2, 1000),
+    "yandex": (2, 1000),
+    "startpage": (2, 1000),
+    "mojeek": (2, 800),
+    "juejin": (3, 500),
+    "v2ex": (3, 500),
+    "linuxdo": (3, 500),
+}
+
+_SPEC_OVERRIDE_CACHE: dict[str, tuple[int, int] | None] = {}
+_SPEC_OVERRIDE_LOCK = threading.Lock()
+
+
+def host_group_for(url: str) -> str | None:
+    """URL 属于哪个域族节流组；不在任何声明组返回 None（不限流）。"""
+    try:
+        host = (urllib.parse.urlparse(url).hostname or "").lower()
+    except ValueError:
+        return None
+    if not host:
+        return None
+    for group, suffixes in _HOST_GROUP_RULES:
+        for suffix in suffixes:
+            if host == suffix or host.endswith("." + suffix):
+                return group
+    return None
+
+
+def register_spec_limit(engine: str, max_concurrency: Any, min_interval_ms: Any) -> None:
+    """引擎 spec 显式声明覆盖（max_concurrency / min_interval_ms）。
+
+    spec 值优先于域族默认；传非法值等于显式声明「不限流」（None），
+    而非回落到域族默认——声明即契约。
+    """
+    def _norm(v: Any, default: int) -> int | None:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return None
+        return n if n > 0 else None
+    conc = _norm(max_concurrency, 0) if max_concurrency is not None else None
+    interval = _norm(min_interval_ms, 0) if min_interval_ms is not None else None
+    with _SPEC_OVERRIDE_LOCK:
+        _SPEC_OVERRIDE_CACHE[engine] = (
+            (conc, interval) if conc or interval else None
+        )
+
+
+def _limits_for(url: str, engine: str | None) -> tuple[int, int] | None:
+    """解析该请求应使用的 (并发上限, 最小间隔 ms)；None = 不限流。"""
+    if engine:
+        with _SPEC_OVERRIDE_LOCK:
+            override = _SPEC_OVERRIDE_CACHE.get(engine)
+        if override:
+            return override
+        if override is None and engine in _SPEC_OVERRIDE_CACHE:
+            return None  # 显式注册过且声明不限流
+    group = host_group_for(url)
+    if group is None:
+        return None
+    return _HOST_GROUP_DEFAULTS.get(group, (2, 800))
+
+
+class _HostBucket:
+    """单个域族的节流桶：信号量（并发）+ 时间戳（最小间隔）。"""
+
+    def __init__(self, max_concurrency: int, min_interval_ms: int):
+        self._sem = threading.BoundedSemaphore(max_concurrency)
+        self._interval = max(0.0, min_interval_ms / 1000.0)
+        self._lock = threading.Lock()
+        self._last_dispatch = 0.0
+
+    def _wait_slot(self) -> None:
+        if self._interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            wait = self._interval - (now - self._last_dispatch)
+            # 占位即推进：后续请求按「本次发起时间」排间距，避免多线程
+            # 同时算出同一个 wait 后齐步走
+            self._last_dispatch = now + max(0.0, wait)
+        if wait > 0:
+            time.sleep(wait)
+
+    @contextmanager
+    def lease(self):
+        """进入即拿并发名额并按最小间隔排期，退出释放。"""
+        self._sem.acquire()
+        try:
+            self._wait_slot()
+            yield
+        finally:
+            self._sem.release()
+
+
+_BUCKETS: dict[str, _HostBucket] = {}
+_BUCKETS_LOCK = threading.Lock()
+
+
+@contextmanager
+def host_throttle(url: str, engine: str | None = None):
+    """按 URL 的域族节流。无组 / 显式不限流 → 直接放行。
+
+    桶键 = (组名, 并发上限, 间隔)：同组同参的引擎共享一个桶；个别引擎
+    用 spec 覆盖了更紧的参数时自成桶，与组内其余引擎互不干扰。
+    """
+    limits = _limits_for(url, engine)
+    if not limits:
+        yield None
+        return
+    max_conc, interval = limits
+    group = host_group_for(url)
+    bucket_key = f"{group}|{max_conc}|{interval}"
+    with _BUCKETS_LOCK:
+        bucket = _BUCKETS.get(bucket_key)
+        if bucket is None:
+            bucket = _HostBucket(max_conc, interval)
+            _BUCKETS[bucket_key] = bucket
+    with bucket.lease():
+        yield group
+
+
 # ─── Cookie 管理 ─────────────────────────────────────────────────────────────
 
 class _CookieManager:
@@ -217,11 +394,13 @@ class HttpClient:
         self._last_request_time = 0.0
 
     def get(self, url: str, extra_headers: dict | None = None,
-            follow_redirects: bool = True) -> dict:
+            follow_redirects: bool = True,
+            engine: str | None = None) -> dict:
         """发送 GET 请求，返回统一响应格式。
 
         SSRF 防护：默认拒绝内网 / 私有地址目标（ARGO_ALLOW_PRIVATE_URLS=1
         显式放行）。校验失败返回 status=0 + error，不发起请求。
+        engine：调用方引擎 id，用于按引擎 spec 覆盖域族节流参数。
 
         返回：{
             "status": int,
@@ -240,25 +419,27 @@ class HttpClient:
         self._apply_jitter()
 
         last_error = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                resp = self._do_get(url, extra_headers, follow_redirects)
-                # 429/503 + Retry-After：服务器明确要求等待 → 按其指示等待后重试
-                # （等待服务器说的时间，而非盲退避；无头/超阈值则直接返回不重试）
-                wait = retry_after_seconds(resp.get("status", 0),
-                                           resp.get("headers", {}))
-                if wait is not None and attempt < self.max_retries:
-                    time.sleep(wait)
-                    continue
-                return resp
-            except (socket.timeout, ConnectionError, OSError) as e:
-                last_error = e
-                if attempt < self.max_retries:
-                    wait = self._backoff_delay(attempt)
-                    time.sleep(wait)
-            except Exception as e:
-                last_error = e
-                break
+        # 域族节流包住整个重试循环：重试同样占用该源站的并发名额
+        with host_throttle(url, engine):
+            for attempt in range(self.max_retries + 1):
+                try:
+                    resp = self._do_get(url, extra_headers, follow_redirects)
+                    # 429/503 + Retry-After：服务器明确要求等待 → 按其指示等待后重试
+                    # （等待服务器说的时间，而非盲退避；无头/超阈值则直接返回不重试）
+                    wait = retry_after_seconds(resp.get("status", 0),
+                                               resp.get("headers", {}))
+                    if wait is not None and attempt < self.max_retries:
+                        time.sleep(wait)
+                        continue
+                    return resp
+                except (socket.timeout, ConnectionError, OSError) as e:
+                    last_error = e
+                    if attempt < self.max_retries:
+                        wait = self._backoff_delay(attempt)
+                        time.sleep(wait)
+                except Exception as e:
+                    last_error = e
+                    break
 
         return {"status": 0, "headers": {}, "text": "", "url": url,
                 "elapsed_ms": 0, "error": str(last_error)[:200]}
@@ -510,12 +691,13 @@ class HttpClient:
     def post(self, url: str, body: dict | None = None,
              extra_headers: dict | None = None,
              follow_redirects: bool = True,
-             json_body: bool = True) -> dict:
+             json_body: bool = True,
+             engine: str | None = None) -> dict:
         """发送 POST 请求（anysearch 等 JSON-RPC/JSON API 用）。
 
-        复用 get() 的 UA 轮换、Cookie 积累、重试退避、Retry-After 尊重与 SSRF 防护。
-        返回格式与 get() 一致。body：dict → json.dumps（json_body=True）或
-        urlencode（json_body=False）；None 则不发送 body。
+        复用 get() 的 UA 轮换、Cookie 积累、重试退避、Retry-After 尊重、
+        SSRF 防护与域族节流。返回格式与 get() 一致。body：dict → json.dumps
+        （json_body=True）或 urlencode（json_body=False）；None 则不发送 body。
         """
         ok, reason = check_url(url)
         if not ok:
@@ -529,22 +711,23 @@ class HttpClient:
                 payload = json.dumps(body).encode("utf-8")
             else:
                 payload = urllib.parse.urlencode(body).encode("utf-8")
-        for attempt in range(self.max_retries + 1):
-            try:
-                resp = self._do_post(url, payload, extra_headers, follow_redirects)
-                wait = retry_after_seconds(resp.get("status", 0),
-                                           resp.get("headers", {}))
-                if wait is not None and attempt < self.max_retries:
-                    time.sleep(wait)
-                    continue
-                return resp
-            except (socket.timeout, ConnectionError, OSError) as e:
-                last_error = e
-                if attempt < self.max_retries:
-                    time.sleep(self._backoff_delay(attempt))
-            except Exception as e:
-                last_error = e
-                break
+        with host_throttle(url, engine):
+            for attempt in range(self.max_retries + 1):
+                try:
+                    resp = self._do_post(url, payload, extra_headers, follow_redirects)
+                    wait = retry_after_seconds(resp.get("status", 0),
+                                               resp.get("headers", {}))
+                    if wait is not None and attempt < self.max_retries:
+                        time.sleep(wait)
+                        continue
+                    return resp
+                except (socket.timeout, ConnectionError, OSError) as e:
+                    last_error = e
+                    if attempt < self.max_retries:
+                        time.sleep(self._backoff_delay(attempt))
+                except Exception as e:
+                    last_error = e
+                    break
         return {"status": 0, "headers": {}, "text": "", "url": url,
                 "elapsed_ms": 0, "error": str(last_error)[:200]}
 

@@ -1515,6 +1515,16 @@ engines:
   status: ok
   recommended: true
   desc: Twitter/X
+- name: twitter_syndication
+  tier: T2
+  type: twitter_syndication
+  coverage:
+  - social
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  desc: X 单条推文抽取（syndication 免登录通道；查询词为推文 URL 或裸 ID）
 - name: uapi
   tier: T1
   type: http

@@ -389,6 +389,15 @@ def _record_quota(engine: str, success: bool) -> None:
 # 分类与自适应学习跳过逻辑共用。新增配额错误码（如新的 API 业务码）只改这里。
 _QUOTA_ERROR_KEYWORDS = ("quota", "10406")
 
+# 拦截页特征词（单一真源）：error 文本里出现即判 blocked。HTML 引擎的反爬
+# 命中没有 error 文本（静默空结果），走 engines_base 的归因寄存器；
+# 这张表兜住「error 结果里带拦截页字样」的可见路径。
+_BLOCKED_ERROR_KEYWORDS = (
+    "just a moment", "checking your browser", "cf-browser-verification",
+    "challenge", "ddos-guard", "perimeterx", "access denied",
+    "handshake failure", "unable to handshake", "安全验证", "滑动验证",
+)
+
 
 def _note_remote_quota_exhausted(engine: str, detail: str) -> None:
     """远端明示配额耗尽（如 byted 10406）→ 标记到周期边界自动恢复。
@@ -500,11 +509,16 @@ def _single_reliability(engine: str) -> float:
     return factor
 
 
-def _engine_weight(source: str) -> float:
+def _engine_weight(source: str, lang: str | None = None) -> float:
     """按引擎来源返回融合权重（source 可能含 'local_bing/sina_quote' 合并形式）。
 
     静态基础权重（权威/学术提权、社交降权）× 动态可靠性因子（weakest-link）：
     熔断/高错误源降权，健康权威源维持提权。论文 2508.01405 的路径质量评估落地。
+
+    lang（可选）启用**语言能力加权**：由 18语言×29引擎 矩阵实测得到的
+    能力画像（data/lang_matrix/lang_capability.json）决定——该语言下实测
+    良好的引擎提权、实测噪声的降权、无数据的保持中性。画像缺失/过期时
+    完全退化为原行为（见 lang_capability 的安全降级契约）。
     """
     if not source:
         return 1.0
@@ -514,11 +528,22 @@ def _engine_weight(source: str) -> float:
         return 1.0
     static = max([_ENGINE_FUSION_WEIGHTS.get(p, 1.0) for p in parts])
     rel = min([_single_reliability(p) for p in parts])
-    return round(static * rel, 3)
+    out = static * rel
+    if lang:
+        try:
+            from lang_capability import score_adjust
+            # 多来源取最高：某个来源在该语言下有能力即可（不因合并源里
+            # 混入一个未知引擎而失去提权）
+            adj = max([score_adjust(p, lang) for p in parts] or [1.0])
+            out *= adj
+        except Exception:
+            pass
+    return round(out, 3)
 
 
 def rrf_merge(ranked_lists: list[list[dict[str, Any]]], k: int = 60,
-              weighted: bool = True) -> list[dict[str, Any]]:
+              weighted: bool = True,
+              lang: str | None = None) -> list[dict[str, Any]]:
     """Reciprocal Rank Fusion 合并多引擎结果，保留 consensus_engines。
 
     键用归一化 URL（http/https、www、utm 变体合并）；RRF 分单独存 _rrf_score，
@@ -540,7 +565,8 @@ def rrf_merge(ranked_lists: list[list[dict[str, Any]]], k: int = 60,
                 or (f"__card__:{r.get('card_type', '')}" if r.get("card_type") else "")
                 or f"__idx__:{i}"
             )
-            w = _engine_weight(r.get("_engine") or r.get("source") or "") if weighted else 1.0
+            w = _engine_weight(r.get("_engine") or r.get("source") or "",
+                               lang=lang) if weighted else 1.0
             scores[key] = scores.get(key, 0.0) + w / (k + i + 1)
             eng = r.get("_engine") or r.get("source", "") or ""
             if key not in items:
@@ -931,6 +957,8 @@ def _classify_engine_outcome(eng: str, res: list[dict[str, Any]],
             st = "quota-exhausted"
         elif "rate" in msg or "429" in msg:
             st = "rate-limited"
+        elif any(k in msg for k in _BLOCKED_ERROR_KEYWORDS):
+            st = "blocked"
         elif "auth" in msg or "401" in msg or "403" in msg:
             st = "auth-failed"
         else:
@@ -962,6 +990,20 @@ _FAST_TOTAL_BUDGET_S = 6.0
 # 2.0s 覆盖「快引擎」子集（anysearch/local_bing 等），慢引擎（github 8.5s）
 # 在窗口后补发 backup，避免拖尾。可调：偏快取小值（省墙钟）、偏省取大值（省成本）。
 _PRIMARY_GRACE_S = 2.0
+
+# 单引擎墙钟硬预算（秒）：含该引擎的**全部**重试尝试，超预算即停、不再发起
+# 新尝试，由编排层切备选源。
+#
+# 为什么要这个上界（2026-09-10 实测）：重试会叠乘。anysearch 曾同时具备
+#   引擎级 retry_count=1（2 次）× HTTP 级 max_retries=1（2 次）× 8s
+#   = 最坏 32s（实测 31.3s）
+# 用户侧表现是「一个查询卡半分钟」，而这期间既没切备选源、也没有任何
+# 信号说明在等什么。逐处调小超时不是好解法——那会误杀慢网下正常的源；
+# 给**单引擎总墙钟**设上界才是根本的，且对未来新增的重试层同样生效。
+#
+# 取值 10s：用户明确的体感阈值（「10 秒以内也应该能够解决」），
+# 也 ≥ execution.default_timeout(8s)，保证单次正常尝试不被截断。
+_PER_ENGINE_BUDGET_S = 10.0
 
 
 def execute_search(query: str, decision: dict[str, Any], max_results: int,
@@ -1086,6 +1128,16 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
 
     exec_cfg = get_execution_config()
     retry_count = exec_cfg.get("retry_count", 0)
+    # 单引擎墙钟预算：config `execution.per_engine_budget_s` 可覆盖。
+    # 用 exec_cfg 读取（与本函数其它 execution 项同源），这样用户可在
+    # config.yaml 调整而无需改代码；非法值（非正数）回落到常量默认。
+    try:
+        _budget_cfg = float(exec_cfg.get("per_engine_budget_s",
+                                         _PER_ENGINE_BUDGET_S))
+    except (TypeError, ValueError):
+        _budget_cfg = _PER_ENGINE_BUDGET_S
+    if _budget_cfg <= 0:
+        _budget_cfg = _PER_ENGINE_BUDGET_S
 
     # 慢源禁重试：timeout ≥ 8s 的引擎超时即放弃，避免「10s×3 次=30s」线性放大。
     # 超时本质上是源端慢/网络抖，重试不改变结果，只放大尾延迟；快速失败
@@ -1114,24 +1166,60 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         # 默认超时用网络感知后的 _eff_timeout（慢网放大），与外层 as_completed
         # 等待预算一致；非 tight 引擎（anysearch 等）慢网下同样获得放大窗口。
         to = eff_timeout if eff_timeout is not None else _eff_timeout
+
+        # ── 每引擎墙钟硬预算 ──────────────────────────────────────────
+        # 问题（2026-09-10 实测）：重试会**叠乘**。anysearch 曾同时有
+        #   引擎级重试 retry_count=1 → 2 次
+        #   HTTP 级重试 max_retries=1 → 2 次
+        #   8s 超时
+        # 最坏 2×2×8 = 32s（实测 31.3s）。用户侧表现是「搜一个查询卡半分钟」，
+        # 而这期间既没有切备选源、也没有任何信号说明在等什么。
+        #
+        # 修法不是逐处调小超时（那会误杀慢网下正常的源），而是给**单个引擎的
+        # 总墙钟**设上界：后续尝试的可用超时 = 剩余预算，预算耗尽即停。
+        # 这样无论嵌套几层重试，单引擎都不可能超过 cap。
+        # 取值优先级：execution.per_engine_budget_s（config）> 常量默认 10.0。
+        # fast 模式已有 6s 全局预算，此处取更紧的那个，避免互相打架。
+        _eng_budget = _budget_cfg
+        if mode == "fast":
+            _eng_budget = min(_eng_budget, _FAST_TOTAL_BUDGET_S)
+        _t_eng_start = time.time()
+
         last_result: list[dict[str, Any]] = []
         for _attempt in range(retries + 1):
+            _remain = _eng_budget - (time.time() - _t_eng_start)
+            # 只跳过**后续**尝试。首次必须发出：若因预算小而整段跳过，
+            # 引擎的 outcome 会从 timeout 变成 no-results —— 语义从「慢」
+            # 变成「没尝试」，会破坏既有 fast 预算测试的契约
+            # （实测：patch 预算 0.5s 时首试被跳过，slow_bad_a/b 被标成
+            #  no-results 而非 timeout）。
+            if _attempt > 0 and _remain <= 0.5:
+                break
+            # 每次尝试的可用超时 = min(声明超时, 剩余预算)，下限 0.5s：
+            # 首试受总预算约束（否则 fast 的 6s 预算会被 8s 首试突破），
+            # 后续尝试自动收缩，保证单引擎总耗时不越界。
+            attempt_to = min(to, max(0.5, _remain))
             last_result = engine_search(
-                retrieval_query, eng, n=max_results, timeout=to, depth=depth, mode=mode,
+                retrieval_query, eng, n=max_results, timeout=attempt_to, depth=depth, mode=mode,
                 since=since_iso, until=until_iso, skip_cache=skip_cache,
             )
             if last_result and any("error" not in r for r in last_result):
                 return last_result
         # 慢源（retries=0，超时即弃）不再用 balanced 补跑，避免超时场景双倍耗时
         if retries > 0 and depth != "balanced":
-            last_result = engine_search(
-                retrieval_query, eng, n=max_results, timeout=to, depth="balanced", mode=mode,
-                since=since_iso, until=until_iso, skip_cache=skip_cache,
-            )
+            _remain = _eng_budget - (time.time() - _t_eng_start)
+            if _remain > 0.5:
+                last_result = engine_search(
+                    retrieval_query, eng, n=max_results,
+                    timeout=min(to, max(0.5, _remain)),
+                    depth="balanced", mode=mode,
+                    since=since_iso, until=until_iso, skip_cache=skip_cache,
+                )
         return last_result
 
     def _run_one(eng: str) -> tuple[str, list[dict[str, Any]], dict[str, Any], int]:
         """单引擎：缺 env → 负缓存 → 熔断 → per-engine 缓存 → 网络。"""
+        from engines_base import pop_failure_note
         t_eng = time.time()
 
         # 缺环境变量前置拦截：把「静默 no-results」变成可行动的 error。
@@ -1225,6 +1313,20 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 r.setdefault("_elapsed", lat / 1000.0)
 
         outcome = _classify_engine_outcome(eng, res, lat)
+        # 归因寄存器合入：引擎内的静默失败路径（反爬命中/HTTP 状态码）没有
+        # error 文本，outcome 会落成 no-results；归因寄存器把它们还原成
+        # blocked / rate-limited 等真实状态，供熔断与 --json 可观测面使用。
+        _note = pop_failure_note(eng)
+        if _note and outcome["status"] in ("no-results", "error", "auth-failed"):
+            if _note.get("category") == "blocked":
+                outcome["status"] = "blocked"
+            elif _note.get("category") == "rate_limited":
+                outcome["status"] = "rate-limited"
+            elif _note.get("category") == "auth" and outcome["status"] == "no-results":
+                outcome["status"] = "auth-failed"
+            outcome["detail"] = (
+                f"{_note.get('reason', '')} {_note.get('detail', '')}".strip()
+                or outcome.get("detail"))
         goods = [r for r in res if isinstance(r, dict) and "error" not in r]
         _record_quota(eng, success=bool(goods))
         if outcome["status"] == "quota-exhausted":
@@ -1244,6 +1346,11 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             elif outcome["status"] == "timeout":
                 breaker.record_failure(eng, kind="timeout")
                 breaker.set_negative(query, eng, status="timeout")
+            elif outcome["status"] in ("blocked", "rate-limited"):
+                # 被拦截 / 被限流都是源站行为，不是引擎故障：60s 短冷却，
+                # 不累计 opens（否则被封引擎会被冤枉 auto-disable）。
+                breaker.record_failure(eng, kind=outcome["status"])
+                breaker.set_negative(query, eng, status=outcome["status"])
             else:
                 breaker.record_failure(eng, kind="error")
                 breaker.set_negative(query, eng, status=outcome["status"])
@@ -1487,8 +1594,49 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         if clean:
             clean_lists.append(clean)
 
+    # 查询主语言：噪声门与语言能力加权共用同一个判定（单一真源，
+    # 避免两处各自算导致行为漂移）。
+    _q_lang_for_fusion = (
+        ((decision or {}).get("features") or {}).get("primary_lang") or None
+    )
+
+    # ── 多语言噪声门（result_lang）─────────────────────────────────────
+    # 实测问题：引擎在非支持语言下会返回「成功但不相关」的结果——
+    # juejin 在阿拉伯语查询下返回 10 条、相关度 0.00（全是通用热帖），
+    # 却报告 status=ok。这类噪声混进 RRF 融合会污染最终结果。
+    #
+    # 判定不依赖「猜测查询语言」：用结果自身的书写系统（Unicode 码位，
+    # 确定性）+ 查询词元命中率。语言不符且相关度低 → 判为噪声并剔除。
+    #
+    # 只在「查询语言可判定且非中英」时启用：中英是 argo 的主战场，
+    # 现有引擎面足够宽，过早过滤会误伤（如英文查询命中中文优质内容）。
+    _noise_dropped: list[dict[str, Any]] = []
+    try:
+        from result_lang import assess_results as _assess_lang
+        _q_lang = _q_lang_for_fusion
+        if _q_lang and _q_lang not in ("zh", "en", "mixed", "other", ""):
+            _kept = []
+            for _lst in clean_lists:
+                if not _lst:
+                    continue
+                _eng = _lst[0].get("_engine") or _lst[0].get("source") or "?"
+                _a = _assess_lang(query, _lst, expected_lang=_q_lang)
+                if _a["verdict"] == "noise":
+                    _noise_dropped.append({
+                        "engine": _eng, "lang": _a["lang"],
+                        "relevance": _a["relevance"],
+                        "reason": (_a["reasons"][0] if _a.get("reasons")
+                                   else "low relevance"),
+                    })
+                    continue
+                _kept.append(_lst)
+            clean_lists = _kept
+    except Exception as _e:  # 噪声门是质量增强，失败不得拖垮主流程
+        import logging as _lg
+        _lg.getLogger("unified_search.search").debug(f"噪声门跳过: {_e}")
+
     if len(clean_lists) > 1:
-        merged = rrf_merge(clean_lists)
+        merged = rrf_merge(clean_lists, lang=_q_lang_for_fusion)
     elif clean_lists:
         merged = deduplicate_by_url(clean_lists[0])
         # 单引擎也补 consensus
@@ -1766,6 +1914,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         "engine_outcomes": engine_outcomes,
         "time_filtered": time_filtered,
         "time_filter_warning": time_filter_warning,
+        "noise_dropped": _noise_dropped,
     }
 
     # 写 combo 缓存：空结果短 TTL / 时效 cap 由 cache.set 处理
@@ -1852,6 +2001,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         "count": len(out_results), "engines_used": list(raw_results.keys()),
         "errors": _collect_errors(raw_results),
         "engine_outcomes": engine_outcomes,
+        # 多语言噪声门：被剔除的引擎及原因（可观测，便于定位「为什么少了几个源」）
+        "noise_dropped": _noise_dropped,
         "wasted_engine_ms": wasted_ms,
         "early_stopped": early_stopped,
         "reranker": reranker_status,

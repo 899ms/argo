@@ -580,7 +580,7 @@ class TestHttpClientEngineIntegration(unittest.TestCase):
             def __init__(self, *a, **kw):
                 calls.append(("init", kw.get("jitter"), kw.get("max_retries")))
 
-            def get(self, url, extra_headers=None, follow_redirects=False):
+            def get(self, url, extra_headers=None, follow_redirects=False, engine=None):
                 calls.append(("get", url, bool(follow_redirects)))
                 return {"status": 200, "text": '{"ok": 1}', "error": ""}
 
@@ -624,7 +624,7 @@ class TestHttpClientEngineIntegration(unittest.TestCase):
             def __init__(self, *a, **kw):
                 pass
 
-            def get(self, url, extra_headers=None, follow_redirects=False):
+            def get(self, url, extra_headers=None, follow_redirects=False, engine=None):
                 return {"status": 403, "text": "forbidden", "error": ""}
 
         with patch("engines_base.os.environ.get", return_value="1"), \

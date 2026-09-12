@@ -1,0 +1,842 @@
+{
+  "generated_from": "lang_matrix_probe v2 (18 langs x 29 engines, 1044 calls)",
+  "date": "2026-09-10",
+  "source_file": "data/lang_matrix/matrix_2026-09-10.json",
+  "note": "good = 相关度>=0.5（查询词元命中率）；noise = 相关度<0.2（引擎未按查询检索，含语言不符与语言相符但返回热榜两类）",
+  "engine_langs": {
+    "wikipedia": {
+      "langs": [
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "he",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "nl",
+        "pl",
+        "pt",
+        "ru",
+        "tr",
+        "vi",
+        "zh"
+      ],
+      "count": 17
+    },
+    "zh_wikipedia": {
+      "langs": [
+        "en",
+        "es",
+        "fr",
+        "nl",
+        "pl",
+        "pt",
+        "zh"
+      ],
+      "count": 7
+    },
+    "wikidata": {
+      "langs": [
+        "ar",
+        "es",
+        "he",
+        "hi",
+        "ru"
+      ],
+      "count": 5
+    },
+    "anysearch": {
+      "langs": [
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "he",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "nl",
+        "pl",
+        "pt",
+        "ru",
+        "th",
+        "tr",
+        "vi",
+        "zh"
+      ],
+      "count": 18
+    },
+    "juejin": {
+      "langs": [
+        "zh"
+      ],
+      "count": 1
+    },
+    "qiita": {
+      "langs": [
+        "es"
+      ],
+      "count": 1
+    },
+    "zhihu_global": {
+      "langs": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "it",
+        "ja",
+        "nl",
+        "pl",
+        "pt",
+        "tr",
+        "vi",
+        "zh"
+      ],
+      "count": 12
+    },
+    "byted": {
+      "langs": [
+        "de",
+        "es",
+        "fr",
+        "he",
+        "it",
+        "nl",
+        "pt",
+        "tr",
+        "vi",
+        "zh"
+      ],
+      "count": 10
+    },
+    "ndl": {
+      "langs": [
+        "ar",
+        "de",
+        "es",
+        "it",
+        "ja",
+        "nl",
+        "pt",
+        "ru",
+        "tr",
+        "vi"
+      ],
+      "count": 10
+    },
+    "dnb": {
+      "langs": [
+        "ar",
+        "de",
+        "en",
+        "nl",
+        "pl"
+      ],
+      "count": 5
+    },
+    "open_library": {
+      "langs": [
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "he",
+        "hi",
+        "it",
+        "nl",
+        "pl",
+        "pt",
+        "tr",
+        "vi"
+      ],
+      "count": 13
+    },
+    "marginalia": {
+      "langs": [
+        "de",
+        "en",
+        "fr",
+        "pl",
+        "pt"
+      ],
+      "count": 5
+    },
+    "wiby": {
+      "langs": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "it",
+        "nl",
+        "pl",
+        "pt",
+        "ru"
+      ],
+      "count": 9
+    },
+    "searchmysite": {
+      "langs": [
+        "pl"
+      ],
+      "count": 1
+    },
+    "bocha": {
+      "langs": [
+        "ar",
+        "en",
+        "fr",
+        "zh"
+      ],
+      "count": 4
+    },
+    "tavily": {
+      "langs": [
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "he",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "nl",
+        "pl",
+        "pt",
+        "ru",
+        "th",
+        "tr",
+        "vi",
+        "zh"
+      ],
+      "count": 18
+    },
+    "exa": {
+      "langs": [
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "he",
+        "hi",
+        "it",
+        "ko",
+        "nl",
+        "pl",
+        "pt",
+        "ru",
+        "th",
+        "tr",
+        "vi"
+      ],
+      "count": 16
+    }
+  },
+  "lang_engines": {
+    "zh": [
+      "wikipedia",
+      "zh_wikipedia",
+      "anysearch",
+      "juejin",
+      "zhihu_global",
+      "byted",
+      "bocha",
+      "tavily"
+    ],
+    "en": [
+      "wikipedia",
+      "zh_wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "dnb",
+      "open_library",
+      "marginalia",
+      "wiby",
+      "bocha",
+      "tavily",
+      "exa"
+    ],
+    "ja": [
+      "wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "ndl",
+      "tavily"
+    ],
+    "ko": [
+      "wikipedia",
+      "anysearch",
+      "tavily",
+      "exa"
+    ],
+    "ru": [
+      "wikipedia",
+      "wikidata",
+      "anysearch",
+      "ndl",
+      "wiby",
+      "tavily",
+      "exa"
+    ],
+    "ar": [
+      "wikipedia",
+      "wikidata",
+      "anysearch",
+      "ndl",
+      "dnb",
+      "open_library",
+      "bocha",
+      "tavily",
+      "exa"
+    ],
+    "de": [
+      "wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "byted",
+      "ndl",
+      "dnb",
+      "open_library",
+      "marginalia",
+      "wiby",
+      "tavily",
+      "exa"
+    ],
+    "fr": [
+      "wikipedia",
+      "zh_wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "byted",
+      "open_library",
+      "marginalia",
+      "wiby",
+      "bocha",
+      "tavily",
+      "exa"
+    ],
+    "es": [
+      "wikipedia",
+      "zh_wikipedia",
+      "wikidata",
+      "anysearch",
+      "qiita",
+      "zhihu_global",
+      "byted",
+      "ndl",
+      "open_library",
+      "wiby",
+      "tavily",
+      "exa"
+    ],
+    "pt": [
+      "wikipedia",
+      "zh_wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "byted",
+      "ndl",
+      "open_library",
+      "marginalia",
+      "wiby",
+      "tavily",
+      "exa"
+    ],
+    "it": [
+      "wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "byted",
+      "ndl",
+      "open_library",
+      "wiby",
+      "tavily",
+      "exa"
+    ],
+    "nl": [
+      "wikipedia",
+      "zh_wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "byted",
+      "ndl",
+      "dnb",
+      "open_library",
+      "wiby",
+      "tavily",
+      "exa"
+    ],
+    "pl": [
+      "wikipedia",
+      "zh_wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "dnb",
+      "open_library",
+      "marginalia",
+      "wiby",
+      "searchmysite",
+      "tavily",
+      "exa"
+    ],
+    "tr": [
+      "wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "byted",
+      "ndl",
+      "open_library",
+      "tavily",
+      "exa"
+    ],
+    "vi": [
+      "wikipedia",
+      "anysearch",
+      "zhihu_global",
+      "byted",
+      "ndl",
+      "open_library",
+      "tavily",
+      "exa"
+    ],
+    "th": [
+      "anysearch",
+      "tavily",
+      "exa"
+    ],
+    "hi": [
+      "wikipedia",
+      "wikidata",
+      "anysearch",
+      "open_library",
+      "tavily",
+      "exa"
+    ],
+    "he": [
+      "wikipedia",
+      "wikidata",
+      "anysearch",
+      "byted",
+      "open_library",
+      "tavily",
+      "exa"
+    ]
+  },
+  "summary": {
+    "per_lang": {
+      "zh": {
+        "good_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "anysearch",
+          "juejin",
+          "zhihu_global",
+          "byted",
+          "bocha",
+          "tavily"
+        ],
+        "noise_engines": [
+          "v2ex",
+          "stackoverflow",
+          "searchmysite"
+        ],
+        "good": 8,
+        "noise": 3
+      },
+      "en": {
+        "good_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "dnb",
+          "open_library",
+          "marginalia",
+          "wiby",
+          "bocha",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "juejin",
+          "devto",
+          "stackoverflow",
+          "hatena_bookmark",
+          "byted",
+          "moegirl",
+          "lieu",
+          "searchmysite"
+        ],
+        "good": 11,
+        "noise": 8
+      },
+      "ja": {
+        "good_engines": [
+          "wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "ndl",
+          "tavily"
+        ],
+        "noise_engines": [
+          "juejin",
+          "stackoverflow",
+          "hatena_bookmark",
+          "moegirl",
+          "searchmysite"
+        ],
+        "good": 5,
+        "noise": 5
+      },
+      "ko": {
+        "good_engines": [
+          "wikipedia",
+          "anysearch",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "zh_wikipedia",
+          "juejin",
+          "byted",
+          "moegirl",
+          "bocha"
+        ],
+        "good": 4,
+        "noise": 5
+      },
+      "ru": {
+        "good_engines": [
+          "wikipedia",
+          "wikidata",
+          "anysearch",
+          "ndl",
+          "wiby",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "zh_wikipedia",
+          "juejin",
+          "moegirl",
+          "searchmysite",
+          "bocha"
+        ],
+        "good": 7,
+        "noise": 5
+      },
+      "ar": {
+        "good_engines": [
+          "wikipedia",
+          "wikidata",
+          "anysearch",
+          "ndl",
+          "dnb",
+          "open_library",
+          "bocha",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "zh_wikipedia",
+          "juejin",
+          "stackoverflow",
+          "moegirl",
+          "searchmysite"
+        ],
+        "good": 9,
+        "noise": 5
+      },
+      "de": {
+        "good_engines": [
+          "wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "byted",
+          "ndl",
+          "dnb",
+          "open_library",
+          "marginalia",
+          "wiby",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "juejin",
+          "devto",
+          "stackoverflow",
+          "hatena_bookmark",
+          "moegirl",
+          "searchmysite"
+        ],
+        "good": 11,
+        "noise": 6
+      },
+      "fr": {
+        "good_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "byted",
+          "open_library",
+          "marginalia",
+          "wiby",
+          "bocha",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "juejin",
+          "devto",
+          "stackoverflow",
+          "hatena_bookmark",
+          "dnb",
+          "searchmysite"
+        ],
+        "good": 11,
+        "noise": 6
+      },
+      "es": {
+        "good_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "wikidata",
+          "anysearch",
+          "qiita",
+          "zhihu_global",
+          "byted",
+          "ndl",
+          "open_library",
+          "wiby",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "juejin",
+          "devto",
+          "stackoverflow",
+          "hatena_bookmark",
+          "moegirl",
+          "dnb",
+          "lieu",
+          "searchmysite"
+        ],
+        "good": 12,
+        "noise": 8
+      },
+      "pt": {
+        "good_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "byted",
+          "ndl",
+          "open_library",
+          "marginalia",
+          "wiby",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "juejin",
+          "stackoverflow",
+          "hatena_bookmark",
+          "moegirl",
+          "dnb",
+          "lieu"
+        ],
+        "good": 11,
+        "noise": 6
+      },
+      "it": {
+        "good_engines": [
+          "wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "byted",
+          "ndl",
+          "open_library",
+          "wiby",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "juejin",
+          "hackernews",
+          "stackoverflow",
+          "hatena_bookmark",
+          "moegirl",
+          "dnb",
+          "lieu",
+          "searchmysite"
+        ],
+        "good": 9,
+        "noise": 8
+      },
+      "nl": {
+        "good_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "byted",
+          "ndl",
+          "dnb",
+          "open_library",
+          "wiby",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "juejin",
+          "devto",
+          "stackoverflow",
+          "hatena_bookmark",
+          "moegirl",
+          "lieu",
+          "searchmysite"
+        ],
+        "good": 11,
+        "noise": 7
+      },
+      "pl": {
+        "good_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "dnb",
+          "open_library",
+          "marginalia",
+          "wiby",
+          "searchmysite",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "wikidata",
+          "juejin",
+          "hackernews",
+          "moegirl",
+          "bocha"
+        ],
+        "good": 11,
+        "noise": 5
+      },
+      "tr": {
+        "good_engines": [
+          "wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "byted",
+          "ndl",
+          "open_library",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "wikidata",
+          "juejin",
+          "stackoverflow",
+          "moegirl",
+          "lieu",
+          "searchmysite",
+          "bocha"
+        ],
+        "good": 8,
+        "noise": 7
+      },
+      "vi": {
+        "good_engines": [
+          "wikipedia",
+          "anysearch",
+          "zhihu_global",
+          "byted",
+          "ndl",
+          "open_library",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "zh_wikipedia",
+          "juejin",
+          "hackernews",
+          "stackoverflow",
+          "hatena_bookmark",
+          "moegirl",
+          "lieu",
+          "searchmysite"
+        ],
+        "good": 8,
+        "noise": 8
+      },
+      "th": {
+        "good_engines": [
+          "anysearch",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "wikipedia",
+          "zh_wikipedia",
+          "juejin",
+          "moegirl",
+          "bocha"
+        ],
+        "good": 3,
+        "noise": 5
+      },
+      "hi": {
+        "good_engines": [
+          "wikipedia",
+          "wikidata",
+          "anysearch",
+          "open_library",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "zh_wikipedia",
+          "juejin",
+          "devto",
+          "moegirl",
+          "bocha"
+        ],
+        "good": 6,
+        "noise": 5
+      },
+      "he": {
+        "good_engines": [
+          "wikipedia",
+          "wikidata",
+          "anysearch",
+          "byted",
+          "open_library",
+          "tavily",
+          "exa"
+        ],
+        "noise_engines": [
+          "zh_wikipedia",
+          "juejin",
+          "moegirl",
+          "searchmysite",
+          "bocha"
+        ],
+        "good": 7,
+        "noise": 5
+      }
+    }
+  }
+}

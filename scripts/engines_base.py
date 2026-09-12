@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +28,34 @@ logger = logging.getLogger("unified_search.engines")
 if not logger.handlers:
     logger.setLevel(logging.WARNING)
     logger.addHandler(logging.StreamHandler(sys.stderr))
+
+
+# ── 引擎级失败归因寄存器 ─────────────────────────────────────────────────────
+# 进程内「引擎 → 最近一次失败归因」。归因必须在失败现场写入——这是唯一能同时
+# 拿到引擎名、状态码、响应体的位置。HTML 引擎的反爬命中走「静默返回空」路径，
+# 没有任何错误文本可供聚合层事后反推；不在这里寄存，封锁就永远伪装成空结果，
+# 被封的引擎会被当成故障累计到熔断里（封错人）。
+_FAIL_NOTES: dict[str, dict[str, Any]] = {}
+_FAIL_NOTES_LOCK = threading.Lock()
+
+
+def note_failure(engine: str, category: str, reason: str, detail: str = "") -> None:
+    """记录引擎最近一次失败的归因（覆盖式：只留最后一次）。"""
+    if not engine:
+        return
+    with _FAIL_NOTES_LOCK:
+        _FAIL_NOTES[engine] = {
+            "category": category,
+            "reason": reason,
+            "detail": (detail or "")[:200],
+            "ts": time.time(),
+        }
+
+
+def pop_failure_note(engine: str) -> dict[str, Any] | None:
+    """取走引擎的失败归因（读后即清，避免陈旧归因污染后续查询）。"""
+    with _FAIL_NOTES_LOCK:
+        return _FAIL_NOTES.pop(engine, None)
 
 
 def _lang_param(param: str, query: str) -> str:
@@ -267,8 +296,10 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
     """统一 HTTP 引擎构造（GET/POST）。
 
     GET 请求走 HttpClient（UA 轮换 + Cookie 积累 + 429/503 Retry-After 尊重 +
-    指数退避重试 + 重定向跟随）；POST 保留 urllib（HttpClient 无 POST）。
-    开关 ARGO_ENGINE_HTTP_CLIENT=0 可整体回退 urllib（灰度/诊断用）。
+    指数退避重试 + 重定向跟随 + 域族节流）；POST 保留 urllib（HttpClient 无
+    POST；POST 型引擎均为 JSON API，无进程内节流需求）。开关
+    ARGO_ENGINE_HTTP_CLIENT=0 可整体回退 urllib（灰度/诊断用）。
+    spec 显式声明的 max_concurrency / min_interval_ms 覆盖域族默认节流。
     """
     url_template = spec.get("url", "")
     headers = spec.get("headers", {"Content-Type": "application/json"})
@@ -280,6 +311,16 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
     is_get = spec.get("method", "GET") == "GET"
     body_template = spec.get("body", {})
     eng = spec.get("_name", "")
+    # spec 显式节流覆盖（max_concurrency / min_interval_ms），声明即契约
+    if spec.get("max_concurrency") is not None or \
+            spec.get("min_interval_ms") is not None:
+        try:
+            from http_client import register_spec_limit
+            register_spec_limit(eng,
+                                spec.get("max_concurrency"),
+                                spec.get("min_interval_ms"))
+        except ImportError:
+            pass
 
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, depth: str = "fast", **kwargs) -> list[dict[str, Any]]:
@@ -309,9 +350,9 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
                     for k, v in headers.items()
                 ) if _header_meaningful(v)  # 过滤空/认证前缀残留头（未配置的 {ENV} 不发送）
             }
-            # GET：HttpClient 渐进增强（UA 轮换/重试/重定向跟随）；
+            # GET：HttpClient 渐进增强（UA 轮换/重试/重定向跟随/域族节流）；
             # 失败返回空（与 urllib 失败行为一致，不抛异常）
-            raw = _http_get_raw(full_url, resolved_headers, to)
+            raw = _http_get_raw(full_url, resolved_headers, to, engine=eng)
             if raw is None:
                 return []
             return _parse_http_payload(raw, fmt, eng, n, output_map, spec)
@@ -356,10 +397,13 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
     return _engine
 
 
-def _http_get_raw(url: str, headers: dict, timeout: float) -> str | None:
+def _http_get_raw(url: str, headers: dict, timeout: float,
+                  engine: str = "?") -> str | None:
     """GET 原始响应体（HttpClient 渐进增强；ARGO_ENGINE_HTTP_CLIENT=0 回退 urllib）。
 
     返回响应文本；任何失败返回 None（调用方按「无结果」处理）。
+    失败时按状态码写入归因寄存器：限流（429）、封锁（403+拦截特征）、
+    网络（连接层）。归因供聚合层区分「引擎坏」与「被挡住」。
     """
     use_client = os.environ.get("ARGO_ENGINE_HTTP_CLIENT", "1").strip() not in (
         "0", "false", "False", "no"
@@ -371,7 +415,7 @@ def _http_get_raw(url: str, headers: dict, timeout: float) -> str | None:
             # 重试把最坏代价翻倍（OSM 6s 声明实测 11.3s=两次尝试）；重试语义
             # 上移到编排层（hedged race 换引擎 / 熔断降权 / 串行救援链）
             resp = HttpClient(timeout=timeout, max_retries=0, jitter=False).get(
-                url, extra_headers=headers, follow_redirects=True,
+                url, extra_headers=headers, follow_redirects=True, engine=engine,
             )
             status = resp.get("status") or 0
             text = resp.get("text") or ""
@@ -381,20 +425,61 @@ def _http_get_raw(url: str, headers: dict, timeout: float) -> str | None:
                 logger.warning(
                     f"HTTP 引擎失败: status={status} {resp.get('error', '')[:120]}"
                 )
+                _note_http_failure(engine, status,
+                                   text or resp.get("error", ""))
                 return None
             # 2xx/3xx 无 body：视为失败
             return None
         except Exception as e:
             logger.warning(f"HTTP 引擎失败(HttpClient): {type(e).__name__} {e}")
+            note_failure(engine, "network", "exception",
+                         f"{type(e).__name__}: {e}")
             return None
     # 回退 urllib（原行为）
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="replace")[:400]
+        except Exception:
+            pass
+        logger.warning(f"HTTP 引擎失败: HTTP {e.code} {engine}")
+        _note_http_failure(engine, e.code, body)
+        return None
     except Exception as e:
         logger.warning(f"HTTP 引擎失败: {e}")
+        note_failure(engine, "network", "exception", str(e))
         return None
+
+
+def _note_http_failure(engine: str, status: int, body: str) -> None:
+    """按状态码 + 响应体特征归因，写入寄存器（与 engine_failure 分类对齐）。"""
+    body_low = (body or "")[:2000].lower()
+    if status == 429 or status == 503:
+        note_failure(engine, "rate_limited", f"http-{status}", body_low[:120])
+        return
+    if status == 403:
+        try:
+            from engine_failure import _BLOCKED_PATTERNS, _matches
+            if _matches(_BLOCKED_PATTERNS, body_low):
+                note_failure(engine, "blocked", "http-403+block-sign",
+                             body_low[:120])
+                return
+        except ImportError:
+            pass
+        note_failure(engine, "auth", "http-403", body_low[:120])
+        return
+    if status in (401,):
+        note_failure(engine, "auth", "http-401", body_low[:120])
+        return
+    if status == 0:
+        note_failure(engine, "network", "connection-failed", body_low[:120])
+        return
+    if status >= 400:
+        note_failure(engine, "upstream", f"http-{status}", body_low[:120])
 
 
 def _envelope_error(data: Any) -> str:
@@ -548,6 +633,16 @@ def _build_html_engine(spec: dict[str, Any]) -> Any:
     timeout = spec.get("timeout", 8)
     extra_params = spec.get("extra_params", {})
     engine_name = spec.get("_name", "html")
+    # spec 显式节流覆盖（max_concurrency / min_interval_ms），声明即契约
+    if spec.get("max_concurrency") is not None or \
+            spec.get("min_interval_ms") is not None:
+        try:
+            from http_client import register_spec_limit
+            register_spec_limit(engine_name,
+                                spec.get("max_concurrency"),
+                                spec.get("min_interval_ms"))
+        except ImportError:
+            pass
     _parse_maps_cache: dict = {}
 
     def _get_parse_maps() -> dict:
@@ -574,11 +669,14 @@ def _build_html_engine(spec: dict[str, Any]) -> Any:
                 for k, v in headers.items()
             ) if _header_meaningful(v)  # 过滤空/认证前缀残留头（未配置的 {ENV} 不发送）
         }
-        # HTML 引擎同样走 HttpClient 渐进增强（UA 轮换/重定向跟随/重试）
-        html = _http_get_raw(full_url, resolved_headers, to)
+        # HTML 引擎同样走 HttpClient 渐进增强（UA 轮换/重定向跟随/重试/节流）
+        html = _http_get_raw(full_url, resolved_headers, to, engine=engine_name)
         if html is None:
             return []
         if _detect_anti_bot(html):
+            # 命中拦截页：归因为封锁而非空结果。不记这条，封锁会在聚合层
+            # 伪装成「无结果」，被封引擎会被当故障累计进熔断。
+            note_failure(engine_name, "blocked", "anti-bot-page", full_url)
             return []
         maps = _get_parse_maps()
         html_maps = maps.get("html", {})
@@ -997,3 +1095,58 @@ _CUSTOM_JSON_PARSERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]
 }
 
 
+
+
+def mcp_error_of(data: Any, source: str = "mcp") -> str | None:
+    """检查 MCP JSON-RPC 响应是否含错误，返回错误描述；无错误返回 None。
+
+    ## 为什么需要这个函数（2026-09-10 实测）
+
+    argo 自己**输出** MCP 的 `isError` 约定（见 mcp_handlers.py），但**消费**
+    上游 MCP 服务时完全忽略它。实测 anysearch 上游返回：
+
+        HTTP 200
+        {"result": {"content": [{"text": "Service temporarily unavailable."}],
+                    "isError": true}}
+
+    旧实现只做两件事：① 在文本里找配额关键词（quota/429/rate limit…）
+    ② 按 "### N." 解析结果块。而 "Service temporarily unavailable." 不含配额
+    词、也没有结果块 → **静默返回空列表**。用户看到「没有结果」，而不是
+    「上游不可用」；熔断器也拿不到失败信号，无法降权。
+
+    这类「失败伪装成成功」在本仓已出现多次（V2EX 旧实现产出幻觉、
+    缓存软命中跨引擎串味、juejin/qiita 返回热榜、you/parallel 状态说谎）。
+    本函数把 MCP 错误判定收敛成单一真源，供所有 MCP 消费者复用。
+
+    ## 覆盖三类错误
+
+      1. 工具级：`{"result": {"isError": true, ...}}` —— MCP 规范的工具错误
+      2. 协议级：`{"error": {"code": ..., "message": ...}}` —— JSON-RPC 错误
+      3. 空响应：`result` 缺失或 content 为空且无结构化字段
+
+    业务级错误（如配额耗尽）语义因服务而异，不在此判定——由调用方
+    结合 `content` 文本自行处理（见 anysearch 的配额关键词检查）。
+    """
+    if not isinstance(data, dict):
+        return f"{source}: 响应非 JSON 对象"
+    # 协议级错误（JSON-RPC 标准）
+    err = data.get("error")
+    if isinstance(err, dict):
+        msg = err.get("message") or err.get("code") or "unknown"
+        return f"{source}: JSON-RPC 错误 {msg}"
+    if isinstance(err, str) and err:
+        return f"{source}: {err}"
+    result = data.get("result")
+    if not isinstance(result, dict):
+        return None  # 交回调用方按业务语义判断（可能是另一种响应形态）
+    # 工具级错误（MCP 规范）
+    if result.get("isError") is True:
+        texts = []
+        for item in (result.get("content") or []):
+            if isinstance(item, dict) and item.get("text"):
+                texts.append(str(item["text"]))
+            elif isinstance(item, str):
+                texts.append(item)
+        detail = " ".join(texts).strip()[:200] or "isError=true（无详情）"
+        return f"{source}: {detail}"
+    return None

@@ -118,7 +118,17 @@ def _detect_page_type(html: str, content: str, url: str = "") -> str:
 
 
 def _compute_quality(content: str, html: str) -> float:
-    """计算质量评分（0-1）。"""
+    """计算质量评分（0-1）。
+
+    html 参数的用途（此前被忽略，本版修正）：区分「正文丰富的文章页」与
+    「正文够长但其实混入导航/列表噪声的页面」。仅凭 content 无法分辨两者——
+    列表页把侧栏链接抽出来也能拼出上万字符，word_count 与 text_density 都虚高。
+    用 html 里的结构信号（article/main 语义标签、段落数、链接密度）做修正。
+
+    口径保持兼容：修正项是**小幅加减分**（-0.1 ~ +0.15），不改变量纲，
+    只让「有真实文章结构」的页面上浮。html 为空时修正为 0，退化为原行为
+    （markdown-only 源没有原始 HTML）。
+    """
     if not content:
         return 0.0
     word_count = len(content.split())
@@ -131,6 +141,22 @@ def _compute_quality(content: str, html: str) -> float:
         0.2 * (1.0 if has_structure else 0.0) +
         0.1 * (1.0 if len(content) > 1000 else 0.0)
     ))
-    return round(score, 2)
+
+    bonus = 0.0
+    if html:
+        low = html.lower()
+        if re.search(r'<(article|main)\b', low):
+            bonus += 0.08                      # 语义主内容标签：最强信号
+        p_count = low.count("<p")
+        if p_count >= 5:
+            bonus += 0.05                      # 真实文章由 <p> 组成
+        elif p_count >= 2:
+            bonus += 0.02
+        a_count = low.count("<a ")
+        if a_count > word_count / 10:
+            bonus -= 0.05                      # 链接密度过高 → 更像列表页
+        bonus = max(-0.1, min(0.15, bonus))
+
+    return round(min(1.0, max(0.0, score + bonus)), 2)
 
 

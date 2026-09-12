@@ -1143,6 +1143,12 @@ engines:
     - general
     - tech
     desc: 通用搜索主力，进程内 JSON-RPC（HttpClient），零 token
+    # 显式声明 timeout：`search._engine_retries` 的约定是「已声明 timeout ≥8s
+    # 的引擎不再叠加引擎级重试」（慢源超时即弃，避免叠乘放大延迟）。
+    # 此前未声明 → 被施加 retry_count=1（2 次尝试），与 builder 内的
+    # HTTP 级重试叠乘出最坏 32s（实测 31.3s）。声明后引擎级重试为 0，
+    # 配合 builder 的 max_retries=0，单次调用最多付 1 个 8s 超时。
+    timeout: 8
     env: {}
     search_args:
     - search
@@ -1353,6 +1359,11 @@ engines:
     timeout: 15
     canary_query: rust async
     type: parallel
+    # 密钥声明（缺失时状态转 missing_key，避免路由选中必然失败的引擎）：
+    # builder 内读 PARALLEL_API_KEY；此前未声明导致状态误报 ready，
+    # 实际调用恒定返回 "PARALLEL_API_KEY 未设置"。
+    required_env:
+    - PARALLEL_API_KEY
   you:
     enabled: true
     label: You.com搜索
@@ -1371,6 +1382,10 @@ engines:
     timeout: 12
     canary_query: OpenAI latest news
     type: you
+    # 密钥声明（同 parallel）：builder 内读 YDC_API_KEY；此前未声明导致
+    # 状态误报 ready，实际调用恒定返回 "YDC_API_KEY 未设置"。
+    required_env:
+    - YDC_API_KEY
   eastmoney:
     enabled: true
     label: 东财金融
@@ -1681,7 +1696,23 @@ engines:
     - tech
     - community
     - discussion
-    desc: V2EX（中文技术社区搜索）
+    desc: V2EX（中文技术社区，官方 API 候选池 + 本地相关性过滤）
+    # 准入校验用查询：官方 API 无搜索端点，本引擎是「热帖池 + 相关性过滤」，
+    # 通用技术查询（Python/kubernetes）在当期热帖里大概率无对应主题，
+    # 会被误判为「空结果 fail」。Apple 属 V2EX 高频话题，可稳定命中。
+    canary_query: Apple
+    # 质量基准查询集：同上原因，本引擎适用「社区高频话题」而非通用技术词。
+    # 声明后准入用本集评估，避免把「检索模式不匹配」误判为引擎质量差。
+    quality_queries:
+    - id: v2ex_apple
+      query: Apple
+      category: community
+    - id: v2ex_ai
+      query: AI
+      category: community
+    - id: v2ex_dev
+      query: 程序员
+      category: community
     timeout: 10
     type: v2ex
   google_scholar:
@@ -2496,6 +2527,12 @@ engines:
     timeout: 10
   twitter:
     type: cli
+    # timeout 声明（2026-09-10 核查）：该引擎内部已有**广谱重试**
+    # （429 + URLError/OSError，最多 3 次带指数退避，见 _http_get_with_retry）。
+    # 按 search._engine_retries 约定，声明 ≥8s 即不再叠加引擎级重试——
+    # 否则内外两层重试叠乘（anysearch 曾因此跑出 31s）。
+    # 安全性：缺 tw 依赖不可路由，声明以保持一致，远低于 8s，不会截断正常请求。
+    timeout: 8
     label: Twitter/X
     enabled: true
     cost_tier: free
@@ -2508,8 +2545,19 @@ engines:
     - -n
     - '{n}'
     env: {}
+    # 后端依赖：脚本内部调 `tw` CLI。缺它时引擎只能返回空，
+    # 故为必需——声明后状态显示 missing_dep 并给出安装命令。
+    requires:
+    - bin: tw
+      fix: 安装 twitter-cli（`pipx install twitter-cli` 或 npm i -g twitter-cli），完成后确保 `tw` 在 PATH 上
   reddit:
     type: cli
+    # timeout 声明（2026-09-10 核查）：该引擎内部已有**广谱重试**
+    # （429 + URLError/OSError，最多 3 次带指数退避，见 _http_get_with_retry）。
+    # 按 search._engine_retries 约定，声明 ≥8s 即不再叠加引擎级重试——
+    # 否则内外两层重试叠乘（anysearch 曾因此跑出 31s）。
+    # 安全性：实测延迟中位 1.20s/最大 3.16s，远低于 8s，不会截断正常请求。
+    timeout: 8
     label: Reddit
     enabled: true
     cost_tier: free
@@ -2522,6 +2570,12 @@ engines:
     - -n
     - '{n}'
     env: {}
+    # 降级链：先试 rdt CLI，失败/缺失时回落 Reddit 公开 JSON API。
+    # 因此 rdt 声明为 optional——缺了只降级，不算引擎故障（不报 missing_dep）。
+    requires:
+    - bin: rdt
+      optional: true
+      fix: 可选增强：安装 rdt CLI 以获得更稳定的 Reddit 检索；未安装时自动回落公开 JSON API
   local_bing:
     type: html
     enabled: true
@@ -3013,8 +3067,20 @@ engines:
     - -n
     - '{n}'
     env: {}
+    # 后端依赖（实测：脚本内 subprocess 调 `xhs`，本机缺失时状态曾误报 ready，
+    # 调用后白等并静默返回 0 条）。另需 `xhs login` 取得登录态 cookie，
+    # 属运行时授权而非依赖——缺失时结果为空并带 login_state 标记。
+    requires:
+    - bin: xhs
+      fix: 安装小红书 CLI（`npm i -g xiaohongshu-cli`，或见项目 README），随后执行 `xhs login` 完成登录
   bilibili:
     type: cli
+    # timeout 声明（2026-09-10 核查）：该引擎内部已有**广谱重试**
+    # （429 + URLError/OSError，最多 3 次带指数退避，见 _http_get_with_retry）。
+    # 按 search._engine_retries 约定，声明 ≥8s 即不再叠加引擎级重试——
+    # 否则内外两层重试叠乘（anysearch 曾因此跑出 31s）。
+    # 安全性：实测延迟 0.62s(稳定)，远低于 8s，不会截断正常请求。
+    timeout: 8
     label: B站
     enabled: true
     cost_tier: free
@@ -3029,6 +3095,12 @@ engines:
     env: {}
   weibo:
     type: cli
+    # timeout 声明（2026-09-10 核查）：该引擎内部已有**广谱重试**
+    # （429 + URLError/OSError，最多 3 次带指数退避，见 _http_get_with_retry）。
+    # 按 search._engine_retries 约定，声明 ≥8s 即不再叠加引擎级重试——
+    # 否则内外两层重试叠乘（anysearch 曾因此跑出 31s）。
+    # 安全性：实测延迟 0.40s，远低于 8s，不会截断正常请求。
+    timeout: 8
     label: 微博
     enabled: true
     cost_tier: free
@@ -4029,6 +4101,12 @@ execution:
   parallel_timeout: 6
   retry_count: 1
   retry_on_empty: true
+  # 单引擎墙钟硬预算（秒）：含该引擎全部重试尝试，超预算即停、由编排层切备选源。
+  # 背景：重试会叠乘（引擎级 × HTTP 级 × 超时），anysearch 曾因此跑出 31s
+  # （retry_count=1 → 2 次 × max_retries=1 → 2 次 × 8s = 32s 最坏）。
+  # 用户体感阈值 10s；且应 ≥ default_timeout(8s)，否则单次正常尝试会被截断。
+  # 调小 → 更快切备选但可能误杀慢网下的正常源；调大 → 更容忍慢源但体感变差。
+  per_engine_budget_s: 10
   budget:
     fast:
       max_cost_per_query: 0.0

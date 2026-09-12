@@ -70,6 +70,49 @@ def _public_payload(result: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# ── 凭证值级脱敏（写入时生效）────────────────────────────────────────────────
+# _public_payload 删的是「整个字段」（headers/cookie）；这里补的是「值里的片段」：
+# URL 查询串里嵌的密钥（很多引擎把 key 放 query）、正文里贴的凭证。脱敏必须
+# 发生在写入时，而不是读取/导出时——密钥一旦以明文落盘，就已经泄漏给所有
+# 能读到该文件的人，事后清理依赖「有人记得在出口调用」，不可靠。
+_SECRET_QUERY_KEYS = (
+    "key", "keys", "api_key", "apikey", "api-key", "access_key",
+    "access_token", "token", "auth", "authorization", "credential",
+    "password", "passwd", "pwd", "secret", "sig", "signature", "sign",
+    "session", "sessionid", "sessdata", "cookie", "bili_jct", "d_c0",
+)
+_SECRET_QUERY_RE = re.compile(
+    r"((?:[?&;]|\b)(?:%s)=)([^&;\s\"']+)" % "|".join(
+        re.escape(k) for k in _SECRET_QUERY_KEYS), re.IGNORECASE)
+_BEARER_RE = re.compile(r"(bearer\s+)[A-Za-z0-9._\-]+", re.IGNORECASE)
+_HOME_PATH_RE = re.compile(r"(/Users/[^/\s:\"]+|/home/[^/\s:\"]+)")
+
+
+def redact_secrets(text: str) -> str:
+    """字符串里的凭证值改写为 [REDACTED]，家目录改写为 ~。
+
+    按类别正则实现，逐类有测试锁定；不加白名单——宁可多脱一个无害参数
+    （多脱只损失一点调试信息），不可漏一个真密钥。
+    """
+    if not text:
+        return text
+    out = _SECRET_QUERY_RE.sub(r"\1[REDACTED]", text)
+    out = _BEARER_RE.sub(r"\1[REDACTED]", out)
+    out = _HOME_PATH_RE.sub("~", out)
+    return out
+
+
+def _redact_deep(obj: Any) -> Any:
+    """递归脱敏：dict/list 逐值处理，str 应用规则，其余原样。"""
+    if isinstance(obj, dict):
+        return {k: _redact_deep(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_redact_deep(v) for v in obj]
+    if isinstance(obj, str):
+        return redact_secrets(obj)
+    return obj
+
+
 def resolve_archive_root(explicit: str | Path | None = None) -> Path:
     if explicit:
         return Path(explicit).expanduser().resolve()
@@ -185,6 +228,9 @@ def write_search_archive(
 
     run_dir.mkdir(parents=True, exist_ok=False)
     public = _public_payload(result)
+    # 凭证脱敏在写入时生效：URL 查询串密钥 / Bearer 头 / 家目录路径，
+    # 覆盖 envelope 与三类 jsonl 的全部下游数据
+    public = _redact_deep(public)
     candidates = public.get("candidates") if isinstance(public.get("candidates"), list) else []
     results = public.get("results") if isinstance(public.get("results"), list) else []
     coverage = public.get("coverage") if isinstance(public.get("coverage"), list) else []

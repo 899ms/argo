@@ -19,6 +19,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from config import load_config, get_cost_tiers  # noqa: E402
 from engine_env import env_status_for, is_engine_allowed_by_env  # noqa: E402
+from engine_requires import requires_status  # noqa: E402
 from engine_admission import load_admission, is_blocked, is_admitted  # noqa: E402
 
 
@@ -45,7 +46,8 @@ def _adaptive_scores_snapshot() -> dict[str, float]:
 
 
 def _runtime_status(engine_id: str,
-                    adaptive_scores: dict[str, float] | None = None) -> dict[str, Any]:
+                    adaptive_scores: dict[str, float] | None = None,
+                    spec: dict[str, Any] | None = None) -> dict[str, Any]:
     """运行时状态聚合（统一健康度视图）：熔断 + 学习分。
 
     被动读取、无网络副作用：breaker 状态读进程内存（构造时已 load 磁盘态）；
@@ -53,7 +55,8 @@ def _runtime_status(engine_id: str,
     与主动探针（health_check.check_engine）互补：本函数是「当前可用性」快照，
     探针是「立即连通性」验证，二者口径不同、各自保留。
     """
-    out: dict[str, Any] = {"breaker": None, "adaptive_score": None}
+    out: dict[str, Any] = {"breaker": None, "adaptive_score": None,
+                           "failure": None}
     try:
         from circuit_breaker import get_breaker
         st = get_breaker().status(engine_id)
@@ -61,7 +64,15 @@ def _runtime_status(engine_id: str,
             "state": st.get("state", "closed"),
             "failures": st.get("failures", 0),
             "cooldown_remain": st.get("cooldown_remain", 0),
+            "last_kind": st.get("last_kind"),
         }
+        # 失败归因：熔断只回答「要不要继续用」，这里补「为什么坏」。
+        # 仅在确有失败记录时输出，避免给健康引擎塞噪音字段。
+        if st.get("last_kind") and int(st.get("failures") or 0) > 0:
+            from engine_failure import explain as _explain_failure
+            out["failure"] = _explain_failure(
+                engine_id, spec=spec, output=str(st.get("last_kind") or ""),
+            )
     except Exception:
         pass
     if adaptive_scores is not None:
@@ -84,17 +95,20 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         spec = specs.get(engine_id) or {}
     tiers = tiers if tiers is not None else get_cost_tiers()
     env = env_status_for(engine_id, spec)
+    deps = requires_status(spec)
     adm = load_admission(engine_id)
     blocked = is_blocked(engine_id)
     admitted = is_admitted(engine_id)
     config_enabled = bool(spec.get("enabled", True))
     allowed = env["allowed_by_env"]
     env_ok = env["env_ready"]
-    # 自动路由可用条件
+    dep_ok = deps["dep_ready"]
+    # 自动路由可用条件（含后端依赖：缺 xhs/yt-dlp 这类工具时不该进路由）
     routable = (
         config_enabled
         and allowed
         and env_ok
+        and dep_ok
         and not blocked
     )
     status = "ready"
@@ -104,6 +118,10 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         status = "env_filtered"
     elif not env_ok:
         status = "missing_key"
+    elif not dep_ok:
+        # 后端工具缺失：密钥齐全、脚本存在，但真正干活的外部命令没有。
+        # 此前这类引擎一律显示 ready，调用后静默返回空，无从定位。
+        status = "missing_dep"
     elif blocked:
         status = "blocked"
     elif admitted:
@@ -124,6 +142,11 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         "blocked": blocked,
         "admitted": admitted,
         "routable": routable,
+        # 后端依赖（requires 声明）：缺什么、怎么装。与 missing_env（密钥）正交。
+        "dep_ready": dep_ok,
+        "requires": deps["requires"],
+        "missing_deps": deps["missing_deps"],
+        "dep_fixes": deps["dep_fixes"],
         "admission": {
             "admitted_at": (adm or {}).get("admitted_at"),
             "stages_passed": (adm or {}).get("stages_passed") or [],
@@ -132,7 +155,7 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
             "reason": (adm or {}).get("reason") or "",
         } if adm else None,
         # 统一健康度视图：熔断状态 + 学习分（被动快照，见 _runtime_status）
-        "runtime": _runtime_status(engine_id, adaptive_scores),
+        "runtime": _runtime_status(engine_id, adaptive_scores, spec),
     }
 
 

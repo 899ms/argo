@@ -80,6 +80,7 @@ class CircuitBreaker:
                 "state": state,
                 "failures": int(st.get("failures") or 0),
                 "opened_at": opened_at,
+                "last_kind": st.get("last_kind"),
                 "cooldown_remain": max(0, int(OPEN_SECONDS - (time.time() - opened_at)))
                 if state == "open" else 0,
             }
@@ -140,16 +141,22 @@ class CircuitBreaker:
             self._save()
 
     def record_failure(self, engine: str, kind: str = "error") -> None:
-        """kind: error | timeout | empty
+        """kind: error | timeout | empty | blocked | rate-limited
 
         empty 语义是「该查询无结果」——查询级信号，不是引擎级故障。
         它仍可触发 60s 短冷却（防止重复打无效源），但不累计 opens，
         因此永远不会驱动 auto-disable（否则聚合引擎/local 源等易空
         引擎会被误判为持续故障而静默禁用）。
+
+        blocked / rate-limited 语义是「源站行为，不是引擎坏了」——前者是
+        请求在到达内容前被拦截（反爬/指纹/挑战页），后者是源端限流。
+        同样只做 60s 短冷却、不累计 opens：把封锁/限流当引擎故障累计到
+        auto-disable 是封错人——引擎实现没有问题，换客户端形态、
+        等冷却或等源站策略变化即可恢复。
         """
         with self._lock:
             st = self._engines.get(engine) or {"failures": 0, "state": "closed"}
-            drives_opens = kind != "empty"
+            drives_opens = kind not in ("empty", "blocked", "rate-limited")
             # empty 权重低：两次 empty 才算一次 failure 贡献
             if kind == "empty":
                 st["empty_streak"] = int(st.get("empty_streak") or 0) + 1
@@ -161,9 +168,10 @@ class CircuitBreaker:
             st["failures"] = int(st.get("failures") or 0) + 1
             st["last_fail"] = time.time()
             st["last_kind"] = kind
-            # empty（无结果）是查询级信号，不驱动 open 熔断：否则「空结果→open 60s→
-            # half_open→再 open」无效 churn，还占主位阻塞 6s。仅 error/timeout 驱动
-            # 稳定 state 切换（空结果由负缓存短 TTL 兜底）。2026-08 修复。
+            # empty（无结果）与 blocked（被拦截）都是查询级/源站级信号，不驱动
+            # open 熔断：否则「空结果→open 60s→half_open→再 open」无效 churn，
+            # 还占主位阻塞 6s。仅 error/timeout 驱动稳定 state 切换（空结果由
+            # 负缓存短 TTL 兜底）。2026-08 修复；blocked 2026-09 并入同语义。
             if drives_opens and (st["failures"] >= FAILURE_THRESHOLD
                                  or st.get("state") == "half_open"):
                 st["state"] = "open"

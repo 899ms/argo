@@ -1,0 +1,25 @@
+# X/Twitter 单条推文（syndication 免登录通道）
+#
+# 定位：按推文取单条的抽取型引擎，与 twitter（搜索型）互为补充。
+# 通道原理：面向第三方网页嵌入的公开接口，访问凭证由推文 ID 本地推导
+#（见 engines_builders_intl.syndication_token），无需任何账号或密钥——
+# X 网页与官方 API 对未登录请求一律拒绝，这是常年可用的第二条通道。
+#
+# 查询词形态：推文 URL（x.com / twitter.com / 分享链接带 tweet_id 参数）或裸 ID。
+# 示例：
+#   python3 scripts/search.py "https://x.com/elonmusk/status/1585841080431321088" --engine twitter_syndication --json
+
+engine_id: twitter_syndication
+type: twitter_syndication
+enabled: true
+cost_tier: free
+timeout: 8
+canary_query: "https://x.com/elonmusk/status/1585841080431321088"
+desc: "X/Twitter 单条推文（syndication 通道，免登录零 key，含正文/作者/时间/媒体计数）"
+
+# 抽取型引擎：查询词是推文 URL 而非关键词。质量自述集用真实推文 URL，
+# 避免默认关键词探针对单条抽取引擎误判「零结果」
+quality_queries:
+  - query: "https://x.com/elonmusk/status/1585841080431321088"
+  - query: "https://twitter.com/elonmusk/status/1585841080431321088"
+  - query: "1585841080431321088"

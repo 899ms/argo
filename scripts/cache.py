@@ -457,24 +457,45 @@ class SQLiteCache:
 
         阈值 0.7：中文字符级 n-gram 下，「营收」vs「年营收」这类
         单字差异相似度约 0.75，0.7 可捕捉近重复且排除无关查询（≈0）。
+
+        engine 隔离（v2.4.2 修复）：SQL 必须按 engine 列过滤。此前形参收了
+        engine 但 WHERE 子句只用 domain，软命中因此跨引擎串味——实测
+        `--engine v2ex` 可命中 bilibili 缓存；fetch 与 evidence 同 domain 下
+        URL 词面相似（如 x 与 x.md，相似度 0.875）会互相串正文。
+        engine="auto" 保留为显式通配（调用方确实不关心来源时使用）。
+        组合键（多引擎拼接的 `a+b`）不参与软命中：组合结果集是融合产物，
+        与任何单引擎缓存都不可互换。
         """
         nq = normalize_query(query)
         base_len = len(nq)
         if self._degraded_reason is not None:
             return []
+        # engine 过滤：通配不过滤，否则精确匹配（engine 列同时承载 fetch/evidence 这类 kind 值）
+        engine_filter = None if engine == "auto" else engine
         with self._lock:
             with self._connect() as conn:
-                rows = conn.execute(
-                    "SELECT key, query, domain, ttl, created_at "
-                    "FROM search_cache WHERE domain = ? "
-                    "ORDER BY accessed_at DESC LIMIT ?",
-                    (domain, limit),
-                ).fetchall()
+                if engine_filter is None:
+                    rows = conn.execute(
+                        "SELECT key, query, engine, domain, ttl, created_at "
+                        "FROM search_cache WHERE domain = ? "
+                        "ORDER BY accessed_at DESC LIMIT ?",
+                        (domain, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT key, query, engine, domain, ttl, created_at "
+                        "FROM search_cache WHERE domain = ? AND engine = ? "
+                        "ORDER BY accessed_at DESC LIMIT ?",
+                        (domain, engine_filter, limit),
+                    ).fetchall()
         candidates = []
-        for key, cached_q, cached_dom, ttl, created_at in rows:
+        for key, cached_q, cached_engine, cached_dom, ttl, created_at in rows:
             if not cached_q or cached_q == nq:
                 continue
             if self._is_expired(created_at, ttl):
+                continue
+            # 组合键不参与软命中：组合结果集 ≠ 任何单引擎结果集
+            if "+" in (cached_engine or ""):
                 continue
             clen = len(normalize_query(cached_q))
             # 长度约束：差异过大（>50%）不可能是近重复
@@ -722,7 +743,11 @@ class SearchCache:
                             out["_semantic_hit"] = True
                             out["_semantic_similarity"] = cand["similarity"]
                             out["_semantic_query"] = cand["query"]
-                            self._l1.set(key, s_hit)
+                            # L1 只回填「本请求 key 视角」的载荷（含来源与软命中标记），
+                            # 不回填他人原始 s_hit：后者既无归属标记也无 TTL 约束，
+                            # 会在 L2 过期后继续以本 key 的身份存活，把一次软命中
+                            # 固化成硬命中（v2.4.2 修复）。
+                            self._l1.set(key, out)
                             return out
                 except Exception:
                     pass
