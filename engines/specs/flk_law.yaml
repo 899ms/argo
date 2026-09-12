@@ -1,0 +1,24 @@
+# 国家法律法规数据库 — 法律/行政法规/司法解释/地方性法规（POST JSON，免认证）
+# legal 域的权威法条文本源：此前只有裁判文书（wenshu）+国务院政策（gov_policy），
+# 缺法条本身。接口为 flk SPA 前端逆向（searchRange 1=标题 2=正文，searchType
+# 1=精确 2=模糊；orderByParam 是对象 {order,sort}，扁平 body 会 500）。
+# 高亮 <em> 标签剥离；sxx 时效性映射：1 已废止 / 2 已修改 / 3 有效 / 4 尚未生效。
+# 无验证码无签名；失败诚实空，不做绕过。
+# 验证:
+#   python3 scripts/engine_validate.py --engine flk_law --stage all --admit --write-doc
+
+engine_id: flk_law
+type: flk_law
+enabled: true
+cost_tier: free
+timeout: 25
+canary_query: "行政处罚"
+desc: "国家法律法规数据库（法律/行政法规/司法解释全文，权威法条源，免认证）"
+coverage: [legal, law, chinese, gov]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "行政处罚"
+  - query: "个人信息保护"
+  - query: "劳动法"

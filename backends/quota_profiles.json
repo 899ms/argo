@@ -60,6 +60,16 @@
     "cost_tier": "free",
     "priority": 27
   },
+  "bangumi": {
+    "label": "bangumi",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "bilibili": {
     "label": "B站",
     "qps": 2,
@@ -220,6 +230,16 @@
     "cost_tier": "free",
     "priority": 40
   },
+  "crt_sh": {
+    "label": "crt_sh",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "datacite": {
     "label": "datacite",
     "qps": 2,
@@ -299,6 +319,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 34
+  },
+  "douban_movie": {
+    "label": "douban_movie",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "duckduckgo": {
     "label": "DuckDuckGo",
@@ -460,6 +490,16 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "flk_law": {
+    "label": "flk_law",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "fr_opendata": {
     "label": "法国政府开放数据",
     "qps": 2,
@@ -540,6 +580,16 @@
     "cost_tier": "free",
     "priority": 11
   },
+  "google_news": {
+    "label": "google_news",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "google_patents": {
     "label": "Google Patents 专利",
     "qps": 2,
@@ -569,6 +619,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 42
+  },
+  "gov_regulations": {
+    "label": "gov_regulations",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "gutenberg": {
     "label": "Project Gutenberg",
@@ -980,6 +1040,16 @@
     "cost_tier": "free",
     "priority": 45
   },
+  "met_museum": {
+    "label": "met_museum",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "metaso": {
     "label": "秘塔",
     "qps": 2,
@@ -1030,6 +1100,16 @@
     "cost_tier": "free",
     "priority": 12
   },
+  "nasa_images": {
+    "label": "nasa_images",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "nbs_stats": {
     "label": "国家统计局",
     "qps": 2,
@@ -1049,6 +1129,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 46
+  },
+  "netease_music": {
+    "label": "netease_music",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "npm": {
     "label": "npm",
@@ -1150,6 +1240,16 @@
     "cost_tier": "free",
     "priority": 57
   },
+  "openstd": {
+    "label": "openstd",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "openverse": {
     "label": "Openverse 图库",
     "qps": 3,
@@ -1169,6 +1269,16 @@
     "cost_unit": "free",
     "cost_tier": "api",
     "priority": 11
+  },
+  "people_daily": {
+    "label": "people_daily",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "polymarket": {
     "label": "Polymarket",
@@ -1340,6 +1450,16 @@
     "cost_tier": "free",
     "priority": 3
   },
+  "sspai": {
+    "label": "sspai",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "stackoverflow": {
     "label": "StackOverflow",
     "qps": 3,
@@ -1349,6 +1469,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 17
+  },
+  "std_samr": {
+    "label": "std_samr",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "steam": {
     "label": "Steam",
@@ -1650,6 +1780,16 @@
     "cost_tier": "free",
     "priority": 12
   },
+  "wikisource": {
+    "label": "wikisource",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "wolframalpha": {
     "label": "WolframAlpha",
     "qps": 2,
@@ -1689,6 +1829,16 @@
     "cost_unit": "free",
     "cost_tier": "api",
     "priority": 12
+  },
+  "zdic": {
+    "label": "zdic",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "zenodo": {
     "label": "zenodo",
@@ -1739,6 +1889,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 26
+  },
+  "zhihu_hot_app": {
+    "label": "zhihu_hot_app",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "zhihu_user": {
     "label": "知乎个人数据",

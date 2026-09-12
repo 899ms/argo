@@ -125,9 +125,18 @@ def _resolve_relative_paths(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_engine_paths(config: dict[str, Any]) -> dict[str, Any]:
-    """验证引擎 CLI 路径，不存在则标记为 disabled。"""
+    """验证引擎 CLI 路径，不存在则标记为 disabled。
+
+    相对路径一律以 config.yaml 所在目录为基准解析（不是进程 CWD）。外置 spec
+    （engines/specs/*.yaml）的 cmd 是相对路径，而 _resolve_relative_paths 在
+    合并外置声明之前就已执行，故这些路径不会被转成绝对路径。若这里用
+    Path(cmd[-1]).exists() 判定，结果就随 CWD 变——实测同一份配置在仓库根
+    目录下 165 个引擎可用、在 /tmp 下只剩 163（train/weather 被静默停用），
+    一致性门禁也随之红/绿漂移。
+    """
     import logging as _logging
     _log = _logging.getLogger("unified_search.config")
+    base = CONFIG_PATH.parent
     for name, spec in config.get("engines", {}).items():
         if not isinstance(spec, dict) or spec.get("type") != "cli":
             continue
@@ -138,10 +147,12 @@ def _validate_engine_paths(config: dict[str, Any]) -> dict[str, Any]:
         if cmd_path_str.startswith("--"):
             continue
         cmd_path = Path(cmd_path_str).expanduser()
+        if not cmd_path.is_absolute():
+            cmd_path = base / cmd_path
         if cmd_path.exists():
             continue
         # 裸命令（如 PATH 中的可执行文件）：用 shutil.which 查 PATH，查不到才禁用
-        if not shutil.which(cmd_path_str):
+        if not (shutil.which(cmd_path_str) or shutil.which(cmd_path.name)):
             spec["enabled"] = False
     return config
 
@@ -205,15 +216,9 @@ def _merge_external_engines(config: dict[str, Any]) -> dict[str, Any]:
         base = dict(engines.get(eid) or {})
         base.update(spec)
         engines[eid] = base
-        # 可选：写入 cost_tier 列表
-        tier = spec.get("cost_tier")
-        if tier and isinstance(tier, str):
-            tiers = config.setdefault("cost_tiers", {})
-            if isinstance(tiers, dict):
-                lst = list(tiers.get(tier) or [])
-                if eid not in lst:
-                    lst.append(eid)
-                    tiers[tier] = lst
+    # 注：不再维护独立的 cost_tiers 段。成本分级由 get_cost_tiers() 从 engines
+    # 段的 cost_tier 字段聚合，独立段是第二份口径（曾与声明矛盾：zhihu_global
+    # 列在 free 而声明 api、tavily 列在 paid 而声明 api），且无任何读取方。
     return config
 
 
@@ -264,6 +269,9 @@ def load_config(force: bool = False) -> dict[str, Any]:
             expanded = _expand_value(parsed)
             resolved = _resolve_relative_paths(expanded)
             resolved = _merge_external_engines(resolved)
+            # 外置 spec 的 cmd 是相对路径 → 合并后必须再解析一次，
+            # 否则它们永远保持相对（且校验随 CWD 漂移）
+            resolved = _resolve_relative_paths(resolved)
             _config_cache = _validate_engine_paths(resolved)
             _config_mtime = combined_mtime
             _config_load_error = None

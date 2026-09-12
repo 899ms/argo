@@ -1,0 +1,38 @@
+# 中国政府网·规章库 — 部门规章/地方政府规章（与 gov_policy 同一接口族）
+# t=zhengcelibrary_bm 取规章层，与 gov_policy（t=zhengcelibrary_gw，国务院文件）
+# 互补：法规金字塔的中段。响应封套与字段同构，声明直接克隆。
+# 验证:
+#   python3 scripts/engine_validate.py --engine gov_regulations --stage all --admit --write-doc
+
+engine_id: gov_regulations
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://sousuo.www.gov.cn/search-gov/data
+timeout: 10
+query_param: q
+canary_query: "行政处罚"
+desc: "中国政府网规章库（部门规章/地方政府规章，免认证）"
+coverage: [legal, policy, gov, chinese]
+recommended: false
+latency_ms: 1500
+
+headers:
+  User-Agent: argo-search/1.0 (+gov_regulations)
+
+extra_params:
+  t: zhengcelibrary_bm
+  p: "1"
+  n: "{n}"
+
+output_map:
+  items: searchVO.listVO
+  item_title: title
+  item_url: url
+  item_summary: summary
+  item_published_at: pubtimeStr
+
+quality_queries:
+  - query: "行政处罚"
+  - query: "食品安全"

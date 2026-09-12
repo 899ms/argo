@@ -320,7 +320,7 @@ def render() -> str:
     L.append("## 七、怎么自己查当前状态")
     L.append("")
     L.append("```bash")
-    L.append("argo search --list-engines --detail | python3 -m json.tool | less   # 全部 175 个源的详情")
+    L.append(f"argo search --list-engines --detail | python3 -m json.tool | less   # 全部 {len(rows)} 个源的详情")
     L.append("argo search --list-engines --detail --routable-only              # 只看现在能用的")
     L.append("python3 scripts/matrix_search_eval.py --offline                   # 可达性门：有没有死源")
     L.append("python3 scripts/engine_validate.py --engine <名> --stage all       # 单个源的健康+质量双阶段体检")

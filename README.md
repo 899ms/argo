@@ -25,7 +25,7 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.6-informational">
-  <img alt="engines" src="https://img.shields.io/badge/engines-175-orange">
+  <img alt="engines" src="https://img.shields.io/badge/engines-191-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-12%20tools-purple">
 </p>
 
@@ -279,7 +279,7 @@ python3 scripts/search.py --list-engines
 
 **1. 通用搜索 + 垂直搜索，双管齐下**
 
-日常问题走通用网页搜索；一问到行情、影视、体育、宏观这类「有标准答案」的问题，自动切到垂直源直接给答案，而不是扔给你一堆链接。目前 175 个源（143 个免密钥开箱可用）、78 个业务域，金融 / 宏观 / 影视 / 体育 / 地理 / 组织 / 媒体 / 化学 / 学术 / 代码等都有专门的路。
+日常问题走通用网页搜索；一问到行情、影视、体育、宏观这类「有标准答案」的问题，自动切到垂直源直接给答案，而不是扔给你一堆链接。目前 191 个源（159 个免密钥开箱可用）、81 个业务域，金融 / 宏观 / 影视 / 体育 / 地理 / 组织 / 媒体 / 化学 / 学术 / 代码等都有专门的路。
 
 **2. 缓存：不重复花冤枉钱**
 
@@ -353,7 +353,7 @@ python3 scripts/search.py --list-engines
 - **求职搜索 v3（v2.8.0 升级）**：`argo job` 结构化字段 + 增量监控 + 指纹去重，新增 Ashby ATS 免 Key 后端与北京高校就业源
 - **天气双源并行（v2.8.0 升级）**：wttr.in + Open-Meteo 双源，地理编码 + 空气质量，问天气不落空
 - **通用搜索增强（v2.8.0 新增）**：Parallel 搜索（长文摘录、多路召回）与 You.com（网页+新闻合并、时效动态化），无 Key 优雅降级
-- **175 个搜索源（143 个免密钥开箱可用）、78 个业务域**：通用网页 + 金融 / 宏观 / 影视 / 体育 / 地理 / 组织 / 媒体 / 化学 / 学术 / 代码等（真源：`config.yaml` 与 `engines/specs/*.yaml`）。**逐源清单（费用 / 密钥 / 状态 / 域组合 / 特别能力）见 [搜索源使用文档](docs/ENGINE_CATALOG.md)**，该文档由脚本从声明生成、有门禁防漂移；选源判断与语义分工见 `references/engines.md`
+- **191 个搜索源（159 个免密钥开箱可用）、81 个业务域**：通用网页 + 金融 / 宏观 / 影视 / 体育 / 地理 / 组织 / 媒体 / 化学 / 学术 / 代码等（真源：`config.yaml` 与 `engines/specs/*.yaml`）。**逐源清单（费用 / 密钥 / 状态 / 域组合 / 特别能力）见 [搜索源使用文档](docs/ENGINE_CATALOG.md)**，该文档由脚本从声明生成、有门禁防漂移；选源判断与语义分工见 `references/engines.md`
 - **垂直结构化模态卡**：火车票 / 油价 / 贵金属 / 万年历 / 星座 / 手机参数 / 汽车 / 医疗挂号等查询返回实时结构化卡片（`modal_card` 域 → `bocha_ai` 原生引擎，失败自动回落 web 搜索）
 - **双层缓存**：内存 LRU + SQLite 持久化，时效性弱的内容不重复打 API；登录态结果单独隔离，不污染公共缓存
 - **为 Agent 节省 Token**：MCP 响应可紧凑裁剪、snippet 可控，输出为精简 JSON 而非整页文本
@@ -371,7 +371,7 @@ python3 scripts/search.py --list-engines
 
 ## 引擎与路由
 
-当前配置 **175** 个源（**143** 个免密钥开箱可用）、**78** 个业务域（以 `config.yaml` 与 `--list-engines` 为准）。
+当前配置 **191** 个源（**159** 个免密钥开箱可用）、**81** 个业务域（以 `config.yaml` 与 `--list-engines` 为准）。
 
 ### 直连与垂类（节选）
 

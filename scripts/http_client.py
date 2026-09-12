@@ -98,6 +98,31 @@ def _random_headers(extra: dict | None = None) -> dict:
     return profile
 
 
+def _charset_of(content_type: str) -> str:
+    """从 Content-Type 解析 charset；缺失或无法识别时回落 utf-8。
+
+    未知编码必须先判定再解码：`bytes.decode("x-unknown-8bit")` 会抛 LookupError，
+    而 LookupError 不是 OSError 子类，会被 HttpClient.get 的 `except Exception`
+    吞掉并返回 status=0——一个正常的 200 响应被静默降级成「连接失败」，
+    还被归因为 network。运维现实里 `charset=x-unknown-8bit`、
+    `charset=gb2312;` 这类脏头并不罕见。
+    """
+    import codecs
+    if "charset=" in content_type:
+        charset = content_type.split("charset=")[-1].strip().split(";")[0].strip().strip('"\'')
+        try:
+            codecs.lookup(charset)
+            return charset
+        except (LookupError, ValueError):
+            pass
+    return "utf-8"
+
+
+def _decode_body(raw_body: bytes, content_type: str) -> str:
+    """按 Content-Type 的 charset 解码响应体，任何失败都不丢 body。"""
+    return raw_body.decode(_charset_of(content_type), errors="replace")
+
+
 # ─── Retry-After 尊重（合规限速信号）────────────────────────────────────────
 
 _RETRY_AFTER_MAX_WAIT = 10.0  # 服务器要求等待超过此秒数 → 放弃不重试
@@ -488,6 +513,18 @@ class HttpClient:
                 if not loc:
                     break
                 current_url = urllib.parse.urljoin(current_url, loc)
+                # 部分站点的 Location 是未编码的（zdic /hans/道）：原始 UTF-8
+                # 字节被 http.client 按 latin-1 解码成乱码——先按 latin-1 还原
+                # UTF-8，再补编码残余非 ASCII 字符（%XX 序列原样保留）
+                if any(ord(ch) > 127 for ch in current_url):
+                    try:
+                        current_url = current_url.encode("latin-1").decode("utf-8")
+                    except (UnicodeDecodeError, UnicodeEncodeError):
+                        pass
+                    current_url = "".join(
+                        ch if ord(ch) < 128 else urllib.parse.quote(ch)
+                        for ch in current_url
+                    )
                 redirects_left -= 1
                 continue
 
@@ -511,11 +548,7 @@ class HttpClient:
 
             # 解码
             content_type = resp.getheader("Content-Type", "")
-            charset = "utf-8"
-            if "charset=" in content_type:
-                charset = content_type.split("charset=")[-1].strip().split(";")[0]
-
-            text = raw_body.decode(charset, errors="replace")
+            text = _decode_body(raw_body, content_type)
 
             elapsed = int((time.time() - start) * 1000)
 
@@ -780,10 +813,7 @@ class HttpClient:
                 except ImportError:
                     return self._do_post_fallback(url, payload, extra_headers)
             content_type = resp.getheader("Content-Type", "")
-            charset = "utf-8"
-            if "charset=" in content_type:
-                charset = content_type.split("charset=")[-1].strip().split(";")[0]
-            text = raw_body.decode(charset, errors="replace")
+            text = _decode_body(raw_body, content_type)
             return {"status": status, "headers": resp_headers, "text": text,
                     "url": current_url,
                     "elapsed_ms": int((time.time() - start) * 1000),

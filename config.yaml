@@ -241,10 +241,11 @@ domains:
   - (?i)\b(roe\s+v\.?\s*wade|marbury\s+v\.?\s*madison|brown\s+v\.?\s*board|miranda\s+v\.?\s*arizona)\b
   - (美国判例|美国最高法院|判例法|联邦法院|美国法律)
   primary: courtlistener
-- desc: 地球科学/遥感数据（USGS 地震 + NASA CMR）
+- desc: 地球科学/遥感数据（USGS 地震 + NASA CMR + NASA 图像）
   engines_combo:
   - usgs
   - nasa_cmr
+  - nasa_images
   fallback: usgs
   name: earth_science
   parallel: true
@@ -252,9 +253,10 @@ domains:
   - (地震|震级|余震|地质|遥感|卫星数据|震中)
   - (?i)(earthquake|seismic|usgs|geology|remote\s+sensing|satellite\s+data)
   primary: usgs
-- desc: 安全漏洞情报（NVD）
+- desc: 安全漏洞情报（NVD 漏洞 + crt.sh 证书/子域情报）
   engines_combo:
   - nvd
+  - crt_sh
   - anysearch
   fallback: anysearch
   name: security_search
@@ -298,6 +300,44 @@ domains:
   - (?i)(进出口|贸易额|双边贸易|贸易数据|进口额|出口额|comtrade)
   - (?i)(进口|出口|import|export).{0,12}\bHS?\s?\d{4}\b
   primary: un_comtrade
+
+- desc: 国家标准检索（std.samr + openstd 全文）
+  engines_combo:
+  - std_samr
+  - openstd
+  fallback: std_samr
+  name: standards
+  parallel: true
+  patterns:
+  - (?i)(国家标准|国标|标准号|标准全文|GB/?T?\s?\d{4,5}|GB\s?\d{4,5})
+  - (?i)(national standard|standard (number|search))
+  primary: std_samr
+
+- desc: 法律法规条文（flk 权威法条 + gov.cn 规章）
+  engines_combo:
+  - flk_law
+  - gov_regulations
+  - wenshu
+  fallback: gov_regulations
+  name: law_text
+  parallel: true
+  patterns:
+  - (法条|法律条文|条文全文|法规全文|法规原文|法规检索)
+  - (第[一二三四五六七八九十百零\d]{1,7}条)
+  - (?i)(民法典|刑法|劳动法|行政处罚法|个人信息保护法|数据安全法).{0,10}(条文|全文|第)
+  primary: flk_law
+
+- desc: 艺术/博物馆藏品（Met Museum）
+  engines_combo:
+  - met_museum
+  - wikipedia
+  fallback: wikipedia
+  name: art_museum
+  parallel: true
+  patterns:
+  - (博物馆|馆藏|藏品|美术馆|文物|艺术品|雕塑|名画|油画|画作|画家|谁画的)
+  - (?i)(met museum|museum collection|art collection|painting|sculpture|van gogh|monet|picasso|vermeer)
+  primary: met_museum
 
 - desc: 科研数据集检索（DataCite + Zenodo；排在 academic 前，数据集≠论文）
   engines_combo:
@@ -394,6 +434,7 @@ domains:
   - bilibili_hot
   - ths_hot
   - zhihu_hot
+  - zhihu_hot_app
   fallback: baidu_hot
   name: hot_trending
   parallel: true
@@ -477,10 +518,11 @@ domains:
   - (?i)(模型|model).{0,24}(价格|pricing|多少钱|上下文|context|token|支持视觉|vision|能力|对比|免费|开源)
   - (?i)(API price|pricing|context window|token limit|vision model|tool call)
   primary: models_dev
-- desc: 中文技术社区文章（掘金 + V2EX）
+- desc: 中文技术社区文章（掘金 + V2EX + 少数派）
   engines_combo:
   - juejin
   - v2ex
+  - sspai
   fallback: juejin
   name: cn_tech_community
   parallel: true
@@ -488,10 +530,12 @@ domains:
   - (?i)(掘金|juejin|稀土掘金|技术博客|前端文章|后端文章|dev\.to|devto)
   - (?i)(写得不错的技术文|技术分享文章)
   primary: juejin
-- desc: 法律法规（刑法/民法/判例/法规）
+- desc: 法律法规（法条/判例/法规，含 flk 权威文本）
   engines_combo:
   - anysearch
   - byted
+  - flk_law
+  - gov_regulations
   - wenshu
   fallback: byted
   name: legal
@@ -568,10 +612,11 @@ domains:
   - (?i)(百度百科|baike\.baidu|百科词条|查百科|词条解释)
   - (?i)(是什么(?!梗)|什么是|简介|定义一下).{0,8}$
   primary: baidu_baike
-- desc: 英文单词/词典查询
+- desc: 词典查询（英文 dictionaryapi + 中文汉典 + wikipedia）
   engines_combo:
   - free_dictionary
   - wikipedia
+  - zdic
   fallback: wikipedia
   name: dictionary_search
   parallel: false
@@ -579,9 +624,10 @@ domains:
   - (?i)(词典|字典|英英|英汉词典|英文单词|单词.*意思|英文.*意思|怎么读|咋读|读音|查词|define|definition|dictionary|meaning of|the word)
   - (?i)\b[a-z]{3,}\b\s*什么意思|什么意思\s*\b[a-z]{3,}\b|[a-zA-Z]{3,}.*(意思是什么|的意思)
   primary: free_dictionary
-- desc: 动漫/二次元百科（萌娘百科）
+- desc: 动漫/二次元（Bangumi 条目元数据 + 萌娘百科）
   engines_combo:
   - moegirl
+  - bangumi
   - zh_wikipedia
   fallback: moegirl
   name: anime_encyclopedia
@@ -604,9 +650,10 @@ domains:
   - (?i)(小说|书籍|图书|书单|好书|荐书|书荒|名著|畅销书|电子书|看书|出版社|ISBN|小说推荐|科幻小说|推理小说)
   - (?i)\b(book|novel|isbn|ebook|bestseller)\b
   primary: weread
-- desc: 影视/电影/剧集（IMDb 主，先于音乐媒体域，避免电影误走 iTunes 音乐）
+- desc: 影视/电影/剧集（IMDb 主 + 豆瓣中文视角，先于音乐媒体域，避免电影误走 iTunes 音乐）
   engines_combo:
   - imdb
+  - douban_movie
   - itunes
   - wikipedia
   - wikidata
@@ -699,6 +746,7 @@ domains:
   engines_combo:
   - itunes
   - musicbrainz
+  - netease_music
   fallback: itunes
   name: media_search
   parallel: true
@@ -842,9 +890,10 @@ domains:
   - (?i)(what is|who is|when did|where is|how many|how much)
   - (?i)(是什么|是谁|什么时候|在哪里|多少|多少钱)
   primary: wikipedia
-- desc: 全球事件/舆情（GDELT 事件数据库）
+- desc: 全球事件/舆情（GDELT 事件数据库 + Google News RSS）
   engines_combo:
   - gdelt
+  - google_news
   - em_global_news
   - cls_telegraph
   fallback: gdelt
@@ -859,6 +908,8 @@ domains:
   engines_combo:
   - byted
   - zhihu_global
+  - people_daily
+  - google_news
   - octen
   - you
   fallback: byted
@@ -966,15 +1017,17 @@ domains:
   patterns:
   - (?i)(arxiv api|semantic scholar|crossref|pubmed|site:arxiv.org)
   primary: local_search
-- desc: 本地参考百科
+- desc: 本地参考百科（+维基文库古文公版文献）
   engines_combo:
   - local_search
   - wikipedia
+  - wikisource
   fallback: wikipedia
   name: local_reference
   parallel: true
   patterns:
   - (?i)(wikipedia api|wiktionary|wikiquote|nominatim|openstreetmap)
+  - (古文|文言文|古诗文|古文原文|维基文库|wikisource|公版书)
   primary: local_search
 - desc: 本地通用搜索（兜底）
   engines_combo:
@@ -4210,70 +4263,3 @@ output:
   format: auto
   include_routing_decision: true
   include_scores: true
-
-# 成本分级（用于成本感知路由）
-cost_tiers:
-  free:
-    - local_search
-    - local_arxiv
-    - local_wikipedia
-    - local_stackoverflow
-    - local_github
-    - local_bing
-    - local_google
-    - local_mojeek
-    - local_yandex
-    - local_startpage
-    - local_duckduckgo
-    - local_baidu
-    - local_sogou
-    - local_pubmed
-    - local_crossref
-    - local_semantic_scholar
-    - local_bing_news
-    - local_google_news
-    - local_duckduckgo_news
-    - local_gitlab
-    - local_npm
-    - local_wiktionary
-    - local_wikiquote
-    - local_imdb
-    - local_goodreads
-    - local_openstreetmap
-    - imdb
-    - thesportsdb
-    - anysearch
-    - zhihu
-    - zhihu_global
-    - zhihu_hot
-    - eastmoney
-    - arxiv
-    - duckduckgo
-    - uapi
-    - semantic_scholar
-    - openalex
-    - crossref
-    - github
-    - wikipedia
-    - searxng
-    - wolframalpha
-    - twitter
-    - reddit
-    - xiaohongshu
-    - bilibili
-    - weibo
-    - finviz
-    - seeking_alpha
-    - qweather
-    - wenshu
-    - jin10
-  low:
-    - bocha
-    - metaso
-    - byted
-    - brave
-  api:
-    - exa
-  paid:
-    - tavily
-    - felo

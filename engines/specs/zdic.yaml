@@ -1,0 +1,22 @@
+# 汉典 — 中文字词典（HTML 解析，免认证）
+# dictionary_search 域的中文补位：该域此前只有英文 dictionaryapi.dev，
+# 缺字义/音韵/字源。词条页为 /hans/{词} 直达，取「详细解释」前几条释义
+# 拼摘要；查无此字返回 404 → 诚实空。
+# 验证:
+#   python3 scripts/engine_validate.py --engine zdic --stage all --admit --write-doc
+
+engine_id: zdic
+type: zdic
+enabled: true
+cost_tier: free
+timeout: 12
+canary_query: "道"
+desc: "汉典（中文字词典：字义/音韵/字源，HTML 解析，免认证）"
+coverage: [dictionary, chinese, reference]
+recommended: false
+latency_ms: 1500
+
+quality_queries:
+  - query: "道"
+  - query: "仁"
+  - query: "信"

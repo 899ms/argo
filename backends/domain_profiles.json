@@ -2057,5 +2057,101 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "bangumi": {
+    "label": "bangumi",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "crt_sh": {
+    "label": "crt_sh",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "douban_movie": {
+    "label": "douban_movie",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "flk_law": {
+    "label": "flk_law",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "google_news": {
+    "label": "google_news",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "gov_regulations": {
+    "label": "gov_regulations",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "met_museum": {
+    "label": "met_museum",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "nasa_images": {
+    "label": "nasa_images",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "netease_music": {
+    "label": "netease_music",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "openstd": {
+    "label": "openstd",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "people_daily": {
+    "label": "people_daily",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "sspai": {
+    "label": "sspai",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "std_samr": {
+    "label": "std_samr",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "wikisource": {
+    "label": "wikisource",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "zdic": {
+    "label": "zdic",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "zhihu_hot_app": {
+    "label": "zhihu_hot_app",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

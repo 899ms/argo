@@ -1,0 +1,21 @@
+# 国家标准全文公开系统 — GB 国标全文在线预览入口（HTML 解析，免认证）
+# 与 std_samr 同库互补：这里给全文预览页（newGbInfo?hcno=），列表为服务端
+# 渲染 HTML，行内 onclick showInfo('hcno') 取详情键。全文 PDF 防复制渲染，
+# 只取元数据（标准号/名称/性质/状态/发布/实施日期）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine openstd --stage all --admit --write-doc
+
+engine_id: openstd
+type: openstd
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "数据安全"
+desc: "国家标准全文公开系统（GB 全文预览入口，HTML 解析，免认证）"
+coverage: [standards, tech, chinese]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "数据安全"
+  - query: "信息技术"

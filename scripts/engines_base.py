@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import functools
+import io
 import json
 import logging
 import os
@@ -15,6 +16,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -38,16 +40,34 @@ if not logger.handlers:
 _FAIL_NOTES: dict[str, dict[str, Any]] = {}
 _FAIL_NOTES_LOCK = threading.Lock()
 
+# HTTPError 错误体的读取上限：只用于归因（下游截 400 字符），
+# 无限读会把几十 MB 错误页吃进内存并写进磁盘状态
+_HTTP_ERROR_BODY_CAP = 64 * 1024
+
+# 归因细节里可能回显凭证（OpenAI 风格 "Incorrect API key: sk-…"），
+# 且会持久化到 circuit_breaker.json / 出现在 --list-engines 输出。
+# 复用 archive_run 的唯一脱敏实现，避免各写一份规则。
+try:
+    from archive_run import redact_secrets as _redact_secrets
+except Exception:  # pragma: no cover - archive_run 不可用时退化为不脱敏
+    def _redact_secrets(text: str) -> str:
+        return text
+
 
 def note_failure(engine: str, category: str, reason: str, detail: str = "") -> None:
-    """记录引擎最近一次失败的归因（覆盖式：只留最后一次）。"""
+    """记录引擎最近一次失败的归因（覆盖式：只留最后一次）。
+
+    detail 在写入前脱敏：这里聚合了引擎名、状态码与**响应体**，是唯一能把
+    上游回显的凭证带进持久化状态的位置（会写进 circuit_breaker.json 并出现在
+    --list-engines 输出）。脱敏在唯一的写入点做，消费者无需各自处理。
+    """
     if not engine:
         return
     with _FAIL_NOTES_LOCK:
         _FAIL_NOTES[engine] = {
             "category": category,
             "reason": reason,
-            "detail": (detail or "")[:200],
+            "detail": _redact_secrets(detail or "")[:200],
             "ts": time.time(),
         }
 
@@ -296,9 +316,9 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
     """统一 HTTP 引擎构造（GET/POST）。
 
     GET 请求走 HttpClient（UA 轮换 + Cookie 积累 + 429/503 Retry-After 尊重 +
-    指数退避重试 + 重定向跟随 + 域族节流）；POST 保留 urllib（HttpClient 无
-    POST；POST 型引擎均为 JSON API，无进程内节流需求）。开关
-    ARGO_ENGINE_HTTP_CLIENT=0 可整体回退 urllib（灰度/诊断用）。
+    指数退避重试 + 重定向跟随 + 域族节流）；POST 走 http_open（与 GET 共用同一
+    归因路径；POST 型引擎均为 JSON API，无进程内节流需求）。开关
+    ARGO_ENGINE_HTTP_CLIENT=0 可整体回退 GET 到 urllib（灰度/诊断用）。
     spec 显式声明的 max_concurrency / min_interval_ms 覆盖域族默认节流。
     """
     url_template = spec.get("url", "")
@@ -388,7 +408,7 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
                 headers=resolved_headers,
             )
             try:
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=eng) as resp:
                     raw = resp.read().decode("utf-8")
             except Exception as e:
                 logger.warning(f"HTTP 引擎失败: {e}")
@@ -470,6 +490,86 @@ def _note_http_failure(engine: str, status: int, body: str) -> None:
     res = classify(status_code=status, output=(body or "")[:2000])
     note_failure(engine, res["category"], res["reason"],
                  res.get("evidence") or (body or "")[:120])
+
+
+@contextmanager
+def http_open(req: Any, timeout: float = 10.0, engine: str = ""):
+    """执行单次 HTTP 请求并在失败现场归因——直连 `urllib.request.urlopen` 的替代。
+
+    背景：手写引擎构建器里曾有近百处直连 `urllib.request.urlopen`。HTTP 失败
+    只留下一行 warning 就变成空结果，既不写归因寄存器，也不出现在
+    `--list-engines --detail`——博查 AI Search 端点 `403 套餐额度不足` 就是这样
+    长期显示 ready 的。归因必须在失败现场做：这里同时拿得到引擎名、状态码与
+    响应体，聚合层事后无从反推。
+
+    与 urlopen 的关系是「等价替换」而非「另起一条路」：
+      - 成功路径行为完全一致：同样的响应对象、同样的字节流（gbk 等非 UTF-8
+        站点仍由调用方手工解码）、同样的异常传播。
+      - 失败时先归因再原样抛出，不吞异常、不改各站点既有的 except 分支——
+        `except HTTPError` / `except Exception` 的语义都保持原样。
+      - HTTPError 的响应体被归因读走后回挂一份 `BytesIO`，调用方 `e.read()`
+        仍能拿到错误体（博查的 `_bocha_http_error` 依赖它）。
+
+    归因分类委托 `_note_http_failure`（唯一真源=engine_failure.classify）：
+    403+额度文案→rate_limited、403+登录文案→auth、429→rate_limited 等。
+    engine 传空串时不写寄存器（测试直调 builder 未标引擎名时保持惰性）。
+    """
+    if isinstance(req, str):
+        req = urllib.request.Request(req)
+    try:
+        resp = urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.HTTPError as e:
+        body_bytes = b""
+        try:
+            # 限长：错误页可能几十 MB，而调用方只用前 400 字符归因。
+            # 无上限会把整页读进内存，并经归因持久化进磁盘状态文件。
+            body_bytes = e.read(_HTTP_ERROR_BODY_CAP) or b""
+        except Exception:
+            pass
+        logger.warning(f"HTTP 引擎失败: HTTP {e.code} {engine}")
+        _note_http_failure(engine, e.code,
+                           body_bytes.decode("utf-8", errors="replace")[:400])
+        _restore_error_body(e, body_bytes)
+        raise
+    except urllib.error.URLError as e:
+        logger.warning(f"HTTP 引擎失败: {e}")
+        note_failure(engine, "network", "urlopen", str(e)[:160])
+        raise
+    except OSError as e:
+        logger.warning(f"HTTP 引擎失败: {e}")
+        note_failure(engine, "network", "exception",
+                     f"{type(e).__name__}: {e}")
+        raise
+    except Exception as e:
+        # http.client.HTTPException（BadStatusLine / IncompleteRead 等）与
+        # ValueError 既不是 URLError 也不是 OSError，不兜这一层就会穿透归因，
+        # 与该函数的契约不符，也比 _http_get_raw 的兜底更窄。归因后原样抛出。
+        logger.warning(f"HTTP 引擎失败: {type(e).__name__} {e}")
+        note_failure(engine, "network", "exception",
+                     f"{type(e).__name__}: {e}")
+        raise
+    with resp:
+        yield resp
+
+
+def _restore_error_body(e: urllib.error.HTTPError, body: bytes) -> None:
+    """把归因时读走的错误体还回 HTTPError，调用方 `e.read()` 仍可用。
+
+    HTTPError 是 tempfile._TemporaryFileWrapper 的子孙，`read` 等文件方法在
+    首次访问时被绑定并缓存进实例 __dict__（见 _TemporaryFileWrapper.__getattr__）。
+    只改 `fp` / `file` 不改缓存，之后 `e.read()` 仍打到已耗尽的旧流上。所以这里
+    连同缓存一起重置。全部包在 try 里：这是尽力而为的兼容层，任何一步失败都不
+    应影响原异常的抛出。
+    """
+    try:
+        restored = io.BytesIO(body)
+        e.fp = restored
+        e.file = restored
+        for attr in ("read", "readline", "readlines", "seek", "tell",
+                     "close", "__iter__"):
+            e.__dict__.pop(attr, None)
+    except Exception:
+        pass
 
 
 def _envelope_error(data: Any) -> str:

@@ -335,3 +335,37 @@ def explain(engine_id: str, *, spec: dict[str, Any] | None = None,
                    anti_bot=anti_bot)
     res["engine_id"] = engine_id
     return res
+
+
+def from_note(note: dict[str, Any] | None,
+              engine_id: str = "") -> dict[str, Any]:
+    """把归因寄存器里的一条记录规整成与 classify 同构的归因契约。
+
+    寄存器（engines_base.note_failure）存的是 {category, reason, detail, ts}，
+    而 classify/explain 输出 {category, reason, evidence, action, confidence}。
+    熔断持久化与 --list-engines 展示都用后一形态，这里做一次转换，避免每个
+    消费者各自拼字段（字段名漂移过一次就会让「为什么坏」显示不出东西）。
+    """
+    note = note or {}
+    category = str(note.get("category") or UNKNOWN)
+    reason = str(note.get("reason") or "")
+    # confidence 不newly invent：按 reason 前缀还原现场判定的把握度
+    # （http-<code> 来自状态码→high；text: 来自文本模式→medium；
+    #   insufficient-signal/空→low）。一律报 high 会把 unknown 也标成高置信，
+    # 违背本模块「信息不足不硬猜」的纪律。
+    if not note.get("category"):
+        confidence = "low"
+    elif reason.startswith("http-"):
+        confidence = "high"
+    elif reason.startswith("text:") or reason == "insufficient-signal":
+        confidence = "medium" if reason.startswith("text:") else "low"
+    else:
+        confidence = "medium"
+    return {
+        "category": category,
+        "reason": reason,
+        "evidence": str(note.get("detail") or "")[:200],
+        "action": _ACTIONS.get(category, _ACTIONS[UNKNOWN]),
+        "confidence": confidence,
+        "engine_id": engine_id,
+    }

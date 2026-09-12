@@ -78,6 +78,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 百度热搜（实时热搜榜，HTML 解析，免认证）
+- name: bangumi
+  tier: T1
+  type: bangumi
+  coverage:
+  - anime
+  - game
+  - chinese
+  - media
+  latency_ms: 1500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: Bangumi 番剧仓库（动画/漫画/游戏条目元数据，官方开放 API，免认证）
 - name: bilibili
   tier: T1
   type: cli
@@ -274,6 +288,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: Crossref DOI 元数据 API（免认证，礼貌池 mailto）
+- name: crt_sh
+  tier: T1
+  type: http
+  coverage:
+  - security
+  - tech
+  latency_ms: 15000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: crt.sh 证书透明度日志（子域名/证书情报，免认证，响应较慢）
 - name: datacite
   tier: T1
   type: http
@@ -374,6 +400,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: 豆瓣读书搜索（评分/出版社/年份/价格，免认证）
+- name: douban_movie
+  tier: T1
+  type: douban_movie
+  coverage:
+  - film
+  - chinese
+  - media
+  latency_ms: 1000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 豆瓣电影搜索（中文片名/年份/类型，免认证，suggest 接口）
 - name: duckduckgo
   tier: T1
   type: http
@@ -568,6 +607,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: Firecrawl 云搜索（search+全文markdown，JS渲染/学术/PDF垂直，keyless 免费层 1000 credits/月）
+- name: flk_law
+  tier: T1
+  type: flk_law
+  coverage:
+  - legal
+  - law
+  - chinese
+  - gov
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 国家法律法规数据库（法律/行政法规/司法解释全文，权威法条源，免认证）
 - name: fr_opendata
   tier: T1
   type: http
@@ -664,6 +717,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: GitHub 代码搜索 API
+- name: google_news
+  tier: T1
+  type: google_news
+  coverage:
+  - news
+  - realtime
+  - english
+  - international
+  latency_ms: 1500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 'Google News RSS（多语言新闻，免认证，支持时间窗与 site: 限定）'
 - name: google_patents
   tier: T1
   type: google_patents
@@ -703,6 +770,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 中国政府网政策文件库（国务院文件，带发布日期）
+- name: gov_regulations
+  tier: T1
+  type: http
+  coverage:
+  - legal
+  - policy
+  - gov
+  - chinese
+  latency_ms: 1500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 中国政府网规章库（部门规章/地方政府规章，免认证）
 - name: gutenberg
   tier: T1
   type: gutenberg
@@ -1195,6 +1276,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: MDN Web Docs 搜索（en/官方 API，免认证）
+- name: met_museum
+  tier: T1
+  type: met_museum
+  coverage:
+  - art
+  - museum
+  - culture
+  - media
+  latency_ms: 3000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: Met Museum 藏品库（艺术/博物馆藏品，两跳搜索，免认证）
 - name: metaso
   tier: T1
   type: http
@@ -1259,6 +1354,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: NASA CMR 地球科学数据目录（MODIS/遥感，cmr.earthdata.nasa.gov 免认证）
+- name: nasa_images
+  tier: T1
+  type: http
+  coverage:
+  - earth_science
+  - media
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: NASA 图像视频库（公开航天影像，免认证，匿名约 30 req/h）
 - name: nbs_stats
   tier: T1
   type: nbs_stats
@@ -1284,6 +1391,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: 全日本出版物书目总汇（OpenSearch RSS）
+- name: netease_music
+  tier: T1
+  type: http
+  coverage:
+  - media
+  - chinese
+  latency_ms: 1000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 网易云音乐搜索（中文曲库/专辑元数据，免认证，非官方接口）
 - name: npm
   tier: T1
   type: http
@@ -1407,6 +1526,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: 全球 ADS-B 实时航班（主要都会区 bbox，免 key）
+- name: openstd
+  tier: T1
+  type: openstd
+  coverage:
+  - standards
+  - tech
+  - chinese
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 国家标准全文公开系统（GB 全文预览入口，HTML 解析，免认证）
 - name: openverse
   tier: T1
   type: http
@@ -1433,6 +1565,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: Parallel AI 批量搜索（excerpts 长文摘录，结果自带正文省 fetch）
+- name: people_daily
+  tier: T1
+  type: people_daily
+  coverage:
+  - news
+  - chinese
+  - realtime
+  latency_ms: 1200
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 人民网搜索（权威综合中文新闻，官方接口，免认证）
 - name: polymarket
   tier: T1
   type: http
@@ -1639,6 +1784,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: 新浪实时行情快照（现价/涨跌/成交量，免认证）
+- name: sspai
+  tier: T1
+  type: http
+  coverage:
+  - chinese
+  - tech
+  - article
+  latency_ms: 1000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 少数派搜索（中文效率/数码/软件文章，免认证）
 - name: stackoverflow
   tier: T1
   type: stackoverflow
@@ -1653,6 +1811,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: Stack Overflow（Stack Exchange API，编程问答）
+- name: std_samr
+  tier: T1
+  type: std_samr
+  coverage:
+  - standards
+  - tech
+  - chinese
+  latency_ms: 1500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 全国标准信息公共服务平台（国标检索，标准号/状态/日期，免认证）
 - name: steam
   tier: T1
   type: http
@@ -2025,6 +2196,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: Wikipedia API（T2 替代）
+- name: wikisource
+  tier: T1
+  type: wikisource
+  coverage:
+  - reference
+  - chinese
+  - classic
+  latency_ms: 800
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 维基文库（古文/公版文献全文检索，中文引文溯源，免认证）
 - name: wolframalpha
   tier: T1
   type: http
@@ -2074,6 +2258,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: You.com 网页+新闻搜索（时效性强，官方一手源，web/news 合并）
+- name: zdic
+  tier: T1
+  type: zdic
+  coverage:
+  - dictionary
+  - chinese
+  - reference
+  latency_ms: 1500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 汉典（中文字词典：字义/音韵/字源，HTML 解析，免认证）
 - name: zenodo
   tier: T1
   type: http
@@ -2141,6 +2338,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 知乎开放平台热榜 hot_list（日配额约 100；需 ZHIHU_ACCESS_SECRET；原 zhihu skill 迁入）
+- name: zhihu_hot_app
+  tier: T1
+  type: http
+  coverage:
+  - chinese
+  - hot
+  - trending
+  - realtime
+  latency_ms: 800
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 知乎热榜匿名通道（App JSON，免密钥；开放平台 hot_list 的免费替代）
 - name: zhihu_user
   tier: T1
   type: zhihu_user

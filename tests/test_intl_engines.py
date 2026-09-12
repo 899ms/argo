@@ -192,7 +192,7 @@ class TestEuOpendata(_BuilderCase):
 
 class TestOpenMeteo(_BuilderCase):
     def test_parse(self):
-        def fake_json(url, timeout):
+        def fake_json(url, timeout, engine=""):
             if "geocoding" in url:
                 return {"results": [{"name": "Tokyo", "country": "Japan",
                                      "latitude": 35.68, "longitude": 139.69}]}
@@ -399,7 +399,7 @@ class TestTencentKline(_BuilderCase):
         real_open = _ur.urlopen
         _ur.urlopen = fake_open
         try:
-            with patch.object(intl, "_http_json", side_effect=lambda u, t: fake_json(u, t)):
+            with patch.object(intl, "_http_json", side_effect=lambda u, t, engine="": fake_json(u, t)):
                 res = engine("贵州茅台 k线", 2)
         finally:
             _ur.urlopen = real_open

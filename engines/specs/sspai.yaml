@@ -1,0 +1,36 @@
+# 少数派搜索 — 中文效率/数码/软件内容（JSON API，免认证）
+# 补 cn_tech_community 域的效率工具/数码生活维度：juejin/v2ex 偏开发向。
+# v3 路径已 404，用 v1；版本漂移风险自担，失败诚实空。
+# 验证:
+#   python3 scripts/engine_validate.py --engine sspai --stage all --admit --write-doc
+
+engine_id: sspai
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://sspai.com/api/v1/search/article/page/get
+timeout: 10
+query_param: title
+canary_query: "notion"
+desc: "少数派搜索（中文效率/数码/软件文章，免认证）"
+coverage: [chinese, tech, article]
+recommended: false
+latency_ms: 1000
+
+headers:
+  User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36
+
+extra_params:
+  offset: "0"
+  limit: "{n}"
+
+output_map:
+  items: data
+  item_title: title
+  item_summary: summary
+  url_template: "https://sspai.com/post/{id}"
+
+quality_queries:
+  - query: "notion"
+  - query: "iphone"

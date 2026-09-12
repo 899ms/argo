@@ -457,7 +457,8 @@ def complement_refill(
       - 排除 _REFILL_EXCLUDED_FAMILIES（热榜/策展/归档等噪声族）
       - 与域主引擎 coverage 标签至少重叠 1 个（主题相关性的数据信号）；
         主引擎无 coverage 标签时不回填（无主题信号，不猜测）
-      - 按 config priority 降序，最多 max_slots 个，保序追加
+      - 按 config priority 升序（数字小=优先，与 family_candidates 同口径），
+        最多 max_slots 个，保序追加
 
     返回新列表，绝不重排或删减入参 combo。
     """
@@ -473,7 +474,7 @@ def complement_refill(
         return combo
 
     represented = {family_of(e, spec_lookup.get(e)) for e in combo}
-    candidates: list[tuple[int, str]] = []
+    candidates: list[tuple[tuple, str]] = []
     for name in enabled:
         if name in combo:
             continue
@@ -482,8 +483,13 @@ def complement_refill(
         if fam in represented or fam in _REFILL_EXCLUDED_FAMILIES:
             continue
         if set(spec.get("coverage") or []) & primary_cov:
-            candidates.append((spec.get("priority") or 0, name))
-    candidates.sort(key=lambda x: -x[0])
+            p = spec.get("priority")
+            # 缺 priority 视为最差（999），与 family_candidates._prio 一致。
+            # 此前是 `or 0` + 降序，且 docstring 写「降序」——三条口径互相矛盾，
+            # 实际效果是专挑优先级数字最大（最差）的源回填。
+            prio = p if isinstance(p, (int, float)) else 999
+            candidates.append(((prio, name), name))
+    candidates.sort(key=lambda x: x[0])
     return combo + [name for _, name in candidates[:max_slots]]
 
 

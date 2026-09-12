@@ -1,0 +1,22 @@
+# 人民网搜索 — 权威综合中文新闻（官方 JSON 接口，免认证，POST）
+# 现有新闻类源全偏财经（东财/财联社/金十），人民网补权威综合新闻维度。
+# 注意：走 http 而非 https（https 会 301 丢 body）。标题/正文带 <em> 高亮
+# 标签，builder 内剥离。displayTime 为毫秒时间戳。
+# 验证:
+#   python3 scripts/engine_validate.py --engine people_daily --stage all --admit --write-doc
+
+engine_id: people_daily
+type: people_daily
+enabled: true
+cost_tier: free
+timeout: 12
+canary_query: "人工智能"
+desc: "人民网搜索（权威综合中文新闻，官方接口，免认证）"
+coverage: [news, chinese, realtime]
+recommended: false
+latency_ms: 1200
+
+quality_queries:
+  - query: "人工智能"
+  - query: "经济"
+  - query: "教育"

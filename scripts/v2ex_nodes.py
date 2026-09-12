@@ -124,11 +124,12 @@ def _save_nodes(nodes: list[dict]) -> None:
         pass  # 缓存是加速层，写失败不影响功能
 
 
-def fetch_all_nodes(fetcher=None) -> list[dict]:
+def fetch_all_nodes(fetcher=None, engine: str = "v2ex") -> list[dict]:
     """取全节点表（带 24h 本地缓存 + 进程内缓存）。
 
     fetcher(url) -> raw text，默认走 argo 统一 GET 出口。
     只保留有内容的节点（topics>0）：空节点取不到帖子，参与匹配无意义。
+    engine：默认 fetcher 的归因归属（缺失会把失败记到伪引擎 "?" 名下）。
     """
     global _mem_cache
     with _lock:
@@ -141,7 +142,8 @@ def fetch_all_nodes(fetcher=None) -> list[dict]:
     if fetcher is None:
         def fetcher(url):  # type: ignore
             from engines_base import _http_get_raw
-            return _http_get_raw(url, {"Accept": "application/json"}, 10)
+            return _http_get_raw(url, {"Accept": "application/json"}, 10,
+                                 engine=engine)
 
     try:
         raw = fetcher("https://www.v2ex.com/api/nodes/all.json")

@@ -1,0 +1,38 @@
+# crt.sh — 证书透明度日志搜索（免认证，comodo/Sectigo 维护）
+# 补 security_search 域的子域名/证书情报维度（资产测绘、钓鱼域发现），
+# NVD 只覆盖漏洞不覆盖暴露面。响应偏慢（常见 10-40s），超时放宽、延迟声明从宽。
+# 配额契约：无官方限额，声明 qps 从紧。
+# 验证:
+#   python3 scripts/engine_validate.py --engine crt_sh --stage all --admit --write-doc
+
+engine_id: crt_sh
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://crt.sh/
+timeout: 45
+query_param: q
+canary_query: "example.com"
+desc: "crt.sh 证书透明度日志（子域名/证书情报，免认证，响应较慢）"
+coverage: [security, tech]
+recommended: false
+latency_ms: 15000
+
+headers:
+  User-Agent: argo-search/1.0 (+crt_sh)
+  Accept: application/json
+
+extra_params:
+  output: json
+
+output_map:
+  items: "."
+  item_title: common_name
+  item_summary: issuer_name
+  item_published_at: not_before
+  url_template: "https://crt.sh/?id={id}"
+
+quality_queries:
+  - query: "example.com"
+  - query: "github.com"

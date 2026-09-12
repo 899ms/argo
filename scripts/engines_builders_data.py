@@ -16,6 +16,7 @@ from typing import Any
 
 from engines_base import (
     safe_search, _run, _resolve, _get_path, _coerce_field, _detect_anti_bot,
+    http_open,
 )
 
 logger = logging.getLogger("unified_search.engines")
@@ -36,8 +37,8 @@ def _build_open_library_engine(spec: dict[str, Any]) -> Any:
             "q": q, "limit": min(n, 20),
         })
         try:
-            with urllib.request.urlopen(urllib.request.Request(
-                    url, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"}), timeout=to) as resp:
+            with http_open(urllib.request.Request(
+                    url, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"}), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"Open Library 失败: {e}")
@@ -95,7 +96,7 @@ def _build_weread_engine(spec: dict[str, Any]) -> Any:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"微信读书搜索失败: {e}")
@@ -159,7 +160,7 @@ def _build_douban_book_engine(spec: dict[str, Any]) -> Any:
         })
         try:
             req = urllib.request.Request(url, headers={"User-Agent": _UA})
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 html = resp.read().decode("utf-8", "replace")
         except Exception as e:
             logger.warning(f"豆瓣读书搜索失败: {e}")
@@ -219,8 +220,8 @@ def _build_free_dictionary_engine(spec: dict[str, Any]) -> Any:
             return []
         url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{up.quote(word)}"
         try:
-            with urllib.request.urlopen(urllib.request.Request(
-                    url, headers={"User-Agent": "argo-search/2.4"}), timeout=to) as resp:
+            with http_open(urllib.request.Request(
+                    url, headers={"User-Agent": "argo-search/2.4"}), timeout=to, engine=spec.get("_name", "")) as resp:
                 entries = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception:
             return []
@@ -270,7 +271,7 @@ def _build_baidu_baike_engine(spec: dict[str, Any]) -> Any:
         # 1) suggest 多候选
         sug_url = "https://baike.baidu.com/api/searchui/suggest?" + up.urlencode({"enc": "utf8", "wd": q})
         try:
-            with urllib.request.urlopen(urllib.request.Request(sug_url, headers=headers), timeout=to) as resp:
+            with http_open(urllib.request.Request(sug_url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
             for item in (data.get("list") or [])[:n]:
                 title = item.get("lemmaTitle") or ""
@@ -296,7 +297,7 @@ def _build_baidu_baike_engine(spec: dict[str, Any]) -> Any:
                 "bk_key": q, "bk_length": "600",
             })
             try:
-                with urllib.request.urlopen(urllib.request.Request(card_url, headers=headers), timeout=to) as resp:
+                with http_open(urllib.request.Request(card_url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                     card = json.loads(resp.read().decode("utf-8", "replace"))
                 if isinstance(card, dict) and card.get("errno") in (None, 0) and (card.get("title") or card.get("key")):
                     title = card.get("title") or card.get("key") or q
@@ -367,7 +368,7 @@ def _build_pypi_engine(spec: dict[str, Any]) -> Any:
                 break
             url = f"https://pypi.org/pypi/{name}/json"
             try:
-                with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
+                with http_open(urllib.request.Request(url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                     data = json.loads(resp.read().decode("utf-8", "replace"))
             except Exception:
                 continue
@@ -410,8 +411,8 @@ def _build_clinicaltrials_engine(spec: dict[str, Any]) -> Any:
             "format": "json",
         })
         try:
-            with urllib.request.urlopen(urllib.request.Request(
-                    url, headers={"User-Agent": "argo-search/2.5", "Accept": "application/json"}), timeout=to) as resp:
+            with http_open(urllib.request.Request(
+                    url, headers={"User-Agent": "argo-search/2.5", "Accept": "application/json"}), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"clinicaltrials 失败: {e}")
@@ -457,8 +458,8 @@ def _build_openfda_engine(spec: dict[str, Any]) -> Any:
             "limit": min(n, 20),
         })
         try:
-            with urllib.request.urlopen(urllib.request.Request(
-                    url, headers={"User-Agent": "argo-search/2.5", "Accept": "application/json"}), timeout=to) as resp:
+            with http_open(urllib.request.Request(
+                    url, headers={"User-Agent": "argo-search/2.5", "Accept": "application/json"}), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             # 回退：全文检索
@@ -466,8 +467,8 @@ def _build_openfda_engine(spec: dict[str, Any]) -> Any:
                 url2 = "https://api.fda.gov/drug/label.json?" + up.urlencode({
                     "search": q, "limit": min(n, 20),
                 })
-                with urllib.request.urlopen(urllib.request.Request(
-                        url2, headers={"User-Agent": "argo-search/2.5"}), timeout=to) as resp:
+                with http_open(urllib.request.Request(
+                        url2, headers={"User-Agent": "argo-search/2.5"}), timeout=to, engine=spec.get("_name", "")) as resp:
                     data = json.loads(resp.read().decode("utf-8", "replace"))
             except Exception as e2:
                 logger.warning(f"openfda 失败: {e2}")
@@ -519,7 +520,7 @@ def _build_juejin_engine(spec: dict[str, Any]) -> Any:
             "Referer": "https://juejin.cn/",
         }
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"juejin 失败: {e}")
@@ -580,7 +581,7 @@ def _build_models_dev_engine(spec: dict[str, Any]) -> Any:
                 "https://models.dev/api.json",
                 headers={"User-Agent": "argo-search/1.0 (+models.dev)"},
             )
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 cached = json.loads(resp.read().decode("utf-8"))
             _models_dev_cache = (now, cached)
 
@@ -689,7 +690,7 @@ def _build_finviz_engine(spec: dict[str, Any]) -> Any:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             html = resp.read().decode("utf-8", errors="replace")
         if _detect_anti_bot(html):
             return []
@@ -748,7 +749,7 @@ def _build_seeking_alpha_engine(spec: dict[str, Any]) -> Any:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             html = resp.read().decode("utf-8", errors="replace")
         if _detect_anti_bot(html):
             return []
@@ -801,7 +802,7 @@ def _build_qweather_engine(spec: dict[str, Any]) -> Any:
         # 1) GeoAPI: 城市 → LocationID
         geo_url = f"https://geoapi.qweather.com/v2/city/lookup?location={up.quote(city)}&key={key}"
         req = urllib.request.Request(geo_url, headers={"User-Agent": "argo-search/1.0"})
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             geo = json.loads(resp.read().decode("utf-8"))
         locations = geo.get("location") or []
         if not locations:
@@ -813,7 +814,7 @@ def _build_qweather_engine(spec: dict[str, Any]) -> Any:
         # 2) 实时天气
         now_url = f"https://devapi.qweather.com/v7/weather/now?location={loc_id}&key={key}"
         req2 = urllib.request.Request(now_url, headers={"User-Agent": "argo-search/1.0"})
-        with urllib.request.urlopen(req2, timeout=to) as resp:
+        with http_open(req2, timeout=to, engine=spec.get("_name", "")) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         now = data.get("now") or {}
         if not now:
@@ -858,7 +859,7 @@ def _build_wenshu_engine(spec: dict[str, Any]) -> Any:
         }
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 html = resp.read().decode("utf-8", errors="replace")
         except Exception as e:
             logger.warning(f"裁判文书网访问失败: {e}")
@@ -907,7 +908,7 @@ def _build_jin10_engine(spec: dict[str, Any]) -> Any:
             "Referer": "https://www.jin10.com/",
         }
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         items = data.get("data") or []
         keywords = [k for k in (query or "").strip().split() if k]
@@ -997,7 +998,7 @@ def _build_octen_engine(spec: dict[str, Any]) -> Any:
         req = urllib.request.Request(url, data=body, headers=headers)
 
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 items = data.get("data", {})
                 results = []
@@ -1164,7 +1165,7 @@ def _build_pubchem_engine(spec: dict[str, Any]) -> Any:
 
     def _jget(url: str, to: float) -> dict:
         req = urllib.request.Request(url, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
 
     @safe_search
@@ -1294,7 +1295,7 @@ def _build_gbif_engine(spec: dict[str, Any]) -> Any:
 
     def _jget(url: str, to: float) -> dict:
         req = urllib.request.Request(url, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
 
     @safe_search
@@ -1366,7 +1367,7 @@ def _build_rfc_editor_engine(spec: dict[str, Any]) -> Any:
 
     def _jget(url: str, to: float) -> dict:
         req = urllib.request.Request(url, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
 
     def _mk(r: dict) -> dict[str, Any]:
@@ -1473,7 +1474,7 @@ def _build_uniprot_engine(spec: dict[str, Any]) -> Any:
             "query": q, "format": "json", "size": min(n, 25),
         })
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=_HEADERS), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=_HEADERS), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"UniProt 失败: {e}")
@@ -1528,7 +1529,7 @@ def _build_rcsb_pdb_engine(spec: dict[str, Any]) -> Any:
         }).encode("utf-8")
         try:
             req = urllib.request.Request(_PDB_SEARCH_API, data=body, headers=_HEADERS, method="POST")
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"RCSB PDB 失败: {e}")
@@ -1572,7 +1573,7 @@ def _build_courtlistener_engine(spec: dict[str, Any]) -> Any:
             "q": q, "format": "json", "page_size": min(n, 10), "order_by": "score desc",
         })
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=_HEADERS), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=_HEADERS), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"CourtListener 失败: {e}")
@@ -1618,7 +1619,7 @@ def _build_gutenberg_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = _GUTENDEX_API + "?" + urllib.parse.urlencode({"search": q, "page_size": min(n, 10)})
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=_HEADERS), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=_HEADERS), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"Gutendex 失败: {e}")
@@ -1671,7 +1672,7 @@ def _build_wayback_cdx_engine(spec: dict[str, Any]) -> Any:
             "fl": "timestamp,original,statuscode",
         })
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=_HEADERS), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=_HEADERS), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"Wayback CDX 失败: {e}")
@@ -1769,7 +1770,7 @@ def _build_usgs_engine(spec: dict[str, Any]) -> Any:
                 params["orderby"] = "magnitude"
         url = _USGS_EQ_API + "?" + urllib.parse.urlencode(params)
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=_HEADERS), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=_HEADERS), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"USGS 失败: {e}")
@@ -1817,7 +1818,7 @@ def _build_nasa_cmr_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = _CMR_API + "?" + urllib.parse.urlencode({"keyword": q, "page_size": min(n, 10)})
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=_HEADERS), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=_HEADERS), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"NASA CMR 失败: {e}")
@@ -1886,7 +1887,7 @@ def _build_imdb_engine(spec: dict[str, Any]) -> Any:
         url = _IMDB_SUGGEST.format(first=first, q=path_q)
         try:
             req = urllib.request.Request(url, headers={"User-Agent": _IMDB_UA, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"IMDb 失败: {e}")
@@ -1995,7 +1996,7 @@ def _build_itunes_engine(spec: dict[str, Any]) -> Any:
             req = urllib.request.Request(
                 url, headers={"User-Agent": "argo-search/2.6 (itunes)", "Accept": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"iTunes 失败: {e}")
@@ -2091,7 +2092,7 @@ def _build_thesportsdb_engine(spec: dict[str, Any]) -> Any:
         req = urllib.request.Request(
             url, headers={"User-Agent": _SPORTSDB_UA, "Accept": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
 
     @safe_search
@@ -2316,7 +2317,7 @@ def _build_gdelt_engine(spec: dict[str, Any]) -> Any:
         )
         headers = {"User-Agent": "argo-search/2.6 (unified-search@local)"}
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception:
             return []
@@ -2368,7 +2369,7 @@ def _build_opencorporates_engine(spec: dict[str, Any]) -> Any:
         )
         headers = {"User-Agent": "argo-search/2.6 (unified-search@local)", "Accept": "application/json"}
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception:
             return []
@@ -2433,7 +2434,7 @@ def _build_google_patents_engine(spec: dict[str, Any]) -> Any:
             "Accept": "application/json",
         }
         try:
-            with urllib.request.urlopen(urllib.request.Request(full_url, headers=headers), timeout=to) as resp:
+            with http_open(urllib.request.Request(full_url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception:
             return []
@@ -2483,8 +2484,8 @@ def _build_marginalia_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://api.marginalia.nu/public/search/{up.quote(query)}?count={min(n, 10)}"
         try:
-            with urllib.request.urlopen(urllib.request.Request(
-                    url, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"}), timeout=to) as resp:
+            with http_open(urllib.request.Request(
+                    url, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"}), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"Marginalia 失败: {e}")
@@ -2521,8 +2522,8 @@ def _build_wiby_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://wiby.me/json/?q={up.quote(query)}"
         try:
-            with urllib.request.urlopen(urllib.request.Request(
-                    url, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"}), timeout=to) as resp:
+            with http_open(urllib.request.Request(
+                    url, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"}), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"Wiby 失败: {e}")

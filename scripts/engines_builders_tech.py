@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any
 
 from engines_base import (safe_search, _run, _resolve, _get_path, _coerce_field,
-                          _http_get_raw, mcp_error_of as _mcp_error_of)
+                          _http_get_raw, mcp_error_of as _mcp_error_of, http_open)
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -42,7 +42,7 @@ def _build_exa_engine(spec: dict[str, Any]) -> Any:
         headers = {"x-api-key": api_key, "Content-Type": "application/json"}
         req = urllib.request.Request(url, data=body, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 results = []
                 for r in data.get("results", []):
@@ -198,7 +198,7 @@ def _build_wechat_sogou_engine(spec: dict[str, Any]) -> Any:
         }
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 html = resp.read().decode("utf-8")
             results = []
             li_pattern = re.compile(
@@ -267,7 +267,7 @@ def _build_hackernews_engine(spec: dict[str, Any]) -> Any:
         headers = {"User-Agent": "argo-search/1.0"}
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read())
             results = []
             for h in data.get("hits", []):
@@ -286,19 +286,32 @@ def _build_hackernews_engine(spec: dict[str, Any]) -> Any:
 
 # ── Stack Overflow 搜索引擎 ───────────────────────────────────────────────────
 
+# Stack Exchange 站点族：同一 API 换 site 参数覆盖 180+ 站点，
+# 「site:serverfault nginx 配置」把查询定向到指定站点，其余原样透传
+_SE_SITE_RE = re.compile(r"(?i)^\s*site:([a-z0-9\-]+)\s+")
+
+
 def _build_stackoverflow_engine(spec: dict[str, Any]) -> Any:
-    """Stack Overflow 搜索（Stack Exchange API）"""
+    """Stack Overflow 搜索（Stack Exchange API，site: 前缀切站点族）"""
     timeout = spec.get("timeout", 8)
 
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
         import urllib.parse as up
         to = _timeout or timeout
-        url = f"https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q={up.quote(query)}&site=stackoverflow&pagesize={min(n, 10)}"
+        site = "stackoverflow"
+        q = query.strip()
+        m = _SE_SITE_RE.match(q)
+        if m:
+            site = m.group(1).lower()
+            q = q[m.end():].strip()
+        if not q:
+            return []
+        url = f"https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q={up.quote(q)}&site={site}&pagesize={min(n, 10)}"
         headers = {"User-Agent": "argo-search/1.0", "Accept-Encoding": "gzip"}
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 import gzip
                 raw = resp.read()
                 try:
@@ -308,10 +321,11 @@ def _build_stackoverflow_engine(spec: dict[str, Any]) -> Any:
             results = []
             for item in data.get("items", []):
                 tags = ", ".join(item.get("tags", [])[:3])
+                prefix = f"[{site}] " if site != "stackoverflow" else ""
                 results.append({
                     "title": item.get("title", ""),
                     "url": item.get("link", ""),
-                    "snippet": f"score: {item.get('score', 0)} | answers: {item.get('answer_count', 0)} | tags: {tags}",
+                    "snippet": f"{prefix}score: {item.get('score', 0)} | answers: {item.get('answer_count', 0)} | tags: {tags}",
                     "source": "stackoverflow",
                 })
             return results
@@ -438,7 +452,7 @@ def _build_github_engine(spec: dict[str, Any]) -> Any:
             headers["Accept"] = "application/vnd.github.v3.text-match+json"
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             logger.warning(f"GitHub {endpoint} 失败 HTTP {e.code}: {e.reason}")
@@ -484,7 +498,7 @@ def _build_google_scholar_engine(spec: dict[str, Any]) -> Any:
         }
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 html = resp.read().decode("utf-8")
             results = []
             titles = re.findall(r'<h3[^>]*class="[^"]*gs_rt[^"]*"[^>]*>(.*?)</h3>', html, re.DOTALL)
@@ -548,7 +562,10 @@ def _build_v2ex_engine(spec: dict[str, Any]) -> Any:
                 u += "?" + urllib.parse.urlencode(params)
             # 走 argo 统一 GET 出口（HttpClient：UA 轮换 / 重定向跟随 / 429 尊重），
             # 不自造 urllib 请求头——与「新引擎复用 argo HttpClient」纪律一致。
-            raw = _http_get_raw(u, {"Accept": "application/json"}, to)
+            # engine 必须显式传：默认值 "?" 会把 V2EX 的失败记到伪引擎名下，
+            # 聚合层 pop("v2ex") 永远取不到（归因写不进去等于没做）。
+            raw = _http_get_raw(u, {"Accept": "application/json"}, to,
+                                engine=spec.get("_name", "v2ex"))
             if not raw:
                 return None
             data = json.loads(raw)
@@ -577,7 +594,8 @@ def _build_v2ex_engine(spec: dict[str, Any]) -> Any:
         try:
             from v2ex_nodes import pick_nodes
             routed = pick_nodes(query, top_k=3, fetcher=lambda u: _http_get_raw(
-                u, {"Accept": "application/json"}, to))
+                u, {"Accept": "application/json"}, to,
+                engine=spec.get("_name", "v2ex")))
         except Exception as e:
             logger.debug(f"V2EX 节点路由失败，回落 hot/latest: {e}")
 

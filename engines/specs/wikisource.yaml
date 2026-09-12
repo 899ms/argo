@@ -1,0 +1,22 @@
+# 维基文库 — 古文/公版文献全文（MediaWiki API，免认证）
+# 古文引文溯源补位：中文引文核验需要原文全文（出师表/论语/史记），
+# wikipedia 词条给不了。与 zh_wikipedia 同构；标题含空格需编码后拼
+# wiki 路径，builder 内处理（声明式 url_template 不做编码）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine wikisource --stage all --admit --write-doc
+
+engine_id: wikisource
+type: wikisource
+enabled: true
+cost_tier: free
+timeout: 10
+canary_query: "出师表"
+desc: "维基文库（古文/公版文献全文检索，中文引文溯源，免认证）"
+coverage: [reference, chinese, classic]
+recommended: false
+latency_ms: 800
+
+quality_queries:
+  - query: "出师表"
+  - query: "论语"
+  - query: "史记"

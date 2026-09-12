@@ -541,7 +541,7 @@
     {
       "name": "route:R_zh_security",
       "status": "PASS",
-      "detail": "domain=security_search eng=nvd combo=['nvd', 'anysearch'] lang=en",
+      "detail": "domain=security_search eng=nvd combo=['nvd', 'crt_sh'] lang=en",
       "meta": {
         "id": "R_zh_security",
         "q": "log4j 漏洞 CVSS",
@@ -551,7 +551,7 @@
         "engine": "nvd",
         "combo": [
           "nvd",
-          "anysearch"
+          "crt_sh"
         ],
         "primary_lang": "en"
       }
@@ -559,7 +559,7 @@
     {
       "name": "route:R_en_cve",
       "status": "PASS",
-      "detail": "domain=security_search eng=nvd combo=['nvd', 'anysearch'] lang=en",
+      "detail": "domain=security_search eng=nvd combo=['nvd', 'crt_sh'] lang=en",
       "meta": {
         "id": "R_en_cve",
         "q": "CVE-2021-44228 severity",
@@ -569,7 +569,7 @@
         "engine": "nvd",
         "combo": [
           "nvd",
-          "anysearch"
+          "crt_sh"
         ],
         "primary_lang": "en"
       }
@@ -667,7 +667,7 @@
     {
       "name": "route:R_en_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'itunes'] lang=en",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie'] lang=en",
       "meta": {
         "id": "R_en_film",
         "q": "Inception movie director",
@@ -677,7 +677,7 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "itunes"
+          "douban_movie"
         ],
         "primary_lang": "en"
       }
@@ -685,7 +685,7 @@
     {
       "name": "route:R_zh_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'itunes'] lang=zh",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie'] lang=zh",
       "meta": {
         "id": "R_zh_film",
         "q": "肖申克的救赎 主演",
@@ -695,7 +695,7 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "itunes"
+          "douban_movie"
         ],
         "primary_lang": "zh"
       }
@@ -703,7 +703,7 @@
     {
       "name": "route:R_en_film2",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'itunes'] lang=en",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie'] lang=en",
       "meta": {
         "id": "R_en_film2",
         "q": "Interstellar film cast",
@@ -713,7 +713,7 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "itunes"
+          "douban_movie"
         ],
         "primary_lang": "en"
       }

@@ -1,0 +1,39 @@
+# NASA Image and Video Library — 公开航天图像/视频（免认证）
+# 补 earth_science 域的图像素材维度：nasa_cmr 是数据集目录、usgs 是地震目录，
+# 都给不了可看的图。匿名约 30 req/h，无官方契约，qps 从紧。
+# 验证:
+#   python3 scripts/engine_validate.py --engine nasa_images --stage all --admit --write-doc
+
+engine_id: nasa_images
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://images-api.nasa.gov/search
+timeout: 15
+query_param: q
+canary_query: "apollo 11"
+desc: "NASA 图像视频库（公开航天影像，免认证，匿名约 30 req/h）"
+coverage: [earth_science, media]
+recommended: false
+latency_ms: 2000
+
+headers:
+  User-Agent: argo-search/1.0 (+nasa_images)
+  Accept: application/json
+
+extra_params:
+  media_type: image
+  page_size: "{n}"
+
+output_map:
+  items: collection.items
+  item_title: data.0.title
+  item_summary: data.0.description
+  item_published_at: data.0.date_created
+  url_template: "https://images.nasa.gov/details/{data.0.nasa_id}"
+
+quality_queries:
+  - query: "apollo 11"
+  - query: "hubble telescope"
+  - query: "mars rover"

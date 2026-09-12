@@ -133,7 +133,11 @@ class TestRegistration(unittest.TestCase):
         self.assertEqual(spec.get("family"), "misc_vertical")
         self.assertEqual(spec.get("output_format"), "yaml")
         self.assertTrue(spec.get("canary_query"))
-        self.assertEqual(spec.get("cmd"), ["python3", "scripts/train.py"])
+        # cmd 末项解析为绝对路径（外置 spec 的相对路径在合并后统一解析）：
+        # 引擎以子进程方式执行且不设 cwd，相对路径在非仓库根目录下会失败。
+        cmd = spec.get("cmd") or []
+        self.assertEqual(cmd[0], "python3")
+        self.assertTrue(cmd[-1].endswith("scripts/train.py"), cmd)
 
     def test_spec_and_script_exist(self) -> None:
         self.assertTrue((SKILL_DIR / "engines" / "specs" / "train.yaml").is_file())
@@ -340,7 +344,7 @@ class TestCliEngine(unittest.TestCase):
             results = engine("北京到上海", n=5)
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["title"], "G531 北京南 06:08→上海虹桥 12:04")
-        self.assertIn("scripts/train.py", captured["cmd"])
+        self.assertTrue(any(str(c).endswith("scripts/train.py") for c in captured["cmd"]), captured["cmd"])
         self.assertIn("北京到上海", captured["cmd"])
 
     def test_engine_search_integration_via_registry(self) -> None:

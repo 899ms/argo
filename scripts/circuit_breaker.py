@@ -81,6 +81,7 @@ class CircuitBreaker:
                 "failures": int(st.get("failures") or 0),
                 "opened_at": opened_at,
                 "last_kind": st.get("last_kind"),
+                "last_attribution": st.get("last_attribution"),
                 "cooldown_remain": max(0, int(OPEN_SECONDS - (time.time() - opened_at)))
                 if state == "open" else 0,
             }
@@ -140,8 +141,14 @@ class CircuitBreaker:
             }
             self._save()
 
-    def record_failure(self, engine: str, kind: str = "error") -> None:
+    def record_failure(self, engine: str, kind: str = "error",
+                       attribution: dict[str, Any] | None = None) -> None:
         """kind: error | timeout | empty | blocked | rate-limited
+
+        attribution：可选的失败归因（失败现场记录，含 category/reason/detail）。
+        kind 是熔断策略用的粗粒度标签，attribution 是给「为什么坏」用的细粒度
+        事实——两者维度不同，不能互相推导（把 kind 当响应文本再归类，只能得到
+        unknown）。持久化后 `--list-engines --detail` 才能显示真实原因。
 
         empty 语义是「该查询无结果」——查询级信号，不是引擎级故障。
         它仍可触发 60s 短冷却（防止重复打无效源），但不累计 opens，
@@ -168,6 +175,8 @@ class CircuitBreaker:
             st["failures"] = int(st.get("failures") or 0) + 1
             st["last_fail"] = time.time()
             st["last_kind"] = kind
+            if attribution:
+                st["last_attribution"] = dict(attribution)
             # empty（无结果）与 blocked（被拦截）都是查询级/源站级信号，不驱动
             # open 熔断：否则「空结果→open 60s→half_open→再 open」无效 churn，
             # 还占主位阻塞 6s。仅 error/timeout 驱动稳定 state 切换（空结果由
@@ -189,6 +198,23 @@ class CircuitBreaker:
                 "state": "closed", "failures": 0, "opens": 0,
                 "last_ok": time.time(), "reenabled_at": time.time(),
             }
+            self._save()
+
+    def record_note(self, engine: str,
+                    attribution: dict[str, Any] | None = None) -> None:
+        """只记录归因（「为什么不行」），完全不动熔断计数与状态。
+
+        用于配额耗尽这类**既不是引擎故障、也不该算失败**的场景：配额状态机
+        负责「停用多久」，这里只负责把原因留在可观测面上。此前 record_failure
+        是唯一写归因的入口，导致 quota-exhausted 分支为了让配额接管而丢弃
+        归因，博查 403 套餐额度不足永远显示 ready——P1 的原始动机场景。
+        """
+        if not attribution:
+            return
+        with self._lock:
+            st = self._engines.get(engine) or {"failures": 0, "state": "closed"}
+            st["last_attribution"] = dict(attribution)
+            self._engines[engine] = st
             self._save()
 
     def auto_disabled(self) -> list[str]:

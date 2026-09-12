@@ -31,6 +31,14 @@ from engines_builders_cn import (
     _build_zhihu_user_engine,
     _build_bocha_engine,
     _build_bocha_ai_engine,
+    _build_std_samr_engine,
+    _build_openstd_engine,
+    _build_bangumi_engine,
+    _build_douban_movie_engine,
+    _build_zdic_engine,
+    _build_people_daily_engine,
+    _build_flk_law_engine,
+    _build_wikisource_engine,
 )
 from engines_builders_data import (
     _build_open_library_engine,
@@ -102,6 +110,8 @@ from engines_builders_intl import (
     _build_figshare_engine,
     _build_tencent_kline_engine,
     _build_qq_music_engine,
+    _build_google_news_engine,
+    _build_met_museum_engine,
 )
 
 __all__ = [
@@ -114,6 +124,16 @@ __all__ = [
     "_build_wechat_sogou_engine",
     "_build_hackernews_engine",
     "_build_stackoverflow_engine",
+    "_build_std_samr_engine",
+    "_build_openstd_engine",
+    "_build_bangumi_engine",
+    "_build_douban_movie_engine",
+    "_build_zdic_engine",
+    "_build_people_daily_engine",
+    "_build_flk_law_engine",
+    "_build_wikisource_engine",
+    "_build_google_news_engine",
+    "_build_met_museum_engine",
     "_build_google_scholar_engine",
     "_build_v2ex_engine",
     "_build_github_engine",

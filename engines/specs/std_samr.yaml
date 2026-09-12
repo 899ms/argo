@@ -1,0 +1,21 @@
+# 全国标准信息公共服务平台 — 国标/行标检索（JSON API，免认证）
+# 标准文档域补位：RFC 有、国标无。C_C_NAME 带 <sacinfo> 高亮标签需剥离，
+# 标题由「标准号 + 名称」拼装。id 字段即 openstd hcno，直通全文页。
+# 验证:
+#   python3 scripts/engine_validate.py --engine std_samr --stage all --admit --write-doc
+
+engine_id: std_samr
+type: std_samr
+enabled: true
+cost_tier: free
+timeout: 12
+canary_query: "数据安全"
+desc: "全国标准信息公共服务平台（国标检索，标准号/状态/日期，免认证）"
+coverage: [standards, tech, chinese]
+recommended: false
+latency_ms: 1500
+
+quality_queries:
+  - query: "数据安全"
+  - query: "个人信息保护"
+  - query: "网络安全"

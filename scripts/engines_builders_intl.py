@@ -24,7 +24,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Any
 
-from engines_base import safe_search
+from engines_base import safe_search, _http_get_raw, http_open
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -40,9 +40,9 @@ def _encode_url(url: str) -> str:
     return urllib.parse.quote(url, safe=_URL_SAFE)
 
 
-def _http_json(url: str, timeout: float) -> Any:
+def _http_json(url: str, timeout: float, engine: str = "") -> Any:
     req = urllib.request.Request(_encode_url(url), headers={"User-Agent": _UA, "Accept-Encoding": "gzip"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with http_open(req, timeout=timeout, engine=engine) as resp:
         raw = resp.read()
         if resp.headers.get("Content-Encoding") == "gzip":
             import gzip
@@ -50,9 +50,9 @@ def _http_json(url: str, timeout: float) -> Any:
         return json.loads(raw.decode("utf-8", "replace"))
 
 
-def _http_text(url: str, timeout: float) -> str:
+def _http_text(url: str, timeout: float, engine: str = "") -> str:
     req = urllib.request.Request(_encode_url(url), headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with http_open(req, timeout=timeout, engine=engine) as resp:
         return resp.read().decode("utf-8", "replace")
 
 
@@ -67,7 +67,7 @@ def _build_cnii_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://cir.nii.ac.jp/opensearch/all?q={urllib.parse.quote(query)}&format=json&count={min(n, 10)}"
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"CiNii 失败: {e}")
             return []
@@ -107,7 +107,7 @@ def _build_ndl_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://ndlsearch.ndl.go.jp/api/opensearch?title={urllib.parse.quote(query)}&cnt={min(n, 10)}"
         try:
-            raw = _http_text(url, to)
+            raw = _http_text(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"NDL 失败: {e}")
             return []
@@ -158,7 +158,7 @@ def _build_kor_law_engine(spec: dict[str, Any]) -> Any:
         url = (f"https://law.go.kr/DRF/lawSearch.do?OC=test&target={target}&type=XML"
                f"&query={urllib.parse.quote(query)}&display={min(n, 10)}")
         try:
-            raw = _http_text(url, to)
+            raw = _http_text(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"law.go.kr 失败: {e}")
             return []
@@ -209,7 +209,7 @@ def _build_hatena_bookmark_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://b.hatena.ne.jp/search/text?q={urllib.parse.quote(query)}&mode=rss"
         try:
-            raw = _http_text(url, to)
+            raw = _http_text(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"Hatena 失败: {e}")
             return []
@@ -255,7 +255,7 @@ def _build_dnb_engine(spec: dict[str, Any]) -> Any:
         url = ("https://services.dnb.de/sru/dnb?operation=searchRetrieve&version=1.1"
                f"&query={urllib.parse.quote(query)}&maximumRecords={min(n, 10)}")
         try:
-            raw = _http_text(url, to)
+            raw = _http_text(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"DNB 失败: {e}")
             return []
@@ -305,7 +305,7 @@ def _build_doaj_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://doaj.org/api/search/articles/{urllib.parse.quote(query)}?pageSize={min(n, 10)}"
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"DOAJ 失败: {e}")
             return []
@@ -352,7 +352,7 @@ def _build_europeana_engine(spec: dict[str, Any]) -> Any:
         url = (f"https://api.europeana.eu/record/v2/search.json?wskey=api2demo"
                f"&query={urllib.parse.quote(query)}&rows={min(n, 10)}")
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"Europeana 失败: {e}")
             return []
@@ -393,7 +393,7 @@ def _build_hal_engine(spec: dict[str, Any]) -> Any:
                f"&q={urllib.parse.quote(query)}&rows={min(n, 10)}"
                "&fl=title_s,uri_s,abstract_s,authFullName_s,producedDate_s")
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"HAL 失败: {e}")
             return []
@@ -430,7 +430,7 @@ def _build_eu_opendata_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://data.europa.eu/api/hub/search/search?q={urllib.parse.quote(query)}&pageSize={min(n, 10)}"
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"EU ODP 失败: {e}")
             return []
@@ -481,7 +481,7 @@ def _build_open_meteo_engine(spec: dict[str, Any]) -> Any:
         try:
             geo = _http_json(
                 f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(query)}&count=3&language=zh",
-                to)
+                to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"Open-Meteo geocode 失败: {e}")
             return []
@@ -493,7 +493,7 @@ def _build_open_meteo_engine(spec: dict[str, Any]) -> Any:
             try:
                 wx = _http_json(
                     f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true",
-                    to)
+                    to, engine=spec.get("_name", ""))
             except Exception:
                 continue
             cw = wx.get("current_weather") or {}
@@ -531,7 +531,7 @@ def _build_searchmysite_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://searchmysite.net/search/?q={urllib.parse.quote(query)}"
         try:
-            raw = _http_text(url, to)
+            raw = _http_text(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"SearchMySite 失败: {e}")
             return []
@@ -574,7 +574,7 @@ def _build_lieu_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = f"https://lieu.cblgh.org/?q={urllib.parse.quote(query)}"
         try:
-            raw = _http_text(url, to)
+            raw = _http_text(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"Lieu 失败: {e}")
             return []
@@ -630,7 +630,7 @@ def _build_opensky_engine(spec: dict[str, Any]) -> Any:
         url = (f"https://opensky-network.org/api/states/all?lamin={lamin}&lomin={lomin}"
                f"&lamax={lamax}&lomax={lomax}")
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"OpenSky 失败: {e}")
             return []
@@ -670,7 +670,7 @@ def _build_electricity_maps_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         url = "https://api.electricitymap.org/v3/zones"
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"Electricity Maps 失败: {e}")
             return []
@@ -707,7 +707,7 @@ def _build_usda_engine(spec: dict[str, Any]) -> Any:
         url = (f"https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY"
                f"&query={urllib.parse.quote(query)}&pageSize={min(n, 10)}")
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"USDA 失败: {e}")
             return []
@@ -744,7 +744,7 @@ def _build_tatoeba_engine(spec: dict[str, Any]) -> Any:
         url = (f"https://tatoeba.org/en/api_v0/search?query={urllib.parse.quote(query)}"
                f"&limit={min(n, 10)}")
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"Tatoeba 失败: {e}")
             return []
@@ -789,7 +789,7 @@ def _build_figshare_engine(spec: dict[str, Any]) -> Any:
         url = (f"https://api.figshare.com/v2/articles?search_for={urllib.parse.quote(query)}"
                f"&page_size={min(n, 10)}")
         try:
-            data = _http_json(url, to)
+            data = _http_json(url, to, engine=spec.get("_name", ""))
         except Exception as e:
             logger.warning(f"Figshare 失败: {e}")
             return []
@@ -813,7 +813,7 @@ def _build_figshare_engine(spec: dict[str, Any]) -> Any:
 
 # ── 腾讯 K 线（前复权日 K）────────────────────────────────────────────────────
 
-def _resolve_tencent_symbol(q: str, to: float, headers: dict) -> str:
+def _resolve_tencent_symbol(q: str, to: float, headers: dict, engine: str = "") -> str:
     """腾讯代码解析（与行情引擎同源逻辑：smartbox 建议接口）。"""
     _STOP = ("股价", "行情", "股票", "价格", "走势", "最新", "今日", "报价", "查询",
              "怎么样", "多少", "怎么", "了", "吗", "的", "a股", "港股", "美股",
@@ -833,7 +833,7 @@ def _resolve_tencent_symbol(q: str, to: float, headers: dict) -> str:
             req = urllib.request.Request(
                 f"https://smartbox.gtimg.cn/s3/?v=2&t=all&q={urllib.parse.quote(c)}",
                 headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=engine) as resp:
                 text = resp.read().decode("gbk", "replace")
         except Exception as e:
             logger.warning(f"腾讯代码解析失败: {e}")
@@ -857,7 +857,7 @@ def _build_tencent_kline_engine(spec: dict[str, Any]) -> Any:
         to = _timeout or timeout
         headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
                    "Referer": "https://gu.qq.com/"}
-        symbol = _resolve_tencent_symbol(query, to, headers)
+        symbol = _resolve_tencent_symbol(query, to, headers, engine=spec.get("_name", ""))
         if not symbol:
             return []
         days = min(max(n * 20, 20), 120)
@@ -865,7 +865,7 @@ def _build_tencent_kline_engine(spec: dict[str, Any]) -> Any:
                f"?param={symbol},day,,,{days},qfq")
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"腾讯 K 线失败: {e}")
@@ -906,7 +906,7 @@ def _build_qq_music_engine(spec: dict[str, Any]) -> Any:
             req = urllib.request.Request(
                 url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
                               "Referer": "https://y.qq.com/"})
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"QQ 音乐失败: {e}")
@@ -1050,4 +1050,129 @@ def _build_twitter_syndication_engine(spec: dict[str, Any]) -> Any:
             "source": "twitter_syndication",
             "score": 0.9,
         }]
+    return _engine
+
+
+# ── 批次八：数据源扩展（2026-09-12）──────────────────────────────────────────
+
+# Google News RSS 的 hl/gl/ceid 三参数必须成组（ceid 是 "地区:语言" 复合值），
+# 不能走 engines_base 的单参数 _lang_param 动态化——这里按查询主语言整组切换。
+_NEWS_LOCALES = {
+    "zh": ("zh-CN", "CN", "CN:zh-Hans"),
+    "ja": ("ja", "JP", "JP:ja"),
+    "ko": ("ko", "KR", "KR:ko"),
+    "en": ("en-US", "US", "US:en"),
+}
+
+
+def _news_locale(query: str) -> tuple[str, str, str]:
+    """按查询主语言选 (hl, gl, ceid)；检测不了默认 en-US。"""
+    try:
+        from lang_detect import detect_language
+        lang = (detect_language(query) or "en").split("-")[0]
+    except ImportError:
+        lang = "en"
+    return _NEWS_LOCALES.get(lang, _NEWS_LOCALES["en"])
+
+
+def _build_google_news_engine(spec: dict[str, Any]) -> Any:
+    """Google News RSS（多语言新闻，免认证，结构化 RSS 2.0）。
+
+    engines_base._parse_xml 只解析 Atom（arXiv 型），Google News 是 RSS
+    channel/item 结构且标题带「 - 媒体名」尾巴，这里单独解析并剥短尾巴。
+    查询里的 when:1d / site: 等运算符原样透传给 Google。
+    """
+    timeout = spec.get("timeout", 12)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        hl, gl, ceid = _news_locale(q)
+        url = (f"https://news.google.com/rss/search?q={urllib.parse.quote(q)}"
+               f"&hl={hl}&gl={gl}&ceid={ceid}")
+        raw = _http_get_raw(url, {"User-Agent": "argo-search/1.0 (+google_news)", "Accept": "application/rss+xml"},
+                            to, engine=spec.get("_name", "google_news"))
+        if raw is None:
+            return []
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError:
+            return []
+        channel = root.find("channel")
+        if channel is None:
+            return []
+        out = []
+        for item in channel.findall("item")[:max(int(n), 1)]:
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            if not title or not link:
+                continue
+            # 「标题 - 媒体名」尾巴只在水线以下剥：尾巴过长说明是标题本体的一部分
+            if " - " in title:
+                head, tail = title.rsplit(" - ", 1)
+                if 0 < len(tail) <= 25:
+                    title = head.strip()
+            pub = (item.findtext("pubDate") or "").strip()
+            out.append({
+                "title": title[:200],
+                "url": link,
+                "snippet": "",
+                "source": "google_news",
+                "published_at": pub,
+            })
+        return out
+    return _engine
+
+
+def _build_met_museum_engine(spec: dict[str, Any]) -> Any:
+    """Met Museum 藏品库（艺术/博物馆藏品，两跳：search → objects/{id}）。
+
+    search 只回 objectIDs 数组，详情逐个取（上限 6 条控二跳延迟）；artist 为空
+    是常态（大量藏品无署名），标题用 title 兜底。
+    """
+    timeout = spec.get("timeout", 20)
+    _BASE = "https://collectionapi.metmuseum.org/public/collection/v1"
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        engine_name = spec.get("_name", "met_museum")
+        headers = {"User-Agent": "argo-search/1.0 (+met_museum)", "Accept": "application/json"}
+        search_url = f"{_BASE}/search?q={urllib.parse.quote(q)}&hasImages=true"
+        raw = _http_get_raw(search_url, headers, to, engine=engine_name)
+        if raw is None:
+            return []
+        try:
+            ids = (json.loads(raw) or {}).get("objectIDs") or []
+        except (json.JSONDecodeError, ValueError):
+            return []
+        out = []
+        for oid in ids[:min(max(int(n), 1), 6)]:
+            obj_raw = _http_get_raw(f"{_BASE}/objects/{oid}", headers, to, engine=engine_name)
+            if obj_raw is None:
+                continue
+            try:
+                d = json.loads(obj_raw)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            title = str(d.get("title") or "").strip()
+            if not title:
+                continue
+            artist = str(d.get("artistDisplayName") or "").strip()
+            bits = [b for b in (artist, str(d.get("objectDate") or "").strip(),
+                                str(d.get("medium") or "").strip(),
+                                str(d.get("department") or "").strip()) if b]
+            out.append({
+                "title": title,
+                "url": str(d.get("objectURL") or "").strip(),
+                "snippet": " · ".join(bits)[:300],
+                "source": "met_museum",
+            })
+        return out
     return _engine

@@ -85,6 +85,12 @@ _SECRET_QUERY_RE = re.compile(
     r"((?:[?&;]|\b)(?:%s)=)([^&;\s\"']+)" % "|".join(
         re.escape(k) for k in _SECRET_QUERY_KEYS), re.IGNORECASE)
 _BEARER_RE = re.compile(r"(bearer\s+)[A-Za-z0-9._\-]+", re.IGNORECASE)
+# 厂商密钥前缀：不少上游在错误体里回显密钥片段
+# （如 OpenAI `Incorrect API key provided: sk-...`），而它既不是 query 参数
+# 也不是 Bearer 头，前两类规则都漏。前缀取主流按段可辨识者。
+_VENDOR_KEY_RE = re.compile(
+    r"\b(?:sk|rk|pk|gsk|xai|hf|ghp|gho|github_pat|glpat|AIza|ya29)"
+    r"[-_][A-Za-z0-9._\-]{8,}")
 _HOME_PATH_RE = re.compile(r"(/Users/[^/\s:\"]+|/home/[^/\s:\"]+)")
 
 
@@ -98,6 +104,7 @@ def redact_secrets(text: str) -> str:
         return text
     out = _SECRET_QUERY_RE.sub(r"\1[REDACTED]", text)
     out = _BEARER_RE.sub(r"\1[REDACTED]", out)
+    out = _VENDOR_KEY_RE.sub("[REDACTED]", out)
     out = _HOME_PATH_RE.sub("~", out)
     return out
 

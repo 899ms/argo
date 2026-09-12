@@ -136,12 +136,21 @@ def _load_quota_state() -> dict:
     return _quota_state_cache
 
 
-def _quota_ratio(engine: str, quota_state: dict) -> float:
-    """计算配额剩余比例。返回 0.0-1.0，无记录时默认 1.0。"""
-    info = quota_state.get(engine)
-    if not info:
-        return 1.0
-    limit = info.get("limit")
+def _quota_ratio(engine: str, quota_state: dict,
+                 profiles: dict | None = None) -> float:
+    """计算配额剩余比例。返回 0.0-1.0，无记录时默认 1.0。
+
+    limit 的单一真源是 quota_profiles.json（声明文件）；配额状态文件里只有
+    用量计数。此前本函数只读 state["limit"]，而写入方（quota.record）恒填 0，
+    于是 limit<=0 走「无限配额」分支恒返回 1.0——配额感知惩罚（<0.2 砍到
+    2×qr、<0.5 乘 0.5+qr）从来没生效过。与 quota.get_remaining_ratio 的
+    profile.get("limit") 口径对齐，缺省才回落到 state 里的值。
+    """
+    info = quota_state.get(engine) or {}
+    profile = (profiles if profiles is not None else _load_cost_profiles()).get(engine) or {}
+    limit = profile.get("limit")
+    if not isinstance(limit, (int, float)) or limit <= 0:
+        limit = info.get("limit")
     if limit is None or limit <= 0:
         # 无限配额 / 脏数据（limit=0）不当作耗尽
         return 1.0
@@ -274,7 +283,7 @@ class SemanticRouter:
 
             # 配额感知惩罚
             if quota_aware and quota_state:
-                qr = _quota_ratio(name, quota_state)
+                qr = _quota_ratio(name, quota_state, cost_profiles)
                 if qr < 0.2:
                     final_score *= qr * 2
                     parts.append(f"配额紧张({qr:.0%})")

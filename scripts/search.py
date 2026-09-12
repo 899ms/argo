@@ -1317,6 +1317,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         # error 文本，outcome 会落成 no-results；归因寄存器把它们还原成
         # blocked / rate-limited 等真实状态，供熔断与 --json 可观测面使用。
         _note = pop_failure_note(eng)
+        _attr: dict[str, Any] | None = None
         if _note and outcome["status"] in ("no-results", "error", "auth-failed"):
             if _note.get("category") == "blocked":
                 outcome["status"] = "blocked"
@@ -1327,6 +1328,14 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             outcome["detail"] = (
                 f"{_note.get('reason', '')} {_note.get('detail', '')}".strip()
                 or outcome.get("detail"))
+        if _note:
+            # 归因随熔断状态一起持久化：「为什么坏」必须在失败现场写下来，
+            # 事后只能看到 kind 粗标签（把 kind 当响应文本再归类只会得到 unknown）
+            try:
+                from engine_failure import from_note
+                _attr = from_note(_note, eng)
+            except ImportError:
+                _attr = None
         goods = [r for r in res if isinstance(r, dict) and "error" not in r]
         _record_quota(eng, success=bool(goods))
         if outcome["status"] == "quota-exhausted":
@@ -1339,20 +1348,22 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 breaker.record_success(eng)
                 breaker.clear_negative(query, eng)
             elif outcome["status"] == "quota-exhausted":
-                pass
+                # 配额问题不是引擎健康问题，停用交给配额状态机（上面已记账）；
+                # 但归因必须留下——「为什么不行」正是这一支的可观测缺口。
+                breaker.record_note(eng, _attr)
             elif outcome["status"] == "no-results":
-                breaker.record_failure(eng, kind="empty")
+                breaker.record_failure(eng, kind="empty", attribution=_attr)
                 breaker.set_negative(query, eng, status="no-results")
             elif outcome["status"] == "timeout":
-                breaker.record_failure(eng, kind="timeout")
+                breaker.record_failure(eng, kind="timeout", attribution=_attr)
                 breaker.set_negative(query, eng, status="timeout")
             elif outcome["status"] in ("blocked", "rate-limited"):
                 # 被拦截 / 被限流都是源站行为，不是引擎故障：60s 短冷却，
                 # 不累计 opens（否则被封引擎会被冤枉 auto-disable）。
-                breaker.record_failure(eng, kind=outcome["status"])
+                breaker.record_failure(eng, kind=outcome["status"], attribution=_attr)
                 breaker.set_negative(query, eng, status=outcome["status"])
             else:
-                breaker.record_failure(eng, kind="error")
+                breaker.record_failure(eng, kind="error", attribution=_attr)
                 breaker.set_negative(query, eng, status=outcome["status"])
 
         if not skip_cache and goods:

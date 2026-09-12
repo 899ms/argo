@@ -18,6 +18,7 @@ from typing import Any
 
 from engines_base import (
     safe_search, _run, _resolve, _get_path, _coerce_field, _detect_anti_bot,
+    http_open,
 )
 
 logger = logging.getLogger("unified_search.engines")
@@ -94,7 +95,7 @@ def _build_fred_engine(spec: dict[str, Any]) -> Any:
         url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"})
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 text = resp.read().decode("utf-8", "replace")
         except Exception as e:
             logger.warning(f"FRED 拉取失败 ({series_id}): {e}")
@@ -161,7 +162,7 @@ def _build_fx_rate_engine(spec: dict[str, Any]) -> Any:
             return []
         try:
             req = urllib.request.Request(api_url + base, headers={"User-Agent": "argo-search/2.4 (unified-search@local)"})
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"汇率接口失败 ({base}): {e}")
@@ -323,7 +324,7 @@ def _build_worldbank_engine(spec: dict[str, Any]) -> Any:
         for _a in range(2):
             try:
                 req = urllib.request.Request(api.format(cc=cc, ind=ind), headers=headers)
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     data = json.loads(resp.read().decode("utf-8", "replace"))
                 break
             except Exception as e:
@@ -457,7 +458,7 @@ def _build_nbs_stats_engine(spec: dict[str, Any]) -> Any:
         url = f"{_NBS_API}/query?search={urllib.parse.quote(kw)}&pagenum=1&pageSize=15"
         try:
             req = urllib.request.Request(url, headers=_HEADERS)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 d = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"统计局搜索失败: {e}")
@@ -478,7 +479,7 @@ def _build_nbs_stats_engine(spec: dict[str, Any]) -> Any:
                 data=json.dumps(body).encode(),
                 headers={**_HEADERS, "Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 d = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"统计局取数失败: {e}")
@@ -682,7 +683,7 @@ def _build_eurostat_engine(spec: dict[str, Any]) -> Any:
 
     def _jget(url: str, to: float) -> dict:
         req = urllib.request.Request(url, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=to) as resp:
+        with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
 
     @safe_search

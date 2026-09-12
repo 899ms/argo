@@ -1,0 +1,22 @@
+# Google News RSS — 英文/多语言新闻（免认证，结构化 RSS）
+# 对 local_google_news（HTML）的结构化升级：时间窗（when:1d/1h）、site: 限定、
+# hl/gl/ceid 语言地区参数化。ToS 仅供个人 feed 展示，无配额契约——qps 从紧。
+# 语言映射在 builder 内按查询主语言选择 hl/gl/ceid 组合。
+# 验证:
+#   python3 scripts/engine_validate.py --engine google_news --stage all --admit --write-doc
+
+engine_id: google_news
+type: google_news
+enabled: true
+cost_tier: free
+timeout: 12
+canary_query: "artificial intelligence"
+desc: "Google News RSS（多语言新闻，免认证，支持时间窗与 site: 限定）"
+coverage: [news, realtime, english, international]
+recommended: false
+latency_ms: 1500
+
+quality_queries:
+  - query: "artificial intelligence"
+  - query: "climate change"
+  - query: "quantum computing"

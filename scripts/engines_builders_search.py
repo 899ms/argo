@@ -23,7 +23,7 @@ import re
 import urllib.request
 from typing import Any
 
-from engines_base import safe_search
+from engines_base import safe_search, http_open
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -82,7 +82,7 @@ def _build_parallel_engine(spec: dict[str, Any]) -> Any:
             headers={"X-Api-Key": key, "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except Exception as e:
             logger.warning(f"parallel 请求失败: {e}")
@@ -159,7 +159,7 @@ def _build_you_engine(spec: dict[str, Any]) -> Any:
             headers={"X-API-Key": key, "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except Exception as e:
             logger.warning(f"you 请求失败: {e}")

@@ -68,11 +68,17 @@ def _runtime_status(engine_id: str,
         }
         # 失败归因：熔断只回答「要不要继续用」，这里补「为什么坏」。
         # 仅在确有失败记录时输出，避免给健康引擎塞噪音字段。
+        # 优先用失败现场记录的归因（真实 category/evidence）；旧数据没有该字段
+        # 时才回落按 kind 文本归类（信息量有限，可能落 unknown）。
         if st.get("last_kind") and int(st.get("failures") or 0) > 0:
-            from engine_failure import explain as _explain_failure
-            out["failure"] = _explain_failure(
-                engine_id, spec=spec, output=str(st.get("last_kind") or ""),
-            )
+            persisted = st.get("last_attribution")
+            if isinstance(persisted, dict) and persisted.get("category"):
+                out["failure"] = persisted
+            else:
+                from engine_failure import explain as _explain_failure
+                out["failure"] = _explain_failure(
+                    engine_id, spec=spec, output=str(st.get("last_kind") or ""),
+                )
     except Exception:
         pass
     if adaptive_scores is not None:
@@ -87,9 +93,19 @@ def _runtime_status(engine_id: str,
     return out
 
 
+def _quota_exhausted_marks() -> dict[str, dict[str, Any]]:
+    """一次取全部「远端配额耗尽」标记，避免逐引擎查询。失败返回空。"""
+    try:
+        from quota import get_quota_manager
+        return get_quota_manager().remote_exhausted_marks()
+    except Exception:
+        return {}
+
+
 def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
                   tiers: dict[str, list[str]] | None = None,
-                  adaptive_scores: dict[str, float] | None = None) -> dict[str, Any]:
+                  adaptive_scores: dict[str, float] | None = None,
+                  quota_marks: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     if spec is None:
         specs = _all_engine_specs()
         spec = specs.get(engine_id) or {}
@@ -103,6 +119,13 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
     allowed = env["allowed_by_env"]
     env_ok = env["env_ready"]
     dep_ok = deps["dep_ready"]
+    # 远端配额耗尽（如博查 AI Search 403 套餐额度不足）：这是源端的「现在别打」，
+    # 与密钥/依赖无关，也不是引擎故障。此前这类引擎一律显示 ready、
+    # routable=True，直到 lookup 才发现打不动——配额状态机已记下它，这里读出来。
+    if quota_marks is None:
+        quota_marks = _quota_exhausted_marks()
+    quota_mark = quota_marks.get(engine_id)
+    quota_exhausted = bool(quota_mark)
     # 自动路由可用条件（含后端依赖：缺 xhs/yt-dlp 这类工具时不该进路由）
     routable = (
         config_enabled
@@ -110,6 +133,7 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         and env_ok
         and dep_ok
         and not blocked
+        and not quota_exhausted
     )
     status = "ready"
     if not config_enabled:
@@ -122,6 +146,8 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         # 后端工具缺失：密钥齐全、脚本存在，但真正干活的外部命令没有。
         # 此前这类引擎一律显示 ready，调用后静默返回空，无从定位。
         status = "missing_dep"
+    elif quota_exhausted:
+        status = "quota_exhausted"
     elif blocked:
         status = "blocked"
     elif admitted:
@@ -145,6 +171,11 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         "blocked": blocked,
         "admitted": admitted,
         "routable": routable,
+        # 远端配额耗尽（源端明示）。配额问题既不是引擎健康问题、也不是密钥问题，
+        # 单列出来，到周期边界惰性自愈。
+        "quota_exhausted": quota_exhausted,
+        "quota_exhausted_until": (quota_mark or {}).get("until"),
+        "quota_exhausted_reason": (quota_mark or {}).get("reason") or "",
         # 后端依赖（requires 声明）：缺什么、怎么装。与 missing_env（密钥）正交。
         "dep_ready": dep_ok,
         "requires": deps["requires"],
@@ -171,9 +202,10 @@ def list_engines_detail(
     tiers = get_cost_tiers(cfg)
     specs = _all_engine_specs(cfg)
     adaptive_scores = _adaptive_scores_snapshot()
+    quota_marks = _quota_exhausted_marks()
     rows = []
     for name in sorted(specs.keys()):
-        row = engine_detail(name, specs[name], tiers, adaptive_scores)
+        row = engine_detail(name, specs[name], tiers, adaptive_scores, quota_marks)
         if not include_disabled and not row["enabled"]:
             continue
         if routable_only and not row["routable"]:
@@ -188,14 +220,28 @@ def list_routable_engine_ids() -> list[str]:
 
 def format_engines_table(rows: list[dict[str, Any]]) -> str:
     lines = [
-        f"{'ENGINE':<22} {'STATUS':<14} {'TIER':<6} {'TYPE':<14} {'ROUTABLE':<8} ENV",
-        "-" * 90,
+        f"{'ENGINE':<22} {'STATUS':<14} {'TIER':<6} {'TYPE':<14} {'ROUTABLE':<8} {'ENV':<28} FAILURE",
+        "-" * 120,
     ]
     for r in rows:
         env_note = "ok" if r["env_ready"] else ",".join(r["missing_env"][:2]) or "missing"
+        # 失败归因：熔断只回答「要不要继续用」，这一列补「为什么坏」。
+        # 归因来自引擎内失败现场记录的寄存器（engines_base.http_open /
+        # _http_get_raw → note_failure → 熔断持久化），此前只出现在 --json 里。
+        failure = r.get("runtime", {}).get("failure") or {}
+        fail_note = ""
+        # 配额耗尽优先：它是由配额状态机确认过的「源端明示额度不足」，比熔断里
+        # 可能陈旧的归因（旧版落的 unknown/empty）更可信，也更可行动。
+        if r.get("quota_exhausted"):
+            reason = (r.get("quota_exhausted_reason") or "").replace("\n", " ")
+            fail_note = f"quota_exhausted: {reason[:40]}".strip(": ")
+        elif failure:
+            cat = failure.get("category") or ""
+            ev = (failure.get("evidence") or "").replace("\n", " ")[:40]
+            fail_note = f"{cat}: {ev}".strip(": ")
         lines.append(
             f"{r['engine_id']:<22} {r['status']:<14} {r['cost_tier']:<6} "
-            f"{str(r['type']):<14} {str(r['routable']):<8} {env_note}"
+            f"{str(r['type']):<14} {str(r['routable']):<8} {env_note:<28} {fail_note}"
         )
     lines.append(f"\n总计 {len(rows)} · routable={sum(1 for r in rows if r['routable'])}")
     return "\n".join(lines)

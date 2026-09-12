@@ -212,6 +212,33 @@ class QuotaManager:
             self._refresh_remote_state_locked(engine, time.time())
             return "remote_exhausted" in (self._state.get(engine) or {})
 
+    def remote_exhausted_marks(self) -> dict[str, dict[str, Any]]:
+        """处于「远端配额耗尽」状态的引擎 → {reason, until}。
+
+        一次性快照，供 `--list-engines` 展示：逐引擎调 is_remote_exhausted 会
+        重复走热读检查。顺带做过期自愈（与 _refresh_remote_state_locked 同口径），
+        坏标记（非 dict）按过期处理。
+        """
+        with self._lock:
+            self._fresh_locked()
+            now = time.time()
+            out: dict[str, dict[str, Any]] = {}
+            for engine, st in list(self._state.items()):
+                if not isinstance(st, dict):
+                    continue
+                mark = st.get("remote_exhausted")
+                if not isinstance(mark, dict):
+                    continue
+                if now >= float(mark.get("until") or 0):
+                    st.pop("remote_exhausted", None)
+                    self._save_state()
+                    continue
+                out[engine] = {
+                    "reason": str(mark.get("reason") or ""),
+                    "until": float(mark.get("until") or 0),
+                }
+            return out
+
     def is_hard_down(self, engine: str) -> bool:
         """配额意义上不可用：远端耗尽或本地剩余为 0。
 

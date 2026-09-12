@@ -1,0 +1,21 @@
+# Bangumi 番剧仓库 — 二次元结构化元数据（官方开放 REST，免认证，POST JSON）
+# anime 域补位：萌娘百科/中文维基是词条视角，Bangumi 给条目化元数据
+# （中文名/日文名/简介/日期/评分/tags）。请求须带自报 UA（官方礼仪）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine bangumi --stage all --admit --write-doc
+
+engine_id: bangumi
+type: bangumi
+enabled: true
+cost_tier: free
+timeout: 12
+canary_query: "孤独摇滚"
+desc: "Bangumi 番剧仓库（动画/漫画/游戏条目元数据，官方开放 API，免认证）"
+coverage: [anime, game, chinese, media]
+recommended: false
+latency_ms: 1500
+
+quality_queries:
+  - query: "孤独摇滚"
+  - query: "攻壳机动队"
+  - query: "进击的巨人"

@@ -51,7 +51,7 @@ def engine(monkeypatch):
         _topic(4, "今天午饭吃什么", "公司附近都吃腻了", "生活", 8, username="u2"),
     ]
 
-    def fake_get_raw(url, headers, timeout):
+    def fake_get_raw(url, headers, timeout, engine=None):
         import json
         return json.dumps(pool)
 
@@ -135,7 +135,7 @@ class TestTermMatchingBoundary:
     def eng(self, monkeypatch):
         import json
         monkeypatch.setattr(ebt, "_http_get_raw",
-                            lambda u, h, t: json.dumps(self.POOL))
+                            lambda u, h, t, engine=None: json.dumps(self.POOL))
         return ebt._build_v2ex_engine({})
 
     @pytest.mark.parametrize("q", ["a", "x", "z"])
@@ -171,17 +171,17 @@ class TestNoResultsIsHonest:
     """无结果即无结果，不得回到「失败伪装成成功」。"""
 
     def test_empty_pool_returns_empty(self, monkeypatch):
-        monkeypatch.setattr(ebt, "_http_get_raw", lambda u, h, t: "[]")
+        monkeypatch.setattr(ebt, "_http_get_raw", lambda u, h, t, engine=None: "[]")
         eng = ebt._build_v2ex_engine({})
         assert eng("iPhone", n=5) == []
 
     def test_api_failure_returns_empty_not_fabricated(self, monkeypatch):
         """API 全失败 → 空列表（旧实现会返回 10 条伪造结果）。"""
-        monkeypatch.setattr(ebt, "_http_get_raw", lambda u, h, t: None)
+        monkeypatch.setattr(ebt, "_http_get_raw", lambda u, h, t, engine=None: None)
         eng = ebt._build_v2ex_engine({})
         assert eng("iPhone", n=5) == []
 
     def test_malformed_json_returns_empty(self, monkeypatch):
-        monkeypatch.setattr(ebt, "_http_get_raw", lambda u, h, t: "not-json")
+        monkeypatch.setattr(ebt, "_http_get_raw", lambda u, h, t, engine=None: "not-json")
         eng = ebt._build_v2ex_engine({})
         assert eng("iPhone", n=5) == []

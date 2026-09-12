@@ -1,0 +1,38 @@
+# 网易云音乐搜索 — 中文曲库（Web 接口，免认证）
+# 补 media_search 域的中文曲库维度：qq_music 无歌单/专辑元数据深度，
+# itunes 偏欧美曲库。非官方接口，历史上偶加签名——失败诚实空，不做绕过。
+# fee 字段标 VIP 歌曲仅作元数据用途。
+# 验证:
+#   python3 scripts/engine_validate.py --engine netease_music --stage all --admit --write-doc
+
+engine_id: netease_music
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://music.163.com/api/search/get/web
+timeout: 10
+query_param: s
+canary_query: "周杰伦 晴天"
+desc: "网易云音乐搜索（中文曲库/专辑元数据，免认证，非官方接口）"
+coverage: [media, chinese]
+recommended: false
+latency_ms: 1000
+
+headers:
+  User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36
+  Referer: https://music.163.com/
+
+extra_params:
+  type: "1"
+  limit: "{n}"
+
+output_map:
+  items: result.songs
+  item_title: name
+  item_summary: album.name
+  url_template: "https://music.163.com/song?id={id}"
+
+quality_queries:
+  - query: "周杰伦 晴天"
+  - query: "Taylor Swift Love Story"

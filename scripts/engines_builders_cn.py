@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from engines_base import safe_search, _run, _resolve, _get_path, _coerce_field
+from engines_base import safe_search, _run, _resolve, _get_path, _coerce_field, _http_get_raw, http_open
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -44,7 +44,7 @@ def _build_ths_hot_engine(spec: dict[str, Any]) -> Any:
         }
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read())
             if data.get("errocode", 0) != 0:
                 return []
@@ -105,7 +105,7 @@ def _build_cls_telegraph_engine(spec: dict[str, Any]) -> Any:
         headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.cls.cn/"}
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 d = json.loads(resp.read())
             results = []
             for item in d.get("data", {}).get("roll_data", []) or []:
@@ -150,7 +150,7 @@ def _build_em_global_news_engine(spec: dict[str, Any]) -> Any:
         headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://kuaixun.eastmoney.com/"}
         try:
             req = urllib.request.Request(url + "?" + "&".join(f"{k}={v}" for k, v in params.items()), headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 d = json.loads(resp.read())
             results = []
             for item in d.get("data", {}).get("fastNewsList", []):
@@ -203,7 +203,7 @@ def _build_em_miaoxiang_engine(spec: dict[str, Any]) -> Any:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = _json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
             logger.warning(f"妙想搜索失败: {e}")
@@ -275,7 +275,7 @@ def _build_cninfo_engine(spec: dict[str, Any]) -> Any:
                 },
             )
             try:
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     data = json.loads(resp.read().decode("utf-8", "replace"))
             except Exception as e:
                 logger.warning(f"巨潮公告搜索失败: {e}")
@@ -360,7 +360,7 @@ def _build_sina_quote_engine(spec: dict[str, Any]) -> Any:
         symbol = code.split(",")[0] if "," in code else code
         try:
             req = urllib.request.Request(quote_url + symbol, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 text = resp.read().decode("gbk", "replace").strip()
         except Exception as e:
             logger.warning(f"新浪行情失败: {e}")
@@ -420,7 +420,7 @@ def _build_sina_quote_engine(spec: dict[str, Any]) -> Any:
         for c in cands:
             try:
                 req = urllib.request.Request(suggest_url + up.quote(c), headers=headers)
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     text = resp.read().decode("gbk", "replace")
             except Exception as e:
                 logger.warning(f"新浪代码解析失败: {e}")
@@ -470,7 +470,7 @@ def _build_tencent_quote_engine(spec: dict[str, Any]) -> Any:
             return []
         try:
             req = urllib.request.Request(quote_url + symbol, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 text = resp.read().decode("gbk", "replace").strip()
         except Exception as e:
             logger.warning(f"腾讯行情失败: {e}")
@@ -524,7 +524,7 @@ def _build_tencent_quote_engine(spec: dict[str, Any]) -> Any:
         for c in cands:
             try:
                 req = urllib.request.Request(suggest_url + up.quote(c), headers=headers)
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     text = resp.read().decode("gbk", "replace")
             except Exception as e:
                 logger.warning(f"腾讯代码解析失败: {e}")
@@ -581,7 +581,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
                 req = urllib.request.Request(
                     kamt_url + "?fields1=f1,f3&fields2=f51,f52,f53,f54,f55,f56",
                     headers=headers)
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     data = json.loads(resp.read().decode("utf-8", "replace"))
                 break
             except Exception as e:
@@ -631,7 +631,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
         for _a in range(2):
             try:
                 req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     data = json.loads(resp.read().decode("utf-8", "replace"))
                 break
             except Exception as e:
@@ -683,7 +683,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
         for _a in range(2):
             try:
                 req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     data = json.loads(resp.read().decode("utf-8", "replace"))
                 break
             except Exception as e:
@@ -751,7 +751,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
         for c in cands:
             try:
                 req = urllib.request.Request(smartbox_url + up.quote(c), headers=headers)
-                with urllib.request.urlopen(req, timeout=to) as resp:
+                with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                     text = resp.read().decode("gbk", "replace")
             except Exception as e:
                 logger.warning(f"东财代码解析失败: {e}")
@@ -808,7 +808,7 @@ def _build_eastmoney_engine(spec: dict[str, Any]) -> Any:
         try:
             full_url = url + "?" + "&".join(f"{k}={up.quote(str(v))}" for k, v in params.items())
             req = urllib.request.Request(full_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 text = resp.read().decode("utf-8")
             json_str = text[text.index("(") + 1:text.rindex(")")]
             d = _json.loads(json_str)
@@ -842,7 +842,7 @@ def _build_eastmoney_engine(spec: dict[str, Any]) -> Any:
         try:
             full_url = url + "?" + "&".join(f"{k}={up.quote(str(v))}" for k, v in params.items())
             req = urllib.request.Request(full_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 text = resp.read().decode("utf-8")
             json_str = text[text.index("(") + 1:text.rindex(")")]
             d = json.loads(json_str)
@@ -880,7 +880,7 @@ def _build_itotii_engine(spec: dict[str, Any]) -> Any:
         headers = {"User-Agent": "Mozilla/5.0"}
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
             results = []
             for p in data:
@@ -920,7 +920,7 @@ def _build_baidu_hot_engine(spec: dict[str, Any]) -> Any:
         headers = {"User-Agent": "Mozilla/5.0"}
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 page = resp.read().decode("utf-8", "replace")
             words = re.findall(r'word":"([^"]+)"', page)
             results, seen = [], set()
@@ -957,7 +957,7 @@ def _build_toutiao_hot_engine(spec: dict[str, Any]) -> Any:
         headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.toutiao.com/"}
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
             results = []
             for i, item in enumerate(data.get("data", [])[:n]):
@@ -990,7 +990,7 @@ def _build_bilibili_hot_engine(spec: dict[str, Any]) -> Any:
         headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com"}
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
             items = data.get("data", {}).get("trending", {}).get("list", [])
             results = []
@@ -1088,7 +1088,7 @@ def _build_zhihu_global_engine(spec: dict[str, Any]) -> Any:
             "User-Agent": "argo-search/2.6 (unified-search@local)",
         }
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
             # 401/403 等必须暴露为 error item 而非静默空——调用侧把
@@ -1225,7 +1225,7 @@ def _build_zhihu_user_engine(spec: dict[str, Any]) -> Any:
             "User-Agent": "argo-search/2.6 (unified-search@local)",
         }
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=to) as resp:
+            with http_open(urllib.request.Request(url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
             return [{"error": f"zhihu_user API HTTP {e.code}", "source": "zhihu_user"}]
@@ -1356,7 +1356,7 @@ def _build_bocha_engine(spec: dict[str, Any]) -> Any:
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except (urllib.error.HTTPError, urllib.error.URLError, OSError) as e:
             return _bocha_http_error(e, "bocha")
@@ -1423,7 +1423,7 @@ def _build_bocha_ai_engine(spec: dict[str, Any]) -> Any:
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except (urllib.error.HTTPError, urllib.error.URLError, OSError) as e:
             return _bocha_http_error(e, "bocha_ai")
@@ -1462,3 +1462,430 @@ def _build_bocha_ai_engine(spec: dict[str, Any]) -> Any:
 
 
 
+
+
+# ── 批次八：数据源扩展（2026-09-12）──────────────────────────────────────────
+
+# std.samr 的 C_C_NAME 与政府类接口正文常带高亮标记，进结果前一律剥掉
+_SACINFO_TAG_RE = re.compile(r"</?sacinfo\s*>")
+_HL_TAG_RE = re.compile(r"</?em[^>]*>")
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_hl(text: str) -> str:
+    return re.sub(r"\s+", " ", _HL_TAG_RE.sub("", str(text or ""))).strip()
+
+
+def _build_std_samr_engine(spec: dict[str, Any]) -> Any:
+    """全国标准信息公共服务平台（国标检索，免认证）。
+
+    C_C_NAME 带 <sacinfo> 高亮标签；id 即 openstd 的 hcno，直通全文预览页。
+    """
+    timeout = spec.get("timeout", 12)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        url = ("https://std.samr.gov.cn/gb/search/gbQueryPage"
+               f"?searchText={urllib.parse.quote(q)}&pageNumber=1&pageSize={min(max(int(n), 1), 50)}")
+        raw = _http_get_raw(url, {"User-Agent": "argo-search/1.0 (+std_samr)", "Accept": "application/json"},
+                            to, engine=spec.get("_name", "std_samr"))
+        if raw is None:
+            return []
+        try:
+            rows = (json.loads(raw) or {}).get("rows") or []
+        except (json.JSONDecodeError, ValueError):
+            return []
+        out = []
+        for r in rows:
+            code = str(r.get("C_STD_CODE") or "").strip()
+            name = _SACINFO_TAG_RE.sub("", str(r.get("C_C_NAME") or "")).strip()
+            if not code and not name:
+                continue
+            bits = [str(r.get(k) or "").strip() for k in ("STD_NATURE", "STATE")]
+            if r.get("ISSUE_DATE"):
+                bits.append(f"发布 {r['ISSUE_DATE']}")
+            if r.get("ACT_DATE"):
+                bits.append(f"实施 {r['ACT_DATE']}")
+            hcno = str(r.get("id") or "").strip()
+            out.append({
+                "title": f"{code} {name}".strip(),
+                "url": f"https://openstd.samr.gov.cn/bzgk/gb/newGbInfo?hcno={hcno}" if hcno else "",
+                "snippet": " · ".join(b for b in bits if b),
+                "source": "std_samr",
+            })
+        return out[:max(int(n), 1)]
+    return _engine
+
+
+_STD_TAIL_WORDS = ("全文", "标准", "最新", "下载")
+
+
+def _build_openstd_engine(spec: dict[str, Any]) -> Any:
+    """国家标准全文公开系统（GB 全文预览入口，HTML 行解析，免认证）。
+
+    列表为服务端渲染表格，详情键在 onclick="showInfo('hcno')"；列位置随
+    行型浮动，按内容特征定位（标准号模式 / 日期模式 / 状态词表），不按序号。
+    """
+    timeout = spec.get("timeout", 15)
+    _std_code_re = re.compile(r"^[A-Z]{2,4}(?:/[A-Z]{1,2})?\s?\d+[-—]\d{4}")
+    _date_re = re.compile(r"^\d{4}-\d{2}-\d{2}")
+    _known_words = {"推标", "强标", "推荐性", "强制性", "现行", "即将实施", "废止", "作废", "被代替", "查看详细"}
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        for w in _STD_TAIL_WORDS:
+            q = re.sub(rf"{w}$", "", q).strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        url = ("https://openstd.samr.gov.cn/bzgk/gb/std_list"
+               f"?p.p1=0&p.p2={urllib.parse.quote(q)}&p.p90=circulation_date&p.p91=desc")
+        raw = _http_get_raw(url, {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"},
+                            to, engine=spec.get("_name", "openstd"))
+        if raw is None:
+            return []
+        out = []
+        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", raw, re.S):
+            m = re.search(r"showInfo\('([0-9A-Fa-f]+)'\)", tr)
+            if not m:
+                continue
+            tds = [re.sub(r"\s+", " ", _TAG_RE.sub("", t)).strip()
+                   for t in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+            code_i = next((i for i, t in enumerate(tds) if _std_code_re.match(t)), None)
+            if code_i is None:
+                continue
+            code = tds[code_i]
+            name = next((t for t in tds[code_i + 1:]
+                         if len(t) > 3 and not _date_re.match(t) and t not in _known_words), "")
+            dates = [t for t in tds if _date_re.match(t)]
+            words = [t for t in tds[code_i + 1:] if t in _known_words and t != "查看详细"]
+            bits = words + [f"发布 {dates[0]}" for _ in [0] if dates]
+            if len(dates) > 1:
+                bits.append(f"实施 {dates[1]}")
+            out.append({
+                "title": f"{code} {name}".strip(),
+                "url": f"https://openstd.samr.gov.cn/bzgk/gb/newGbInfo?hcno={m.group(1)}",
+                "snippet": " · ".join(bits),
+                "source": "openstd",
+            })
+            if len(out) >= max(int(n), 1):
+                break
+        return out
+    return _engine
+
+
+def _build_bangumi_engine(spec: dict[str, Any]) -> Any:
+    """Bangumi 番剧仓库（动画/漫画/游戏条目元数据，官方开放 API，POST JSON）。
+
+    name_cn 常缺省 → 回落 name；rating.score 可能为 0/null。
+    """
+    timeout = spec.get("timeout", 12)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        req = urllib.request.Request(
+            "https://api.bgm.tv/v0/search/subjects",
+            data=json.dumps({"keyword": q}).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "taxue/argo-search (+bangumi engine)",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with http_open(req, timeout=to, engine=spec.get("_name", "bangumi")) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            logger.warning(f"Bangumi 引擎失败: {e}")
+            return []
+        out = []
+        for it in (data.get("data") or [])[:max(int(n), 1)]:
+            title = str(it.get("name_cn") or it.get("name") or "").strip()
+            if not title:
+                continue
+            bits = [str(it.get(k) or "").strip() for k in ("platform", "date")]
+            rating = it.get("rating") if isinstance(it.get("rating"), dict) else {}
+            if rating and rating.get("score"):
+                bits.append(f"评分 {rating.get('score')}")
+            summary = re.sub(r"\s+", " ", str(it.get("summary") or "")).strip()
+            head = " · ".join(b for b in bits if b)
+            out.append({
+                "title": title,
+                "url": f"https://bgm.tv/subject/{it.get('id')}",
+                "snippet": (f"{head} {summary}"[:300] if head else summary[:300]),
+                "source": "bangumi",
+            })
+        return out
+    return _engine
+
+
+_DOUBAN_TYPE_CN = {"movie": "电影", "tv": "剧集"}
+
+
+def _build_douban_movie_engine(spec: dict[str, Any]) -> Any:
+    """豆瓣电影 suggest 接口（中文片名/年份/类型，免认证）。
+
+    suggest 无评分字段；type 为 movie/tv。豆瓣对无 cookie 请求逐步收紧，
+    失败诚实空。
+    """
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        url = f"https://movie.douban.com/j/subject_suggest?q={urllib.parse.quote(q)}"
+        raw = _http_get_raw(url, {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            "Referer": "https://movie.douban.com/",
+            "Accept": "application/json",
+        }, to, engine=spec.get("_name", "douban_movie"))
+        if raw is None:
+            return []
+        try:
+            items = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        if not isinstance(items, list):
+            return []
+        out = []
+        for it in items[:max(int(n), 1)]:
+            title = str(it.get("title") or "").strip()
+            if not title:
+                continue
+            year = str(it.get("year") or "").strip()
+            t = _DOUBAN_TYPE_CN.get(str(it.get("type") or ""), str(it.get("type") or ""))
+            out.append({
+                "title": title,
+                "url": str(it.get("url") or "").strip(),
+                "snippet": " · ".join(b for b in (t, f"{year}年" if year else "") if b),
+                "source": "douban_movie",
+            })
+        return out
+    return _engine
+
+
+def _build_zdic_engine(spec: dict[str, Any]) -> Any:
+    """汉典（中文字词典，词条页 /hans/{词} 直达）。
+
+    取「详细解释」前几条释义拼摘要；查无此字 404 → _http_get_raw None → 诚实空。
+    """
+    timeout = spec.get("timeout", 12)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q or len(q) > 12:
+            return []
+        to = _timeout or timeout
+        url = f"https://www.zdic.net/hans/{urllib.parse.quote(q)}"
+        raw = _http_get_raw(url, {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"},
+                            to, engine=spec.get("_name", "zdic"))
+        if raw is None:
+            return []
+        defs = [_TAG_RE.sub("", d) for d in
+                re.findall(r'<div class="xxjs-item__def">(.*?)</div>', raw, re.S)]
+        defs = [re.sub(r"\s+", " ", d).strip() for d in defs]
+        defs = [d for d in defs if d]
+        if not defs:
+            return []
+        title_m = re.search(r"<title>([^<]+)</title>", raw)
+        title = title_m.group(1).split(" - ")[0].strip() if title_m else q
+        return [{
+            "title": title,
+            "url": url,
+            "snippet": "释义：" + "；".join(defs[:3])[:280],
+            "source": "zdic",
+        }]
+    return _engine
+
+
+def _build_people_daily_engine(spec: dict[str, Any]) -> Any:
+    """人民网搜索（权威综合中文新闻，官方接口，免认证）。
+
+    走 http 而非 https（https 301 丢 body）；标题/正文带 <em> 高亮标签；
+    displayTime 为毫秒时间戳。
+    """
+    timeout = spec.get("timeout", 12)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        req = urllib.request.Request(
+            "http://search.people.cn/search-platform/front/search",
+            data=json.dumps({
+                "key": q, "page": 1, "limit": min(max(int(n), 1), 20),
+                "hasTitle": True, "hasContent": True, "isFuzzy": True,
+                "type": 0, "sortType": 2, "startTime": 0, "endTime": 0,
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json", "User-Agent": "argo-search/1.0 (+people_daily)"},
+            method="POST",
+        )
+        try:
+            with http_open(req, timeout=to, engine=spec.get("_name", "people_daily")) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            logger.warning(f"人民网引擎失败: {e}")
+            return []
+        records = ((data.get("data") or {}).get("records")) or []
+        out = []
+        for r in records[:max(int(n), 1)]:
+            title = _strip_hl(r.get("title"))
+            if not title:
+                continue
+            ts = str(r.get("displayTime") or "").strip()
+            published = ""
+            if ts.isdigit():
+                published = time.strftime("%Y-%m-%d", time.localtime(int(ts) / 1000))
+            content = _strip_hl(r.get("content"))[:280]
+            out.append({
+                "title": title,
+                "url": str(r.get("url") or "").strip(),
+                "snippet": content,
+                "source": "people_daily",
+                "published_at": published,
+            })
+        return out
+    return _engine
+
+
+# flk 时效性枚举（官网 enumData/前端常量）：1 已废止 / 2 已修改 / 3 有效 / 4 尚未生效
+_FLK_SXX = {1: "已废止", 2: "已修改", 3: "有效", 4: "尚未生效"}
+
+
+def _build_flk_law_engine(spec: dict[str, Any]) -> Any:
+    """国家法律法规数据库（法律/行政法规/司法解释/地方性法规，权威法条源）。
+
+    接口为 flk SPA 前端逆向：searchRange 1=标题 2=正文；searchType 1=精确
+    2=模糊；orderByParam 必须是 {order, sort} 对象（扁平字符串后端 500）。
+    无验证码无签名；失败诚实空，不做绕过。
+    """
+    timeout = spec.get("timeout", 25)
+    try:
+        from http_client import register_spec_limit
+        register_spec_limit(spec.get("_name", "flk_law"), None, 2500)
+    except ImportError:
+        pass
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        req = urllib.request.Request(
+            "https://flk.npc.gov.cn/law-search/search/list",
+            data=json.dumps({
+                "searchRange": 1, "sxrq": [], "gbrq": [], "searchType": 2,
+                "sxx": [], "gbrqYear": [], "flfgCodeId": [], "zdjgCodeId": [],
+                "searchContent": q,
+                "orderByParam": {"order": "-1", "sort": ""},
+                "pageNum": 1, "pageSize": min(max(int(n), 1), 20),
+            }).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json;charset=utf-8",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Referer": "https://flk.npc.gov.cn/",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        # 服务端间歇性掐断 TLS 握手（实测约半数首连失败），单次退避重试消化波动
+        data = None
+        for attempt in range(2):
+            try:
+                with http_open(req, timeout=to, engine=spec.get("_name", "flk_law")) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                break
+            except Exception as e:
+                if attempt == 0:
+                    time.sleep(4)
+                    continue
+                logger.warning(f"flk 引擎失败: {e}")
+                return []
+        if data is None:
+            return []
+        if not isinstance(data, dict) or data.get("code") != 200:
+            return []
+        out = []
+        for r in (data.get("rows") or [])[:max(int(n), 1)]:
+            title = _strip_hl(r.get("title"))
+            if not title:
+                continue
+            sxx = _FLK_SXX.get(r.get("sxx"), "")
+            bits = [str(r.get("flxz") or "").strip(), sxx,
+                    str(r.get("zdjgName") or "").strip()]
+            if r.get("gbrq"):
+                bits.append(f"公布 {r['gbrq']}")
+            if r.get("sxrq"):
+                bits.append(f"施行 {r['sxrq']}")
+            bbbs = str(r.get("bbbs") or "").strip()
+            out.append({
+                "title": title,
+                "url": f"https://flk.npc.gov.cn/detail?id={bbbs}" if bbbs else "",
+                "snippet": " · ".join(b for b in bits if b),
+                "source": "flk_law",
+                "published_at": str(r.get("gbrq") or ""),
+            })
+        return out
+    return _engine
+
+
+def _build_wikisource_engine(spec: dict[str, Any]) -> Any:
+    """维基文库（古文/公版文献全文，MediaWiki API，免认证）。
+
+    标题含空格需编码后拼 wiki 路径——声明式 url_template 不做编码，
+    故走 builder。snippet 带 <span class="searchmatch"> 高亮，剥离保文本。
+    """
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        q = query.strip()
+        if not q:
+            return []
+        to = _timeout or timeout
+        url = ("https://zh.wikisource.org/w/api.php?action=query&format=json&list=search"
+               f"&srsearch={urllib.parse.quote(q)}&srlimit={min(max(int(n), 1), 20)}")
+        raw = _http_get_raw(url, {"User-Agent": "argo-search/1.0 (+wikisource)", "Accept": "application/json"},
+                            to, engine=spec.get("_name", "wikisource"))
+        if raw is None:
+            return []
+        try:
+            items = ((json.loads(raw) or {}).get("query") or {}).get("search") or []
+        except (json.JSONDecodeError, ValueError):
+            return []
+        out = []
+        for it in items[:max(int(n), 1)]:
+            title = str(it.get("title") or "").strip()
+            if not title:
+                continue
+            snippet = re.sub(r"\s+", " ", _TAG_RE.sub("", str(it.get("snippet") or ""))).strip()
+            out.append({
+                "title": title,
+                "url": "https://zh.wikisource.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")),
+                "snippet": snippet[:300],
+                "source": "wikisource",
+                "published_at": str(it.get("timestamp") or ""),
+            })
+        return out
+    return _engine

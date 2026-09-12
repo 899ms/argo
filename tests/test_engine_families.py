@@ -166,6 +166,36 @@ def test_refill_excludes_noise_families():
     print(f"  ✅ 噪声族排除，回填 {out[2:]}")
 
 
+def test_refill_picks_best_priority_not_worst():
+    """回填必须取 priority 数字小（更优先）的源，与 family_candidates 同口径。
+
+    回归：此前 complement_refill 用 `sort(-priority)` 且缺省按 0 处理，
+    与同文件 family_candidates 的「升序=优先」相反——回填进来的永远是
+    组合里最差的源。
+    """
+    eng = {
+        "bocha": {"priority": 20, "coverage": ["chinese", "general"]},
+        # 同为 knowledge 族（回填候选），priority 一好一坏
+        "good_kb": {"priority": 5, "coverage": ["chinese"], "family": "knowledge"},
+        "bad_kb": {"priority": 95, "coverage": ["chinese"], "family": "knowledge"},
+    }
+    out = complement_refill(["bocha", "byted"], enabled=set(eng), spec_lookup=eng,
+                            domain_primary="bocha", max_slots=1)
+    assert out[2:] == ["good_kb"], f"应回填最优优先级源，实际 {out[2:]}"
+
+
+def test_refill_missing_priority_treated_as_worst():
+    """缺 priority 的候选排在有显式 priority 的之后（按 999 兜底）。"""
+    eng = {
+        "bocha": {"priority": 20, "coverage": ["chinese", "general"]},
+        "has_prio": {"priority": 80, "coverage": ["chinese"], "family": "knowledge"},
+        "no_prio": {"coverage": ["chinese"], "family": "academic"},
+    }
+    out = complement_refill(["bocha", "byted"], enabled=set(eng), spec_lookup=eng,
+                            domain_primary="bocha", max_slots=1)
+    assert out[2:] == ["has_prio"], f"缺 priority 不应排在最前: {out[2:]}"
+
+
 def test_route_refill_deep_mode():
     """deep 模式下全 web 域回填互补族（预算不截断，回填生效）。"""
     from route import route_query

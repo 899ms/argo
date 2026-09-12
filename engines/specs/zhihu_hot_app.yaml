@@ -1,0 +1,35 @@
+# 知乎热榜匿名通道 — App 端 JSON（免密钥）
+# 与 zhihu_hot（开放平台 hot_list，100/天配额）同一热榜的免密钥通道：
+# 命中后可把开放平台配额留给 zhihu 内容搜索。非公开承诺接口，失败诚实空。
+# 查询与热榜内容无关（热榜是榜单型源，与 baidu_hot/toutiao_hot 同型）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine zhihu_hot_app --stage all --admit --write-doc
+
+engine_id: zhihu_hot_app
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://api.zhihu.com/topstory/hot-list
+timeout: 10
+query_param: ""
+canary_query: "热榜"
+desc: "知乎热榜匿名通道（App JSON，免密钥；开放平台 hot_list 的免费替代）"
+coverage: [chinese, hot, trending, realtime]
+recommended: false
+latency_ms: 800
+
+headers:
+  User-Agent: argo-search/1.0 (+zhihu_hot_app)
+
+extra_params:
+  limit: "{n}"
+
+output_map:
+  items: data
+  item_title: target.title
+  item_summary: detail_text
+  url_template: "https://www.zhihu.com/question/{target.id}"
+
+quality_queries:
+  - query: "热榜"

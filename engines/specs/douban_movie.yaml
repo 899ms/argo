@@ -1,0 +1,22 @@
+# 豆瓣电影搜索 — suggest 接口（免认证）
+# film_search 域的中文视角补位：imdb/itunes 全英文视角，豆瓣给中文片名/
+# 年份/类型。豆瓣对无 cookie 请求逐步收紧（音乐口子已死），本接口仍存活，
+# 失败诚实空，不做绕过。
+# 验证:
+#   python3 scripts/engine_validate.py --engine douban_movie --stage all --admit --write-doc
+
+engine_id: douban_movie
+type: douban_movie
+enabled: true
+cost_tier: free
+timeout: 10
+canary_query: "流浪地球"
+desc: "豆瓣电影搜索（中文片名/年份/类型，免认证，suggest 接口）"
+coverage: [film, chinese, media]
+recommended: false
+latency_ms: 1000
+
+quality_queries:
+  - query: "流浪地球"
+  - query: "霸王别姬"
+  - query: "Inception"
