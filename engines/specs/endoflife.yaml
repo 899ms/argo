@@ -1,0 +1,18 @@
+# endoflife.date — 产品生命周期（200+ 产品，免认证）
+# 查询词 = 产品 slug（python/nodejs/go/kubernetes/ubuntu…）；API 无搜索端点，
+# slug 提取取查询里第一个 ASCII 词。未识别产品诚实返回空。
+# 验证:
+#   python3 scripts/engine_validate.py --engine endoflife --stage all --admit --write-doc
+
+engine_id: endoflife
+type: endoflife
+enabled: true
+cost_tier: free
+timeout: 10
+canary_query: "python 生命周期"
+desc: "产品生命周期（版本/最新/支持期/EOL，endoflife.date 200+ 产品）"
+
+quality_queries:
+  - query: "python 生命周期"
+  - query: "nodejs"
+  - query: "kubernetes EOL"

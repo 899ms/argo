@@ -2544,3 +2544,176 @@ def _build_wiby_engine(spec: dict[str, Any]) -> Any:
             })
         return results
     return _engine
+
+
+# ── bioRxiv / medRxiv 预印本引擎 ─────────────────────────────────────────────
+
+# DOI 提取：10. 开头的标准 DOI（bioRxiv DOI 形态 10.1101/2024.01.02.123456）
+_PREPRINT_DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'，。；）(（]+", re.I)
+
+
+def _build_biorxiv_engine(spec: dict[str, Any]) -> Any:
+    """bioRxiv / medRxiv 预印本引擎（API 免认证）。
+
+    bioRxiv API 没有关键词搜索端点——只有两种查询语义是诚实的：
+      ① DOI（10.xxxx/… 或 bioRxiv/medRxiv 链接）→ 取单篇详情（标题/作者/摘要）
+      ② 「最新 / recent」或空 → 最近 3 天全量列表
+    关键词查询诚实返回空（不伪造结果）；关键词发现交给 openalex /
+    semantic_scholar，本引擎负责预印本原文入口与时效性列表。
+    medRxiv 按 DOI 自动路由到 medrxiv 子库。
+    """
+    timeout = spec.get("timeout", 12)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        from datetime import date, timedelta
+        to = _timeout or timeout
+        from engines_base import _http_get_raw
+        q = (query or "").strip()
+        m = _PREPRINT_DOI_RE.search(q)
+        headers = {"Accept": "application/json"}
+        if m:
+            doi = m.group(0).rstrip(".")
+            server = "medrxiv" if ("medrxiv" in q.lower()) else "biorxiv"
+            url = f"https://api.biorxiv.org/details/{server}/{doi}"
+            raw = _http_get_raw(url, headers, to, engine="biorxiv")
+            if not raw:
+                return []
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                return []
+            coll = data.get("collection") or []
+            items = coll
+        else:
+            # 时效模式：最近 3 天（含「最新/recent」触发词；关键词一律走时效模式
+            # 的如实空列表——API 无搜索端点，不伪造）
+            end = date.today()
+            start = end - timedelta(days=3)
+            url = (f"https://api.biorxiv.org/details/biorxiv/"
+                   f"{start.isoformat()}/{end.isoformat()}/0")
+            raw = _http_get_raw(url, headers, to, engine="biorxiv")
+            if not raw:
+                return []
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                return []
+            coll = data.get("collection") or []
+            # 时效模式下按查询词做本地相关过滤；纯触发词（最新/recent）放行
+            kws = [w for w in q.lower().split() if w not in ("最新", "recent", "预印本")]
+            if kws:
+                coll = [c for c in coll
+                        if any(kw in (str(c.get("title") or "") + str(c.get("abstract") or "")).lower()
+                               for kw in kws)]
+            items = coll[:n]
+
+        results = []
+        for c in items:
+            doi = str(c.get("doi") or "")
+            results.append({
+                "title": str(c.get("title") or "")[:120],
+                "url": f"https://doi.org/{doi}" if doi else "https://www.biorxiv.org/",
+                "snippet": f"{str(c.get('authors') or '')[:80]} | {str(c.get('abstract') or '')[:220]}",
+                "source": "biorxiv",
+                "score": 0.9 if m else 0.75,
+                "published_at": str(c.get("date") or "")[:10],
+            })
+        return results
+    return _engine
+
+
+# ── UN Comtrade 双边贸易引擎 ─────────────────────────────────────────────────
+
+# 报告国词表：查询里的国家名 → Comtrade reporterCode。
+# 取主要经济体 30+；未收录国家诚实返回空（代码表不硬猜）。
+_COMTRADE_REPORTERS = {
+    "中国": 156, "美国": 842, "日本": 392, "德国": 276, "韩国": 410,
+    "印度": 699, "英国": 826, "法国": 251, "意大利": 380, "荷兰": 528,
+    "俄罗斯": 643, "巴西": 76, "澳大利亚": 36, "加拿大": 124, "墨西哥": 484,
+    "印尼": 360, "印度尼西亚": 360, "泰国": 764, "越南": 704, "马来西亚": 458,
+    "新加坡": 702, "土耳其": 792, "西班牙": 724, "波兰": 616, "瑞士": 756,
+    "瑞典": 752, "阿联酋": 784, "沙特": 682, "南非": 710, "阿根廷": 32,
+    "智利": 152, "菲律宾": 608, "香港": 344, "挪威": 578, "丹麦": 208,
+}
+
+
+def _build_un_comtrade_engine(spec: dict[str, Any]) -> Any:
+    """UN Comtrade 双边商品贸易引擎（preview 端点免 key）。
+
+    查询形态：「<国家> <HS 码> [年份] [出口]」，如「中国 8541」「美国 8542
+    2024 出口」。未提供国家或 HS 码时诚实返回空——参数解析不做猜测。
+    preview 端点返回代码与数值，不含描述字典（reporter/partner/cmd 的
+    Desc 字段为 null），故标题用查询词原文回显、金额取 primaryValue。
+    每条结果附 comtradeplus 网页链接可核验同一数据。
+    """
+    timeout = spec.get("timeout", 15)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        import urllib.parse as up
+        to = _timeout or timeout
+        q = (query or "").strip()
+        reporter = None
+        reporter_name = ""
+        for name, code in _COMTRADE_REPORTERS.items():
+            if name in q:
+                reporter, reporter_name = code, name
+                break
+        if reporter is None:
+            return []
+        year_m = re.search(r"\b(20[0-2]\d)\b", q)
+        period = year_m.group(1) if year_m else "2023"
+        flow = "X" if ("出口" in q or "export" in q.lower()) else "M"
+        flow_name = "出口" if flow == "X" else "进口"
+        cmd = ""
+        for tok in re.findall(r"\d{4,6}", q):
+            if tok == period:
+                continue
+            cmd = tok
+            break
+        if not cmd:
+            return []
+        params = {
+            "reporterCode": reporter,
+            "period": period,
+            "cmdCode": cmd,
+            "flowCode": flow,
+        }
+        url = ("https://comtradeapi.un.org/public/v1/preview/C/A/HS?"
+               + up.urlencode(params))
+        from engines_base import _http_get_raw
+        raw = _http_get_raw(url, {"Accept": "application/json"}, to,
+                            engine="un_comtrade")
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        rows = data.get("data") or []
+        if not rows:
+            return []
+        rows.sort(key=lambda r: float(r.get("primaryValue") or 0), reverse=True)
+        results = []
+        for r in rows[:n]:
+            partner = r.get("partnerCode")
+            value = r.get("primaryValue")
+            value_str = f"{float(value):,.0f} USD" if value else "金额未披露"
+            # title/url 均带伙伴维度：融合层按 title+url 去重，同一伙伴维度
+            # 才算重复；URL 带 PartnerAreas 使每条结果可独立核验
+            partner_url = f"{web}&PartnerAreas={partner}" if False else (
+                "https://comtradeplus.un.org/TradeFlow?Frequency=A&Classification=HS"
+                f"&Commodities={cmd}&Flow={flow}&Reporters={reporter}"
+                f"&PartnerAreas={partner}&Period={period}")
+            label = "全球合计" if partner in (0, 1) else f"伙伴 {partner}"
+            results.append({
+                "title": f"{reporter_name} {flow_name} HS{cmd} {period} → {label}",
+                "url": partner_url,
+                "snippet": value_str + (f" | 净重 {r.get('netWgt')}" if r.get('netWgt') else ""),
+                "source": "un_comtrade",
+                "score": 0.95 if partner in (0, 1) else 0.75,
+                "published_at": f"{period}-12-31",
+            })
+        return results
+    return _engine

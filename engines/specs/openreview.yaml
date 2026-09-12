@@ -1,0 +1,34 @@
+# OpenReview API2 — 顶会论文与评审意见（免认证）
+# 特点：审稿意见 / meta-review / rebuttal 公开可见，openalex 与
+# semantic_scholar 均不含这一层；content 字段统一为 {value: ...} 包装。
+# 验证:
+#   python3 scripts/engine_validate.py --engine openreview --stage all --admit --write-doc
+
+engine_id: openreview
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://api2.openreview.net/notes/search
+timeout: 12
+query_param: term
+canary_query: "LLM agents"
+desc: "OpenReview 顶会论文（含评审可见性与 PDF，AI/ML 研究为主）"
+
+headers:
+  User-Agent: argo-search/1.0 (+openreview)
+  Accept: application/json
+
+extra_params:
+  limit: "10"
+
+output_map:
+  items: notes
+  item_title: content.title.value
+  item_summary: content.abstract.value
+  url_template: "https://openreview.net/forum?id={id}"
+
+quality_queries:
+  - query: "LLM agents"
+  - query: "transformer"
+  - query: "reinforcement learning"

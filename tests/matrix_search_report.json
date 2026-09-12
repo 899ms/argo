@@ -1,10 +1,10 @@
 {
   "summary": {
-    "ok": 126,
+    "ok": 131,
     "fail": 0,
     "warn": 11,
     "by_status": {
-      "PASS": 126,
+      "PASS": 131,
       "FAIL": 0,
       "WARN": 11
     },
@@ -25,7 +25,7 @@
         "WARN": 0
       },
       "route": {
-        "PASS": 48,
+        "PASS": 53,
         "FAIL": 0,
         "WARN": 0
       },
@@ -136,8 +136,12 @@
         "n": 4
       },
       "macro": {
-        "ok": 2,
-        "n": 2
+        "ok": 3,
+        "n": 3
+      },
+      "tech": {
+        "ok": 7,
+        "n": 7
       },
       "film": {
         "ok": 5,
@@ -175,10 +179,6 @@
         "ok": 1,
         "n": 1
       },
-      "tech": {
-        "ok": 3,
-        "n": 3
-      },
       "code": {
         "ok": 1,
         "n": 1
@@ -190,12 +190,12 @@
     },
     "route_by_lang": {
       "zh": {
-        "ok": 14,
-        "n": 14
+        "ok": 16,
+        "n": 16
       },
       "en": {
-        "ok": 20,
-        "n": 20
+        "ok": 23,
+        "n": 23
       },
       "ja": {
         "ok": 6,
@@ -518,6 +518,96 @@
           "fred"
         ],
         "primary_lang": "zh"
+      }
+    },
+    {
+      "name": "route:R_zh_trade",
+      "status": "PASS",
+      "detail": "domain=trade_stats eng=un_comtrade combo=['un_comtrade', 'anysearch'] lang=zh",
+      "meta": {
+        "id": "R_zh_trade",
+        "q": "中国 8541 2023 进出口",
+        "scenario": "macro",
+        "lang": "zh",
+        "domain": "trade_stats",
+        "engine": "un_comtrade",
+        "combo": [
+          "un_comtrade",
+          "anysearch"
+        ],
+        "primary_lang": "zh"
+      }
+    },
+    {
+      "name": "route:R_zh_security",
+      "status": "PASS",
+      "detail": "domain=security_search eng=nvd combo=['nvd', 'anysearch'] lang=en",
+      "meta": {
+        "id": "R_zh_security",
+        "q": "log4j 漏洞 CVSS",
+        "scenario": "tech",
+        "lang": "en",
+        "domain": "security_search",
+        "engine": "nvd",
+        "combo": [
+          "nvd",
+          "anysearch"
+        ],
+        "primary_lang": "en"
+      }
+    },
+    {
+      "name": "route:R_en_cve",
+      "status": "PASS",
+      "detail": "domain=security_search eng=nvd combo=['nvd', 'anysearch'] lang=en",
+      "meta": {
+        "id": "R_en_cve",
+        "q": "CVE-2021-44228 severity",
+        "scenario": "tech",
+        "lang": "en",
+        "domain": "security_search",
+        "engine": "nvd",
+        "combo": [
+          "nvd",
+          "anysearch"
+        ],
+        "primary_lang": "en"
+      }
+    },
+    {
+      "name": "route:R_zh_lifecycle",
+      "status": "PASS",
+      "detail": "domain=lifecycle_search eng=endoflife combo=['endoflife', 'anysearch'] lang=zh",
+      "meta": {
+        "id": "R_zh_lifecycle",
+        "q": "python 生命周期 停止支持",
+        "scenario": "tech",
+        "lang": "zh",
+        "domain": "lifecycle_search",
+        "engine": "endoflife",
+        "combo": [
+          "endoflife",
+          "anysearch"
+        ],
+        "primary_lang": "zh"
+      }
+    },
+    {
+      "name": "route:R_zh_package_intel",
+      "status": "PASS",
+      "detail": "domain=package_intel eng=deps_dev combo=['deps_dev', 'anysearch'] lang=en",
+      "meta": {
+        "id": "R_zh_package_intel",
+        "q": "npm express 弃用",
+        "scenario": "tech",
+        "lang": "en",
+        "domain": "package_intel",
+        "engine": "deps_dev",
+        "combo": [
+          "deps_dev",
+          "anysearch"
+        ],
+        "primary_lang": "en"
       }
     },
     {

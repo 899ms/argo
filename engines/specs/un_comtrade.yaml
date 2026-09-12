@@ -1,0 +1,20 @@
+# UN Comtrade — 双边商品贸易（preview 端点免 key；正式端点免费注册提额）
+# 查询形态：「<国家> <HS 码> [年份] [出口]」，如「中国 8541」「美国 8542 2024 出口」。
+# 国家词表 35 个主要经济体；未提供国家或 HS 码诚实返回空（参数解析不做猜测）。
+# preview 返回代码与数值（Desc 字段为 null），标题用查询词回显、每条附
+# comtradeplus 网页链接可核验。
+# 验证:
+#   python3 scripts/engine_validate.py --engine un_comtrade --stage all --admit --write-doc
+
+engine_id: un_comtrade
+type: un_comtrade
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "中国 8541 2023"
+desc: "UN Comtrade 双边贸易（国家+HS 码+年份+流向；preview 免 key）"
+
+quality_queries:
+  - query: "中国 8541 2023"
+  - query: "美国 8703 2023 出口"
+  - query: "日本 8542 2023"

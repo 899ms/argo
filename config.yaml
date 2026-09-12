@@ -240,6 +240,53 @@ domains:
   - (地震|震级|余震|地质|遥感|卫星数据|震中)
   - (?i)(earthquake|seismic|usgs|geology|remote\s+sensing|satellite\s+data)
   primary: usgs
+- desc: 安全漏洞情报（NVD）
+  engines_combo:
+  - nvd
+  - anysearch
+  fallback: anysearch
+  name: security_search
+  parallel: false
+  patterns:
+  - (?i)\bCVE-\d{4}-\d{4,7}\b
+  - (?i)(安全漏洞|漏洞公告|漏洞情报|漏洞利用|漏洞评分|CVSS|安全通告|zero.?day|零日漏洞)
+  - (?i)(security (advisory|vulnerability|bulletin)|cisa kev)
+  primary: nvd
+- desc: 产品生命周期（endoflife.date）
+  engines_combo:
+  - endoflife
+  - anysearch
+  fallback: anysearch
+  name: lifecycle_search
+  parallel: false
+  patterns:
+  - (?i)(生命周期|停止维护|停止支持|停止更新|停更|end.of.life|\beol\b|何时停止|支持到)
+  - (?i)(lifecycle|still (supported|maintained)|security (fix|patch) until)
+  primary: endoflife
+- desc: 包依赖状态（deps.dev）
+  engines_combo:
+  - deps_dev
+  - anysearch
+  fallback: anysearch
+  name: package_intel
+  parallel: false
+  patterns:
+  - (?i)((npm|pypi|cargo|maven)\s+\S+\s+(最新版本|弃用|版本历史|发布时间))
+  - (?i)((最新版本|版本历史|弃用状态|是否弃用|deprecat).{0,16}(npm|pypi|cargo|maven|包))
+  - (?i)\bdeps\.dev\b
+  primary: deps_dev
+- desc: 双边商品贸易（UN Comtrade）
+  engines_combo:
+  - un_comtrade
+  - anysearch
+  fallback: anysearch
+  name: trade_stats
+  parallel: false
+  patterns:
+  - (?i)(进出口|贸易额|双边贸易|贸易数据|进口额|出口额|comtrade)
+  - (?i)(进口|出口|import|export).{0,12}\bHS?\s?\d{4}\b
+  primary: un_comtrade
+
 - desc: 财经资讯/研报/公告
   engines_combo:
   - em_miaoxiang
@@ -941,6 +988,7 @@ domains:
   quote: false
 
 engines:
+
   redskill:
     type: cli
     label: 小红书REDSkill

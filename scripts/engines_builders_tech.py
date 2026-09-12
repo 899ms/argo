@@ -702,3 +702,156 @@ def _build_v2ex_engine(spec: dict[str, Any]) -> Any:
     return _engine
 
 
+
+
+# ── deps.dev 包依赖引擎 ──────────────────────────────────────────────────────
+
+# 生态别名 → deps.dev system 名。包管理生态的日常叫法远多于正式名，
+# 词表同时是查询解析器（「npm express」「python requests」均合法）。
+_DEPS_SYSTEM_ALIASES = {
+    "npm": "npm", "node": "npm", "nodejs": "npm", "js": "npm", "javascript": "npm",
+    "pypi": "pypi", "python": "pypi", "pip": "pypi",
+    "go": "go", "golang": "go",
+    "maven": "maven", "java": "maven", "jvm": "maven",
+    "cargo": "cargo", "rust": "cargo", "crate": "cargo",
+}
+
+
+def _build_deps_dev_engine(spec: dict[str, Any]) -> Any:
+    """deps.dev 包依赖引擎（npm/pypi/go/maven/cargo 五生态，免认证）。
+
+    查询形态：「<生态> <包名>」（npm express / python requests）或裸包名
+    （默认 npm）；maven 包名为 group:artifact。每条结果可核验
+    （deps.dev 网页 URL 对应同一数据）。
+
+    边界说明：包级漏洞聚合端点不存在，逐版本查询漏洞需 N 次请求放大
+    配额，故本引擎只答「包存在性 / 最新版本 / 弃用状态 / 发布时间」；
+    漏洞情报由 nvd 引擎按关键词补位，职责分离而非功能缺失。
+    """
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        import urllib.parse as up
+        to = _timeout or timeout
+        parts = (query or "").strip().split()
+        if not parts:
+            return []
+        system = "npm"
+        if parts[0].lower() in _DEPS_SYSTEM_ALIASES:
+            system = _DEPS_SYSTEM_ALIASES[parts[0].lower()]
+            parts = parts[1:]
+        package = " ".join(parts).strip()
+        if not package:
+            return []
+        pkg_encoded = up.quote(package, safe="")
+        url = f"https://api.deps.dev/v3/systems/{system}/packages/{pkg_encoded}"
+        from engines_base import _http_get_raw
+        raw = _http_get_raw(url, {"Accept": "application/json"}, to,
+                            engine="deps_dev")
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        versions = data.get("versions") or []
+        if not versions:
+            return []
+        versions.sort(key=lambda v: str(v.get("publishedAt") or ""), reverse=True)
+        latest = next((v for v in versions if v.get("isDefault")), versions[0])
+        dep_count = sum(1 for v in versions if v.get("isDeprecated"))
+        web_url = f"https://deps.dev/{system}/{pkg_encoded}"
+        overview = {
+            "title": f"{package} ({system}) 最新 {latest.get('versionKey', {}).get('version', '?')}",
+            "url": web_url,
+            "snippet": (f"共 {len(versions)} 个版本"
+                        f"（{dep_count} 个已弃用），"
+                        f"最新发布 {str(latest.get('publishedAt') or '')[:10]}"),
+            "source": "deps_dev",
+            "score": 0.95,
+            "published_at": str(latest.get("publishedAt") or "")[:10],
+        }
+        results = [overview]
+        for v in versions[: max(1, n - 1)]:
+            vname = v.get("versionKey", {}).get("version", "")
+            if vname == latest.get("versionKey", {}).get("version"):
+                continue
+            results.append({
+                "title": f"{package}@{vname}",
+                "url": web_url,
+                "snippet": (f"发布 {str(v.get('publishedAt') or '')[:10]}"
+                            + ("（已弃用）" if v.get("isDeprecated") else "")),
+                "source": "deps_dev",
+                "score": 0.7,
+                "published_at": str(v.get("publishedAt") or "")[:10],
+            })
+        return results[:n]
+    return _engine
+
+
+# ── endoflife.date 产品生命周期引擎 ──────────────────────────────────────────
+
+_EOL_TAIL_WORDS = ("生命周期", "支持到", "eol", "support", "lifecycle",
+                   "什么时候", "停更")
+
+
+def _build_endoflife_engine(spec: dict[str, Any]) -> Any:
+    """endoflife.date 产品生命周期引擎（200+ 产品，免认证）。
+
+    查询词 = 产品 slug（python / nodejs / go / kubernetes / ubuntu…）。
+    API 无搜索端点，slug 提取取查询里的第一个 ASCII 词并剥离「生命周期 /
+    EOL / 支持」类尾词；未识别产品 404 → 诚实返回空，slug 模糊匹配交给
+    通用搜索源。每条结果附 endoflife.date 产品页，可核验。
+    """
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        to = _timeout or timeout
+        slug = ""
+        for tok in re.split(r"[\s,，。/?]+", (query or "")):
+            t = tok.strip().lower()
+            if not t or not re.fullmatch(r"[a-z][a-z0-9.\-_]{1,30}", t):
+                continue
+            if any(w in t for w in _EOL_TAIL_WORDS):
+                continue
+            slug = t
+            break
+        if not slug:
+            return []
+        from engines_base import _http_get_raw
+        raw = _http_get_raw(f"https://endoflife.date/api/{slug}.json",
+                            {"Accept": "application/json"}, to,
+                            engine="endoflife")
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(data, list):
+            return []
+        web_url = f"https://endoflife.date/{slug}"
+        results = []
+        for i, cyc in enumerate(data[:n]):
+            label = "（最新）" if i == 0 else ""
+            snippet_parts = []
+            if cyc.get("latest"):
+                snippet_parts.append(f"最新 {cyc['latest']}")
+            if cyc.get("releaseDate"):
+                snippet_parts.append(f"发布 {cyc['releaseDate']}")
+            if cyc.get("support"):
+                snippet_parts.append(f"全支持至 {cyc['support']}")
+            if cyc.get("eol"):
+                snippet_parts.append(f"EOL {cyc['eol']}")
+            results.append({
+                "title": f"{slug} {cyc.get('cycle', '?')}{label}",
+                "url": web_url,
+                "snippet": " · ".join(snippet_parts),
+                "source": "endoflife",
+                "score": 0.9 if i == 0 else 0.7,
+                "published_at": str(cyc.get("latestReleaseDate") or "")[:10],
+            })
+        return results
+    return _engine

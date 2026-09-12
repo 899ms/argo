@@ -83,6 +83,18 @@ engines:
   status: ok
   recommended: true
   desc: B站热搜（search/square 热搜词，免认证）
+- name: biorxiv
+  tier: T2
+  type: biorxiv
+  coverage:
+  - academic
+  - science
+  latency_ms: 3000
+  cost: free
+  status: ok
+  recommended: false
+  desc: bioRxiv/medRxiv 预印本（DOI 单篇 / 最近 3 天列表，免认证）
+
 - name: bocha
   tier: T1
   type: bocha
@@ -228,6 +240,18 @@ engines:
   status: ok
   recommended: true
   desc: DBLP 计算机科学文献（免认证，偶发 SSL 抖动）
+- name: deps_dev
+  tier: T2
+  type: deps_dev
+  coverage:
+  - code
+  - package
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  desc: deps.dev 包依赖（npm/pypi/go/maven/cargo 版本与弃用状态，免认证）
+
 - name: devto
   tier: T1
   type: http
@@ -353,6 +377,17 @@ engines:
   status: ok
   recommended: true
   desc: 东财妙想搜索（官方研报/公告/政策，需 EASTMONEY_APIKEY）
+- name: endoflife
+  tier: T2
+  type: endoflife
+  coverage:
+  - tech
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  desc: 产品生命周期（endoflife.date 200+ 产品，版本/支持期/EOL，免认证）
+
 - name: eu_opendata
   tier: T1
   type: eu_opendata
@@ -1092,6 +1127,18 @@ engines:
   status: ok
   recommended: true
   desc: npm 包搜索（registry.npmjs.org，免认证）
+- name: nvd
+  tier: T2
+  type: http
+  coverage:
+  - security
+  - tech
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  desc: NVD 漏洞情报（CVE/CVSS/KEV，免认证 5 请求/30 秒）
+
 - name: octen
   tier: T1
   type: octen
@@ -1160,6 +1207,17 @@ engines:
   status: ok
   recommended: true
   desc: openFDA 药品标签（免认证）
+- name: openreview
+  tier: T2
+  type: http
+  coverage:
+  - academic
+  latency_ms: 3000
+  cost: free
+  status: ok
+  recommended: false
+  desc: OpenReview 顶会论文（含评审可见性与 PDF，免认证）
+
 - name: opensky
   tier: T1
   type: opensky
@@ -1535,6 +1593,18 @@ engines:
   status: ok
   recommended: true
   desc: UAPI 聚合搜索
+- name: un_comtrade
+  tier: T2
+  type: un_comtrade
+  coverage:
+  - macro
+  - finance
+  latency_ms: 4000
+  cost: free
+  status: ok
+  recommended: false
+  desc: UN Comtrade 双边贸易（国家+HS 码查询，preview 免 key）
+
 - name: uniprot
   tier: T1
   type: uniprot

@@ -1,0 +1,21 @@
+# bioRxiv / medRxiv — 生物医学预印本（API 免认证）
+# 两种诚实查询语义：DOI（10.xxxx/… 或预印本链接）取单篇；「最新/recent」取
+# 最近 3 天列表。API 无关键词搜索端点，关键词发现由 openalex/semantic_scholar
+# 承担，本引擎负责原文入口与时效列表；时效模式下按查询词本地过滤。
+# 验证:
+#   python3 scripts/engine_validate.py --engine biorxiv --stage all --admit --write-doc
+
+engine_id: biorxiv
+type: biorxiv
+enabled: true
+cost_tier: free
+timeout: 12
+canary_query: "10.64898/2026.09.01.747870"
+desc: "bioRxiv/medRxiv 预印本（DOI 单篇详情 / 最近 3 天列表）"
+
+# DOI 必须真实存在：API 无记录时引擎诚实返回空，canary 会因此失败。
+# 精确查询空结果会触发 recovery 救援链换通用源补位，属编排层既有行为。
+
+quality_queries:
+  - query: "最新"
+  - query: "10.64898/2026.09.01.747870"

@@ -1,0 +1,35 @@
+# NVD CVE API 2.0 — 安全漏洞情报（NIST 官方，免认证）
+# 配额契约：免 key 5 请求/30 秒滚动窗口（免费 key 50/30s，见 nvd.nist.gov/developers/start-here）
+# 验证:
+#   python3 scripts/engine_validate.py --engine nvd --stage all --admit --write-doc
+#   python3 scripts/search.py "log4j" --engine nvd --json
+
+engine_id: nvd
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://services.nvd.nist.gov/rest/json/cves/2.0
+timeout: 12
+query_param: keywordSearch
+canary_query: "log4j"
+desc: "NVD 漏洞情报（CVE 编号/描述/CVSS 与 KEV 标记；免认证 5 请求/30 秒）"
+
+headers:
+  User-Agent: argo-search/1.0 (+nvd)
+  Accept: application/json
+
+extra_params:
+  resultsPerPage: "5"
+
+output_map:
+  items: vulnerabilities
+  item_title: cve.id
+  item_summary: cve.descriptions.0.value
+  item_published_at: cve.published
+  url_template: "https://nvd.nist.gov/vuln/detail/{cve.id}"
+
+quality_queries:
+  - query: "log4j"
+  - query: "openssl"
+  - query: "heartbleed"

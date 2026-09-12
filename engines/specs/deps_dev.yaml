@@ -1,0 +1,18 @@
+# deps.dev — 包依赖与版本状态（Google 维护，npm/pypi/go/maven/cargo 五生态，免认证）
+# 边界：只答包存在性/最新版本/弃用状态/发布时间；包级漏洞聚合端点不存在，
+# 漏洞情报由 nvd 引擎按关键词补位。查询形态：「<生态> <包名>」或裸包名（默认 npm）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine deps_dev --stage all --admit --write-doc
+
+engine_id: deps_dev
+type: deps_dev
+enabled: true
+cost_tier: free
+timeout: 10
+canary_query: "npm express"
+desc: "deps.dev 包依赖（npm/pypi/go/maven/cargo；版本/弃用/发布时间）"
+
+quality_queries:
+  - query: "npm express"
+  - query: "python requests"
+  - query: "rust serde"
