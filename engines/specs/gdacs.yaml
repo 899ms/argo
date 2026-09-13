@@ -1,0 +1,21 @@
+# GDACS — 全球灾害预警协调系统（EU/JRC 官方，免认证 GeoJSON）
+# 补 earth_science 域「多灾种」维度：现有 usgs 只覆盖地震，
+# GDACS 覆盖洪水/台风/野火/干旱/火山，且带 GLIDE 编号与预警等级。
+# 查询为榜单型（按时间窗列事件），与查询词弱相关——判定为事件列表源。
+# 验证:
+#   python3 scripts/engine_validate.py --engine gdacs --stage all --admit --write-doc
+
+engine_id: gdacs
+type: gdacs
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "flood"
+desc: "GDACS 全球多灾种预警（洪水/台风/野火/地震，EU JRC 官方，免认证）"
+coverage: [earth_science, disaster, environment, official]
+recommended: false
+latency_ms: 3000
+
+quality_queries:
+  - query: "earthquake"
+  - query: "flood"

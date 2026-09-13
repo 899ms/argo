@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""test_ranking_contract.py — 排序管线端到端契约（2026-09-13 新增）。
+
+## 守的是什么缺陷
+
+argo 的融合层（rrf_merge）与精排层（local_five_dim_rerank）此前各写各的：
+
+  - `rrf_merge` 算出 `_rrf_score`（含跨引擎共识与引擎权重），但**无任何消费者**
+    （纯 write-only 字段）；
+  - `local_five_dim_rerank` 在工作结束时 `r["score"] = round(best_score, 4)`，
+    用 relevance(token 覆盖率)/completeness(文本长度) 等**文本自身**维度
+    覆写 `score`，既不读入参 `score`，也不读 `_rrf_score`/`consensus_engines`。
+
+后果：融合层的核心产出（多引擎共识）对最终顺序**零影响**，且五维公式
+结构性偏爱「啰嗦的长网页」——实测一条 3 引擎共识条目被单源长文本条目反超。
+
+**为什么既有测试没抓到**：`test_unit.py::test_consensus_engines` 与
+`test_content_security.py::test_rrf_weighted_ranking` 都只断言 `rrf_merge`
+**返回值内部**的顺序，没有任何一条断言「这个顺序能活着走到最终输出」。
+本文件补的就是这层端到端契约。
+
+## 三条不变式
+
+  1. **等价性**：无融合信息（单引擎路径）时，排序结果必须与改造前逐位一致，
+     且分数是原值 × (1 - W_PRIOR) —— 保证这次改动对无共识场景零扰动。
+  2. **共识保序**：真共识（同一 URL 被多引擎返回）条目必须排在
+     文本更强但单源的条目之前。
+  3. **先验可见**：`rerank_dims.prior` 必须存在，供可观测与回归定位。
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+
+def _consensus_case(cons_n: int, cons_snippet: str, single_snippet: str):
+    """构造「多引擎共识（文本弱） vs 单源（文本强）」的融合输入。"""
+    from search import rrf_merge
+    cons = [
+        {"url": "https://bbs.example/t/1", "title": "讨论：某技术选型",
+         "snippet": cons_snippet, "_engine": f"e{i}"}
+        for i in range(cons_n)
+    ]
+    single = {
+        "url": "https://docs.example/guide",
+        "title": "某技术选型 官方指南 完整说明",
+        "snippet": single_snippet, "_engine": "exa",
+    }
+    return rrf_merge([cons, [single]])
+
+
+class TestConsensusSurvivesRerank:
+    """不变式 2：共识必须在最终排序中体现。"""
+
+    @pytest.mark.parametrize("cons_n,snip", [
+        (2, "短"),
+        (3, "简短回复"),
+        (4, "中等的共识摘要内容"),
+        (3, "略长的共识摘要内容说明"),
+    ])
+    def test_consensus_outranks_single_source(self, cons_n, snip):
+        from search import local_five_dim_rerank
+        merged = _consensus_case(cons_n, snip, "官方文档完整对比、参数说明、迁移步骤与注意事项。" * 3)
+        ranked = local_five_dim_rerank("某技术选型", [dict(x) for x in merged],
+                                       domain="general", top_n=len(merged))
+        top_cons = len(ranked[0].get("consensus_engines") or [])
+        assert top_cons >= 2, (
+            f"{cons_n} 引擎共识条目被单源条目反超（top consensus={top_cons}）——"
+            f"融合信号在精排层丢失。排序：{[r['url'] for r in ranked]}"
+        )
+
+    def test_consensus_prior_is_recorded(self):
+        """不变式 3：prior 必须出现在 rerank_dims，否则线上无法定位排序异常。"""
+        from search import local_five_dim_rerank
+        merged = _consensus_case(3, "简短回复", "长文本内容说明" * 4)
+        ranked = local_five_dim_rerank("某技术选型", [dict(x) for x in merged],
+                                       domain="general", top_n=len(merged))
+        for r in ranked:
+            assert "prior" in r["rerank_dims"], r["rerank_dims"]
+        # 共识条目的先验必须显著高于单源条目
+        by_cons = {len(r.get("consensus_engines") or []): r["rerank_dims"]["prior"]
+                   for r in ranked}
+        assert by_cons[3] > by_cons[1], by_cons
+
+
+class TestNoFusionSignalEquivalence:
+    """不变式 1：无融合信息时与旧实现逐位等价（本次改动零扰动）。"""
+
+    def _results(self):
+        return [
+            {"url": f"https://s.com/{i}", "title": f"标题{i} 详细内容说明",
+             "snippet": "内容" * (i + 1), "source": "x"}
+            for i in range(6)
+        ]
+
+    def test_order_unchanged_without_prior(self):
+        from search import local_five_dim_rerank
+        res = self._results()
+        ranked = local_five_dim_rerank("标题 详细内容", [dict(x) for x in res],
+                                       domain="general", top_n=6)
+        # prior 恒 0（无 _rrf_score、无 consensus_engines）
+        assert all(r["rerank_dims"]["prior"] == 0.0 for r in ranked)
+        # 文本更完整者在前：旧实现的确定性行为，不得被本次改动打乱
+        assert [r["url"].split("/")[-1] for r in ranked] == ["5", "4", "3", "2", "1", "0"]
+
+    def test_weights_scale_uniformly(self):
+        """前五维必须被同一常数缩放，否则 prior 缺席时会改变相对权重。
+
+        这条锁的是「留出 W_PRIOR 余量」的实现方式：必须整体等比缩放，
+        而不是逐个拍脑袋调权重（后者会让无共识场景的排序悄悄变化）。
+        """
+        import inspect
+        import search
+        src = inspect.getsource(search.local_five_dim_rerank)
+        assert "_BASE = 1.0 - W_PRIOR" in src, "前五维未按 (1 - W_PRIOR) 等比缩放"
+        # 通用域原权重比例 30:30:20:15:5 必须保持
+        for token in ("0.30 * _BASE", "0.20 * _BASE", "0.15 * _BASE", "0.05 * _BASE"):
+            assert token in src, f"权重 {token} 缺失，等比性被破坏"
+
+
+class TestRrfMergeKeyUniqueness:
+    """回归：`__idx__` 兜底键必须带列表身份，否则跨引擎相撞。"""
+
+    def test_distinct_untitled_results_not_merged(self):
+        from search import rrf_merge
+        out = rrf_merge([
+            [{"snippet": "alpha", "_engine": "engA"}],
+            [{"snippet": "beta", "_engine": "engB"}],
+        ])
+        assert len(out) == 2, f"两条不同结果被误合并：{out}"
+        # 且不得伪造跨引擎共识
+        for r in out:
+            assert len(r["consensus_engines"]) == 1, r["consensus_engines"]
+
+    def test_false_consensus_not_fabricated(self):
+        from search import rrf_merge
+        out = rrf_merge([
+            [{"snippet": "a", "_engine": "e1"}],
+            [{"snippet": "b", "_engine": "e2"}],
+            [{"snippet": "c", "_engine": "e3"}],
+        ])
+        assert len(out) == 3, out
+        assert all(len(r["consensus_engines"]) == 1 for r in out)
+
+
+class TestRankScoreBoundaries:
+    """rank_score 边界：NaN/负值不得污染下游排序。"""
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), None, "x"])
+    def test_non_finite_falls_back(self, bad):
+        from engines_base import rank_score
+        assert rank_score(bad, 3) == 0.7
+
+    @pytest.mark.parametrize("neg", [-1, -0.5, -100])
+    def test_negative_clamped(self, neg):
+        """负分在最终排序处被 abs() 反转成最高分，必须夹到 0。"""
+        from engines_base import rank_score
+        assert rank_score(neg, 3) == 0.0
+
+    def test_above_one_clamped(self):
+        from engines_base import rank_score
+        assert rank_score(2.0, 3) <= 1.0

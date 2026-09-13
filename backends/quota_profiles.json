@@ -20,6 +20,16 @@
     "cost_tier": "free",
     "priority": 53
   },
+  "artic": {
+    "label": "artic",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "arxiv": {
     "label": "arXiv学术论文",
     "qps": 1,
@@ -139,6 +149,26 @@
     "cost_unit": "free",
     "cost_tier": "low",
     "priority": 2
+  },
+  "carbon_intensity": {
+    "label": "carbon_intensity",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "cleveland": {
+    "label": "cleveland",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "clinicaltrials": {
     "label": "ClinicalTrials",
@@ -260,6 +290,16 @@
     "cost_tier": "free",
     "priority": 48
   },
+  "deezer": {
+    "label": "deezer",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "deps_dev": {
     "label": "deps_dev",
     "qps": 2,
@@ -350,6 +390,16 @@
     "cost_tier": "free",
     "priority": 3
   },
+  "egov_law": {
+    "label": "egov_law",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "electricity_maps": {
     "label": "Electricity Maps 电网碳强度",
     "qps": 2,
@@ -392,6 +442,16 @@
   },
   "endoflife": {
     "label": "endoflife",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "energy_charts": {
+    "label": "energy_charts",
     "qps": 2,
     "limit": null,
     "period": "second",
@@ -550,6 +610,16 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "gbfs_nyc": {
+    "label": "gbfs_nyc",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "gbif": {
     "label": "GBIF 物种",
     "qps": 3,
@@ -559,6 +629,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 12
+  },
+  "gdacs": {
+    "label": "gdacs",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "gdelt": {
     "label": "GDELT 全球事件",
@@ -710,6 +790,16 @@
     "cost_tier": "free",
     "priority": 30
   },
+  "jikan": {
+    "label": "jikan",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "jin10": {
     "label": "金十数据",
     "qps": 2,
@@ -720,6 +810,16 @@
     "cost_tier": "free",
     "priority": 58
   },
+  "jolpica": {
+    "label": "jolpica",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "juejin": {
     "label": "掘金",
     "qps": 2,
@@ -729,6 +829,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 46
+  },
+  "k10plus": {
+    "label": "k10plus",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "keenable": {
     "label": "Keenable",
@@ -769,6 +879,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 56
+  },
+  "listenbrainz": {
+    "label": "listenbrainz",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "local_arxiv": {
     "label": "arXiv本地",
@@ -1140,6 +1260,26 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "nhtsa_vpic": {
+    "label": "nhtsa_vpic",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "noaa_swpc": {
+    "label": "noaa_swpc",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "npm": {
     "label": "npm",
     "qps": 3,
@@ -1152,6 +1292,16 @@
   },
   "nvd": {
     "label": "nvd",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "obis": {
+    "label": "obis",
     "qps": 2,
     "limit": null,
     "period": "second",
@@ -1210,8 +1360,28 @@
     "cost_tier": "free",
     "priority": 56
   },
+  "openf1": {
+    "label": "openf1",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "openfda": {
     "label": "openFDA",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "openligadb": {
+    "label": "openligadb",
     "qps": 2,
     "limit": null,
     "period": "second",
@@ -1390,6 +1560,26 @@
     "cost_tier": "free",
     "priority": 12
   },
+  "ror": {
+    "label": "ror",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "satnogs": {
+    "label": "satnogs",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "searchmysite": {
     "label": "SearchMySite 个人站索引",
     "qps": 2,
@@ -1449,6 +1639,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 3
+  },
+  "soilgrids": {
+    "label": "soilgrids",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "sspai": {
     "label": "sspai",
@@ -1580,6 +1780,16 @@
     "cost_tier": "free",
     "priority": 12
   },
+  "tle_mirror": {
+    "label": "tle_mirror",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "toutiao_hot": {
     "label": "今日头条热榜",
     "qps": 2,
@@ -1592,6 +1802,16 @@
   },
   "train": {
     "label": "火车余票",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "tvmaze": {
+    "label": "tvmaze",
     "qps": 2,
     "limit": null,
     "period": "second",
@@ -1750,6 +1970,26 @@
     "cost_tier": "free",
     "priority": 35
   },
+  "who_don": {
+    "label": "who_don",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
+  "who_gho": {
+    "label": "who_gho",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "wiby": {
     "label": "Wiby 手工网页索引",
     "qps": 2,
@@ -1809,6 +2049,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 6
+  },
+  "worms": {
+    "label": "worms",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "xiaohongshu": {
     "label": "小红书",

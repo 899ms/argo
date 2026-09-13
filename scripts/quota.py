@@ -19,14 +19,17 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+import argo_paths
+
 # ── 路径 ──────────────────────────────────────────────────────────────────────
 
 SKILL_DIR = Path(__file__).parent.parent
 BACKENDS_DIR = SKILL_DIR / "backends"
 QUOTA_PROFILES_PATH = BACKENDS_DIR / "quota_profiles.json"
+
+
 def _state_dir() -> Path:
     """状态目录（惰性派生，支持 ARGO_STATE_DIR 覆盖）。"""
-    import argo_paths
     return argo_paths.ensure_state_dir()
 
 
@@ -93,35 +96,71 @@ class QuotaManager:
                       file=sys.stderr)
 
     def _save_state(self) -> None:
-        QUOTA_STATE_DIR.mkdir(parents=True, exist_ok=True)
-        # 原子写：tmp + replace，避免并发 torn write 损坏配额状态
-        tmp = QUOTA_STATE_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self._state, ensure_ascii=False, indent=2))
-        tmp.replace(QUOTA_STATE_PATH)
+        """原子写状态（临时文件名进程内唯一，见 argo_paths.atomic_write_json）。
+
+        旧实现用固定 `quota.json.tmp`：多进程（CLI 与 MCP server 并行、
+        或评测脚本）同时写时互相搬走/删除对方的 tmp，replace 抛
+        FileNotFoundError，且失败方本次计数直接丢失。
+        """
+        argo_paths.atomic_write_json(QUOTA_STATE_PATH, self._state)
+
+    def _mutate_locked(self, mutator) -> None:
+        """跨进程安全的「重读 → 改 → 落盘」序列。
+
+        进程内 threading.Lock 只挡得住同进程线程；CLI / MCP server /
+        评测脚本三者并行时，各自读到旧状态、各自 +1、后写者覆盖前写者，
+        计数直接丢失。这里在文件锁内重读最新磁盘态，保证增量不丢。
+        """
+        with argo_paths.file_lock(QUOTA_STATE_PATH):
+            self._load_state()
+            mutator()
+            argo_paths.atomic_write_json(QUOTA_STATE_PATH, self._state)
 
     def record(self, engine: str, success: bool = True, credits: int = 1) -> None:
-        """记录一次 API 调用。"""
-        with self._lock:
-            self._fresh_locked()
-            if engine not in self._state:
-                self._state[engine] = {
-                    "used": 0, "limit": 0, "calls": [],
-                    "errors": 0, "last_reset": time.time(), "total_cost": 0.0,
-                }
-            self._state[engine]["used"] += credits
-            self._state[engine]["calls"].append(time.time())
-            if not success:
-                self._state[engine]["errors"] += 1
-            # 累加成本
-            cost = self.get_cost_per_call(engine)
-            self._state[engine]["total_cost"] = self._state[engine].get("total_cost", 0.0) + cost
+        """记录一次 API 调用（单条，跨进程安全）。"""
+        self.record_many([(engine, success)], credits=credits)
 
-            # 只保留最近 1 小时的时间戳
-            cutoff = time.time() - 3600
-            self._state[engine]["calls"] = [
-                t for t in self._state[engine]["calls"] if t > cutoff
-            ]
-            self._save_state()
+    @staticmethod
+    def _prune_locked(st: dict, now: float) -> None:
+        """滑动窗口修剪：calls 与 errors 必须同窗口同步修剪。
+
+        历史坑：只修剪 calls 却让 errors 永久累计，导致
+        ①错误率分子/分母不同窗口（实测可算出 300%）；
+        ②真实状态里出现 errors > used 的反常（github used=1/errors=78）。
+        窗口内没有调用 = 没有观测，此时 errors 也必须归零。
+        """
+        cutoff = now - 3600
+        kept = [t for t in st.get("calls", []) if t > cutoff]
+        st["calls"] = kept
+        # errors 没有逐条时刻，无法精确对齐：上界取窗口内调用数，
+        # 窗口清空则归零。保证 errors 恒 ≤ 窗口 calls。
+        st["errors"] = min(st.get("errors", 0), len(kept))
+
+    def record_many(self, entries, *, credits: int = 1) -> None:
+        """批量记录（entries: (engine, success) 可迭代），只落盘一次。
+
+        批次搜索一次为每个引擎各写一次状态，而每次写都是「全量序列化 +
+        rename」。合并后写盘次数从 N 降到 1，且整批在同一个文件锁内完成。
+        """
+        entries = list(entries)
+        if not entries:
+            return
+        now = time.time()
+
+        def _apply() -> None:
+            for engine, success in entries:
+                st = self._state.setdefault(engine, {
+                    "used": 0, "limit": 0, "calls": [],
+                    "errors": 0, "last_reset": now, "total_cost": 0.0,
+                })
+                st["used"] = st.get("used", 0) + credits
+                st.setdefault("calls", []).append(now)
+                if not success:
+                    st["errors"] = st.get("errors", 0) + 1
+                st["total_cost"] = st.get("total_cost", 0.0) + self.get_cost_per_call(engine)
+                self._prune_locked(st, now)
+
+        self._mutate_locked(_apply)
 
     def get_remaining_ratio(self, engine: str) -> float:
         """获取配额剩余比例。无限配额返回 1.0。
@@ -256,12 +295,20 @@ class QuotaManager:
         return len([t for t in state.get("calls", []) if now - t < 60])
 
     def get_error_rate(self, engine: str) -> float:
-        """获取最近 1 小时的错误率。"""
+        """最近 1 小时的错误率。
+
+        旧实现分子分母不同窗口：errors 是**累计**值（从不衰减），calls
+        只保留最近 1 小时。两次失败后哪怕窗口内全是成功调用，算出来也会
+        >1（实测 1 次成功 + 历史 3 次错 → 3.0 = 300%）。
+
+        现在改为同窗口：窗口内没有样本时返回 0.0（无观测 ≠ 高错误率）。
+        """
         state = self._state.get(engine, {})
-        total = len(state.get("calls", []))
-        if total == 0:
+        cutoff = time.time() - 3600
+        window_calls = [t for t in state.get("calls", []) if t > cutoff]
+        if not window_calls:
             return 0.0
-        return state.get("errors", 0) / total
+        return min(1.0, state.get("errors", 0) / len(window_calls))
 
     def is_available(self, engine: str, mode: str = "auto") -> bool:
         """检查引擎是否可用（配额未耗尽且未触发限频 + 预算模式）。"""

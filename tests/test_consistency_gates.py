@@ -133,9 +133,36 @@ def _dispatch_table() -> dict:
 
 # ── 3. 文档口径 == 代码事实 ──────────────────────────────────────────────────
 
+def _catalog_counts() -> tuple[str, str]:
+    """搜索源文档里的「收录 N 个源 / 开箱可用 M 个」——引擎数的唯一真源。"""
+    doc = (SKILL_DIR / "docs" / "ENGINE_CATALOG.md").read_text(encoding="utf-8")
+    m_doc = re.search(r"收录 (\d+) 个源", doc)
+    m_usable = re.search(r"开箱可用 (\d+) 个", doc)
+    assert m_doc and m_usable, "搜索源文档缺口径行"
+    return m_doc.group(1), m_usable.group(1)
+
+
+def _domains() -> list:
+    from config import get_domains, load_config
+    return get_domains(load_config())
+
+
+def _skill_version() -> str:
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    m = re.search(r"^version:\s*(\S+)", skill, re.M)
+    assert m, "SKILL.md 缺 version"
+    return m.group(1)
+
+
 class TestDocNumbersMatchCode:
+    # 全部 README 变体：此前门禁只查 SKILL.md 与 README.md，其余 4 个语种
+    # 版本长期落后（es/ja/ko 停在 v2.8.5 + engines-150+，en 停在 175 源），
+    # 而门禁全绿。语言变体是同一份对外承诺，必须同源同校。
+    README_VARIANTS = ("README.md", "README.en.md", "README.es.md",
+                       "README.ja.md", "README.ko.md")
+
     def test_engine_counts_agree_with_catalog(self):
-        """SKILL.md / README 的引擎数必须与搜索源文档（本身有门禁）一致。
+        """全部 README 变体的引擎数必须与搜索源文档（本身有门禁）一致。
 
         口径是声明口径：收录 N 个源、M 个免密钥开箱可用。运行时「此刻能路由
         几个」随密钥与熔断状态变，不写进文档。
@@ -151,6 +178,42 @@ class TestDocNumbersMatchCode:
                 f"{rel} 未写收录数 {total}"
             assert usable in text, f"{rel} 未写免密钥可用数 {usable}"
 
+    def test_english_readme_numbers_match_catalog(self):
+        """README.en.md 用英文口径（sources / usable with no key / domains），
+        正则不同于中文，历史上因此漏网。两处写法都要覆盖：
+        要点列表 `**N sources (M usable with no key), K domains**`
+        与正文 `**N** sources (**M** usable with no key) and **K** domains`。
+        """
+        total, usable = _catalog_counts()
+        domains = str(len(_domains()))
+        text = (SKILL_DIR / "README.en.md").read_text(encoding="utf-8")
+        bullet = re.search(
+            rf"\*\*{total} sources \({usable} usable with no key\), {domains} domains\*\*",
+            text)
+        prose = re.search(
+            rf"\*\*{total}\*\* sources \(\*\*{usable}\*\* usable with no key\) "
+            rf"and \*\*{domains}\*\* domains", text)
+        assert bullet, f"README.en.md 要点列表口径不符（应 {total}/{usable}/{domains}）"
+        assert prose, f"README.en.md 正文口径不符（应 {total}/{usable}/{domains}）"
+
+    def test_badge_numbers_match_truth(self):
+        """README 徽章数字必须与真源一致（中英之外的四语种此前只写 150+）。"""
+        from mcp_tools import TOOLS
+        doc = (SKILL_DIR / "docs" / "ENGINE_CATALOG.md").read_text(encoding="utf-8")
+        total = re.search(r"收录 (\d+) 个源", doc).group(1)
+        version = _skill_version()
+        tools = len(TOOLS)
+        problems = []
+        for rel in self.README_VARIANTS:
+            text = (SKILL_DIR / rel).read_text(encoding="utf-8")
+            if f"badge/engines-{total}-orange" not in text:
+                problems.append(f"{rel}: engines 徽章应为 {total}")
+            if f"badge/version-{version}-informational" not in text:
+                problems.append(f"{rel}: version 徽章应为 {version}")
+            if f"badge/MCP-{tools}%20tools-purple" not in text:
+                problems.append(f"{rel}: MCP 徽章应为 {tools} tools")
+        assert not problems, "README 徽章与真源不一致：\n  " + "\n  ".join(problems)
+
     def test_mcp_tool_count_matches_docs(self):
         from mcp_tools import TOOLS
         n = len(TOOLS)
@@ -161,6 +224,16 @@ class TestDocNumbersMatchCode:
             for c in claimed:
                 assert int(c) == n, f"{rel} 写 {c} 个 MCP 工具，实际 {n}"
 
+    def test_package_description_source_count(self):
+        """package.json 的 description 是对外第一句承诺，此前写 175 个源。"""
+        doc = (SKILL_DIR / "docs" / "ENGINE_CATALOG.md").read_text(encoding="utf-8")
+        total = re.search(r"收录 (\d+) 个源", doc).group(1)
+        usable = re.search(r"开箱可用 (\d+) 个", doc).group(1)
+        desc = json.loads((SKILL_DIR / "package.json").read_text(
+            encoding="utf-8"))["description"]
+        assert f"{total} 个源" in desc, f"package.json description 未写 {total} 个源"
+        assert usable in desc, f"package.json description 未写免密钥数 {usable}"
+
     def test_version_strings_agree(self):
         pkg = json.loads((SKILL_DIR / "package.json").read_text(encoding="utf-8"))
         plug = json.loads(
@@ -169,10 +242,7 @@ class TestDocNumbersMatchCode:
         m = re.search(r"^version:\s*(\S+)", skill, re.M)
         assert m, "SKILL.md 缺 version"
         assert pkg["version"] == m.group(1) == plug["version"], \
-            f"版本不一致: package={pkg['version']} skill={m.group(1)} plugin={plug['version']}"
-
-
-# ── 4. 派生件与运行时真源一致 ────────────────────────────────────────────────
+            f"版本不一致: package={pkg['version']} skill={m.group(1)} plugin={plug['version']}"# ── 4. 派生件与运行时真源一致 ────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
 def sb():

@@ -398,6 +398,10 @@ def _inject_multilingual_backup(engines_combo: list[str], enabled: set[str],
     注入会被 must_keep 的尾位替换挤出去（2026-09-07 实测 geo 域 anysearch
     被 local_bing 顶掉）。hedged 执行下 #2 位=primary 慢或不及格时的第一
     救援；日韩查询过滤掉中文源后常只剩英文/本地源，缺位=无通用主力。
+
+    注：这条规则只覆盖 ja/ko。其余语言的同类问题（垂直专源占住 combo 预算、
+    通用兜底源被截断剪掉）在声明真源层修，见 config.yaml 各域 engines_combo
+    的顺序约定与 tests/test_combo_budget_coverage.py 门禁。
     """
     if features.get("primary_lang") not in ("ja", "ko"):
         return engines_combo
@@ -1089,6 +1093,84 @@ def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "a
     return filtered
 
 
+# ── 垂直域「新专源」保底表（批次九）────────────────────────────────────────────
+# 批次九的 11 个新源声明在 combo 后排（位次 3~6），而 auto/balanced 的 budget=3、
+# fast=2 —— 截断后它们在日常路由里永远轮不到，表现为「按 --engine 能单跑、路由
+# 命中正确域、该域专属源却不参与」。这与批次九已修的准入粘滞 bug 是同一症状、
+# 不同成因（卡在 budget 而非 blocked）。
+#
+# 为何不直接改 combo 顺序：把新源提前会顶掉既有可用源（实测会把
+# open_library / douban_movie / musicbrainz 挤出预算），属横向替换而非净增益。
+# 故采用**加槽**（扩容）而非**顶位**，两者共存。
+#
+# 收录口径：只收「能力与既有源不重叠」的源；同能力横向重复
+# （如 art_museum 的 artic vs cleveland）不收，避免用同质源挤掉同质源。
+_VERTICAL_NEW_SOURCE: dict[str, tuple[str, ...]] = {
+    "species_search": ("worms",),               # 海洋分类学权威命名，无重叠
+    "medical": ("who_don",),                    # 疫情通报，与 clinicaltrials/openfda 不同能力
+    "book_search": ("k10plus",),                # 德语区最大联合目录，补区域空白
+    "film_search": ("tvmaze",),                 # 电视剧元数据（imdb/douban 偏电影）
+    "sports_search": ("openf1", "openligadb"),  # F1/德甲结构化赛程比分
+    "org_entity": ("ror",),                     # 研究机构标识（含域名映射）
+    "media_search": ("deezer", "listenbrainz"),  # 国际曲库 + 开源收听记录，能力互不重叠
+}
+
+# 垂直域主源保护名单：这些域的专属源被 budget 裁掉后该域等于没源可用。
+# 模块级常量（原先定义在 route_query 内，每次调用重建一个 18 元素 frozenset）。
+_VERTICAL_KEEP: frozenset[str] = frozenset({
+    "film_search", "sports_search", "geo_places", "org_entity", "media_search",
+    "modal_card",
+    "astro_space", "energy_grid", "transport_rt", "vehicle_data",
+    "japan_law", "soil_agri", "species_search", "art_museum",
+    "anime_encyclopedia", "book_search", "medical", "earth_science",
+})
+
+
+def _new_source_budget_extra(
+    domain: dict[str, Any] | None,
+    engines_combo: list[str],
+    enabled: set[str],
+    *,
+    mode: str,
+    depth: str,
+    context: str,
+) -> int:
+    """垂直域「新专源」的加槽额度（0 = 不加槽，行为与改造前逐位一致）。
+
+    按新专源在 combo 中的**最深位次**定额度，保证它落在本模式预算之内：
+    位次 d 的源需要 budget >= d，故 extra = max(d - base, 0)。
+
+    调用方应传域**声明**的 combo（不是已被前置裁剪动过的当前列表），
+    否则新源被摘掉后额度恒为 0——详见
+    `_apply_policy_with_new_source_slots` 的说明。
+
+    上限按模式分档 —— fast 强制串行（见 `_apply_intent_parallelism`），加槽直接
+    乘在延迟上，故上限 2；auto/balanced 走并行，放宽到 4。deep/research 本就
+    不截断（base 为 None），extra 无意义。
+
+    domain 可能为 None（TF-IDF 无命中时的 catch-all 分支），此时无域可谈，返回 0。
+    """
+    if not domain or not engines_combo:
+        return 0
+    pending = [
+        e for e in _VERTICAL_NEW_SOURCE.get(domain.get("name"), ())
+        if e in engines_combo and e in enabled
+    ]
+    if not pending:
+        return 0
+    deepest = max(engines_combo.index(e) + 1 for e in pending)
+    try:
+        from engine_policy import combo_budget
+        base = combo_budget(mode=mode, depth=depth, context=context)
+    except Exception:
+        return 0
+    if base is None:  # 不截断的模式（deep/research）
+        return 0
+    cap = 2 if ((mode or "auto") in ("fast", "budget")
+                or (depth or "fast") == "fast") else 4
+    return min(max(deepest - base, 0), cap)
+
+
 def _apply_engine_policy(
     engines_combo: list[str],
     *,
@@ -1098,11 +1180,16 @@ def _apply_engine_policy(
     engines_boost: list[str] | None = None,
     enabled: set[str] | None = None,
     must_keep: list[str] | None = None,
+    budget_extra: int = 0,
 ) -> list[str]:
     """boost 垂直源 + tier/budget 截断（单一策略入口）。
 
     must_keep：预算截断后仍强制保留的引擎（如 geo 的 local_openstreetmap），
     必要时从尾部腾位，避免特化源被 budget 裁掉。
+
+    budget_extra：垂直域新专源的**加槽**额度。与 must_keep 的区别是「不腾位、
+    只扩容」——must_keep 会挤掉既有可用源（实测会把 douban_movie/musicbrainz
+    挤出），而新专源与既有源多为互补能力，应当共存而非替换。
     """
     try:
         from engine_policy import boost_into_combo, combo_budget, filter_combo_by_policy
@@ -1111,9 +1198,11 @@ def _apply_engine_policy(
     out = list(engines_combo or [])
     if engines_boost:
         out = boost_into_combo(out, engines_boost, enabled=enabled)
-    out = filter_combo_by_policy(out, mode=mode, depth=depth, context=context)
+    out = filter_combo_by_policy(out, mode=mode, depth=depth, context=context,
+                                 budget_extra=budget_extra)
     if must_keep:
-        budget = combo_budget(mode=mode, depth=depth, context=context)
+        budget = combo_budget(mode=mode, depth=depth, context=context,
+                              extra=budget_extra)
         keep_set = set(must_keep)
         for e in must_keep:
             if not e or e in out:
@@ -1144,6 +1233,51 @@ def _apply_engine_policy(
                 deduped.append(e)
         out = deduped
     return out
+
+
+def _apply_policy_with_new_source_slots(
+    domain: dict[str, Any] | None,
+    engines_combo: list[str],
+    *,
+    mode: str,
+    depth: str,
+    context: str,
+    enabled: set[str] | None = None,
+    engines_boost: list[str] | None = None,
+    must_keep: list[str] | None = None,
+) -> list[str]:
+    """按域预算截断 combo，并为该域的「新专源」加槽（不腾位）。
+
+    正则域命中分支与 catch-all 分支此前各抄一份
+    `_new_source_budget_extra(...)` + `_apply_engine_policy(...)`（参数与注释
+    逐字相同）；收敛成单一入口后，加槽口径只有一处可改。
+
+    **为什么额度按「声明位次」而非当前 combo 算**：进到这里的 combo 已经被
+    两道前置裁剪动过手——`_get_engines_combo` 的 web_general 能力族去重
+    （max_per_family=2）与 `_apply_intent_parallelism` 的意图裁剪。新专源
+    声明在 combo 后排，正是这两道裁剪的常客，源一旦被摘掉，按当前 combo
+    算的额度就恒为 0，加槽机制被静默废掉。实测两例（2026-09-13）：
+      - sports_search：openf1/openligadb 未声明 family → 落 web_general，
+        被族去重摘掉，加槽恒不生效；
+      - org_entity：ror 被意图裁剪摘掉，加槽恒不生效。
+    故额度按域**声明**的位次算；被摘掉的新专源在同一额度内补回（额度不够
+    时不强塞，交回既有 must_keep 换位逻辑，避免反过来挤掉既有源）。
+    """
+    declared = list((domain or {}).get("engines_combo") or [])
+    live = [e for e in _VERTICAL_NEW_SOURCE.get((domain or {}).get("name"), ())
+            if e in declared and (enabled is None or e in enabled)]
+    keep = list(must_keep or [])
+    for e in live:
+        if e not in engines_combo and e not in keep:
+            keep.append(e)
+    return _apply_engine_policy(
+        engines_combo, mode=mode, depth=depth, context=context,
+        engines_boost=engines_boost, enabled=enabled,
+        must_keep=keep or None,
+        budget_extra=_new_source_budget_extra(
+            domain, declared or engines_combo, enabled or set(),
+            mode=mode, depth=depth, context=context),
+    )
 
 
 # ── 路由主函数 ─────────────────────────────────────────────────────────────────
@@ -1267,7 +1401,6 @@ def route_query(query: str, engine_override: str = "auto",
     if not skip_tfidf:
         try:
             tfidf_scores = semantic_route(query, top_k=3)
-            _non_zh = features.get("primary_lang") in ("ja", "ko")
             for cand, score, _ in tfidf_scores:
                 social_ok = True
                 if cand in SOCIAL_ENGINES:
@@ -1284,9 +1417,13 @@ def route_query(query: str, engine_override: str = "auto",
                 # 对日/韩用户无关（返回中文站），丢弃让通用 anysearch 主导。
                 # 丢弃当前候选后继续看下一个（2026-08 修复：旧逻辑只看 top-1，
                 # 丢弃后不检查 top-2/3，可能错失 anysearch 等合格候选）。
-                if _non_zh and not lang_allows(
-                        cand, features.get("primary_lang") or "ja",
-                        _specs_snapshot().get(cand)):
+                # 语言可达性门（对所有查询生效，不再只限 ja/ko）：引擎声明的
+                # 语言能力不含查询语言且非语言中立（"*"）时，TF-IDF 前置注入
+                # 不得把它顶到首位。实测缺陷：中文法条查询「刑法 判例 司法解释」
+                # 与 kor_law（langs=["ko"]）的文档共享汉字而命中，被注进 legal
+                # 域首位——一个中文法条查询优先去打了韩国判例库。
+                _ql = features.get("primary_lang") or ""
+                if _ql and not lang_allows(cand, _ql, _specs_snapshot().get(cand)):
                     continue
                 tfidf_best = cand
                 tfidf_best_score = score
@@ -1421,11 +1558,10 @@ def route_query(query: str, engine_override: str = "auto",
         must_keep = []
         if features.get("has_geo") and "local_openstreetmap" in enabled and not _pure_combo:
             must_keep.append("local_openstreetmap")
-        # 垂直域主源保护：film/sports/geo/org/modal_card 的 primary（及 combo）不被 budget 裁掉
-        _VERTICAL_KEEP = frozenset({
-            "film_search", "sports_search", "geo_places", "org_entity", "media_search",
-            "modal_card",
-        })
+        # 垂直域主源保护（名单见模块级 _VERTICAL_KEEP）：这些域的专属源在
+        # combo 里不是「通用源」，被 budget 截断后该域等于没源可用（实测
+        # medical 的 who_don、japan_law 的 egov_law 均因 budget=2 被裁掉
+        # → 路由命中但零结果）。
         if domain.get("name") in _VERTICAL_KEEP:
             p = domain.get("primary")
             # modal_card 可在缺 key（不在 enabled）时仍 must_keep，避免 budget 再裁
@@ -1441,11 +1577,13 @@ def route_query(query: str, engine_override: str = "auto",
             if domain.get("name") == "geo_places" and "local_openstreetmap" in enabled:
                 if "local_openstreetmap" not in must_keep:
                     must_keep.append("local_openstreetmap")
+
         if not _pure_combo:
             must_keep.extend(_lang_must_keep(features, enabled))
-        engines_combo = _apply_engine_policy(
-            engines_combo, mode=mode, depth=depth, context=context,
-            engines_boost=engines_boost, enabled=enabled, must_keep=must_keep,
+        engines_combo = _apply_policy_with_new_source_slots(
+            domain, engines_combo,
+            mode=mode, depth=depth, context=context,
+            enabled=enabled, engines_boost=engines_boost, must_keep=must_keep,
         )
         # ja/ko：多语言主力源 anysearch 送到前二（策略截断后注入才不会被
         # must_keep 换位挤出；primary 扶正前注入，域主源仍居首）
@@ -1548,9 +1686,10 @@ def route_query(query: str, engine_override: str = "auto",
         if features.get("has_geo") and "local_openstreetmap" in enabled:
             must_keep.append("local_openstreetmap")
         must_keep.extend(_lang_must_keep(features, enabled))
-        engines_combo = _apply_engine_policy(
-            engines_combo, mode=mode, depth=depth, context=context,
-            engines_boost=engines_boost, enabled=enabled, must_keep=must_keep,
+        engines_combo = _apply_policy_with_new_source_slots(
+            domain, engines_combo,
+            mode=mode, depth=depth, context=context,
+            enabled=enabled, engines_boost=engines_boost, must_keep=must_keep,
         )
         # ja/ko catch-all 与主域分支同口径：anysearch 前二（TF-IDF 直选路径
         # 也会把多语言主力挤掉）

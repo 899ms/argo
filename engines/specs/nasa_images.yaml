@@ -32,6 +32,12 @@ output_map:
   item_summary: data.0.description
   item_published_at: data.0.date_created
   url_template: "https://images.nasa.gov/details/{data.0.nasa_id}"
+  # 图片直链：item.links 是 [{href, rel, render, width, ...}]，必须取 .href
+  # ——写成 links.0 会被 _coerce_field 丢成空串（dict 不可强转）。
+  item_image: links.0.href
+
+# NASA 影像是美国政府作品，属公有领域；授权不随条目变化，声明一次即可。
+image_license: "公有领域（NASA，美国政府作品）"
 
 quality_queries:
   - query: "apollo 11"

@@ -1,0 +1,21 @@
+# TLE 两行根数镜像（第三方，免认证）
+# 补 astronomy 域的轨道根数：官方 Celestrak 在本机网络不可达（TLS 握手失败），
+# 此镜像提供同构数据。**第三方非官方 SLA**，接入时应配 fallback 链
+# （Celestrak 官方 → 本镜像），失败诚实空。
+# 验证:
+#   python3 scripts/engine_validate.py --engine tle_mirror --stage all --admit --write-doc
+
+engine_id: tle_mirror
+type: tle_mirror
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "ISS"
+desc: "TLE 轨道根数镜像（第三方，Celestrak 不可达时替代，免认证）"
+coverage: [astronomy, space, satellites]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "ISS"
+  - query: "NOAA"

@@ -1,0 +1,21 @@
+# 日本 e-Gov 法令检索（官方全文，免认证）
+# 补 legal 域的日本法条：现有 flk_law（中国）、kor_law（韩国）、
+# courtlistener（美国判例）、wenshu（中国判例），日本法令此前空白。
+# lawlists 返回全量法令名 XML，本地按关键词过滤（API 无服务端检索参数）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine egov_law --stage all --admit --write-doc
+
+engine_id: egov_law
+type: egov_law
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "民法"
+desc: "日本法令检索（e-Gov 官方全文，免认证）"
+coverage: [legal, law_text, japanese, official]
+recommended: false
+latency_ms: 3000
+
+quality_queries:
+  - query: "民法"
+  - query: "個人情報"

@@ -1,7 +1,7 @@
 ---
 name: local-search
 parent: argo
-description: argo 的本地/零成本兜底子技能。封装基于公开页面/HTML/RSS/JSON/CLI 的 33 个本地搜索引擎，不单独响应触发词，仅由 argo 通过 --sub-skill local-search 或 --local-first 调用。
+description: argo 的本地/零成本兜底子技能。封装基于公开页面/HTML/RSS/JSON/CLI 的 32 个本地搜索引擎，不单独响应触发词，仅由 argo 通过 --sub-skill local-search 或 --local-first 调用。
 version: 1.1.0
 ---
 
@@ -15,12 +15,11 @@ Local Search 是 argo 的「零成本兜底适配器」，用于：
 
 ### 设计原则
 
-- **不单独响应触发词**：没有独立的 skill trigger，仅作为 argo 的子能力。
-- **统一 schema**：输出与 argo 主 skill 完全一致，包含 `results[]`、`engines_used`、`errors`、`elapsed_ms` 等字段。
-- **声明式解析**：HTML 结构变化时只需修改 `parse_maps.yaml`。
-- **命名空间隔离**：本地引擎统一使用 `local_` 前缀（如 `local_bing`、`local_google`），避免与 argo 已有的 HTTP 引擎（`duckduckgo`、`wikipedia` 等）重名。
+- **不单独响应触发词**：仅作为 argo 的子能力，由 `--sub-skill local-search` / `--local-first` 调用。
+- **输出与主 skill 同 schema**：`results[]` / `engines_used` / `errors` / `elapsed_ms`，可直接进 evidence 与 RRF。
+- **`local_X` 与主清单的 `X` 是别名，不是备份**：`local_arxiv`/`local_crossref`/`local_semantic_scholar`/`local_github`/`local_npm`/`local_wikipedia`/`local_stackoverflow`/`local_google_news` 与主清单同名项**打同一个上游端点**（主清单走官方 API、这里走免密钥直取），不存在「API 挂了抓取版兜底」。同上游同格式由 `tests/test_local_search_registry.py` 锁定。
 
-### 本地引擎列表（33 个，29 个默认启用）
+### 本地引擎列表（32 个，29 个默认启用）
 
 | unified 名称 | 类型 | 默认启用 | 类别 | 说明 |
 |--------------|------|----------|------|------|
@@ -75,19 +74,11 @@ python3 scripts/search.py "query" --sub-skill local-search
 python3 scripts/search.py "query" --local-first --mode fast
 ```
 
-### 文件结构
+### 两条不显然的约定
 
-```
-sub-skills/local-search/
-├── SKILL.md                 # 本文件
-├── config.yaml              # 引擎基础配置（URL/超时/类型/开关）
-├── parse_maps.yaml          # HTML/RSS/JSON 抽取映射
-├── engine_registry.py       # 引擎注册中心（唯一真源）
-├── local_health_check.py    # 轻量健康探针（local_ 前缀避免与 scripts/health_check 同名冲突）
-├── smart_router.py          # 查询特征路由
-├── search_v3.py             # local-search 主入口
-└── local_search_adapter.py  # 兼容入口
-```
+- `engine_registry.py` 是本地引擎注册中心（唯一真源，读本目录 `config.yaml` 与 `parse_maps.yaml`）。
+- `local_health_check.py` 用 `local_` 前缀，避免与 `scripts/health_check.py` 同名冲突。
+
 
 ### 输出 schema
 

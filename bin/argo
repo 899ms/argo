@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""argo — unified search CLI. Usage: argo <subcommand> [args...]"""
+"""argo — unified search CLI. Usage: argo <subcommand> [args...]
+
+本文件**必须保持 Python 3.8+ 可执行**：它是 entrypoint，会先被
+`/usr/bin/env python3` 解释一次（macOS 上就是 3.9），然后才轮到
+`_pick_python()` 去挑更高版本的解释器。因此这里禁止使用
+`X | None` 之类的 3.10+ 语法——它不是注解解析问题，而是在
+函数定义求值期就抛 TypeError，让「选解释器」的兜底逻辑根本没机会执行。
+（历史 bug：`def _engine_count() -> int | None:` 让 `argo --help`
+在系统 python3 下直接崩在 import 阶段。）
+"""
+
+from __future__ import annotations
+
 import sys, os, json, subprocess, shutil
 
 ARGO_HOME = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -36,7 +48,7 @@ def _pick_python() -> str:
     return sys.executable
 
 
-def _engine_count() -> int | None:
+def _engine_count():
     """收录的引擎数（config.yaml + engines/specs/*.yaml 合并口径，单一真源）。
 
     只报「收录数」这个便宜且不随环境变的数：以前这里报的是「启用数」，

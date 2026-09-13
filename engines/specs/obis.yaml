@@ -1,0 +1,20 @@
+# OBIS 海洋生物多样性观测（IOC/UNESCO，免认证，2.29 亿条记录）
+# 补 species_search 域的「海洋」维度：现有 gbif 以陆生/通用为主，
+# OBIS 是海洋观测的官方汇总。拉丁学名准确，中文俗名诚实空（交回百科类引擎）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine obis --stage all --admit --write-doc
+
+engine_id: obis
+type: obis
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "Gadus morhua"
+desc: "OBIS 海洋物种观测（IOC/UNESCO 官方，2.29 亿条记录，免认证）"
+coverage: [species, marine, science, open_data]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "Gadus morhua"
+  - query: "Delphinus delphis"

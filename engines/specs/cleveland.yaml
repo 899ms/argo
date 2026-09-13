@@ -1,0 +1,19 @@
+# 克利夫兰艺术博物馆（CC0 开放图像，免认证）
+# 与 artic/met_museum 互补：CC0 授权可直接取图，含 tombstone 完整著录。
+# 验证:
+#   python3 scripts/engine_validate.py --engine cleveland --stage all --admit --write-doc
+
+engine_id: cleveland
+type: cleveland
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "monet"
+desc: "克利夫兰艺术博物馆（CC0 开放图像，免认证）"
+coverage: [art, museum, culture, image]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "monet"
+  - query: "armor"

@@ -25,6 +25,37 @@ python3 scripts/search.py "查询词" \
 
 **Python 解释器**：脚本用 3.10+ 语法。`bin/argo` 自动探测 `ARGO_PYTHON` → python3.14/3.13/3.12/3.11/3.10 → 兜底。强制：`ARGO_PYTHON=/opt/homebrew/bin/python3.14 argo ...`。
 
+## search 输出字段与体积纪律
+
+一次 `search --json` 会给出**三个视图**，它们不是重复而是各有用途；选错视图会
+白付上下文（实测 5 条结果：默认 14.9 KB ≈ 5.0k token，`--no-envelope` 后 6.8 KB
+≈ 2.3k，再叠 `-n 3` 降到 4.5 KB ≈ 1.5k）：
+
+| 视图 | 用途 | 体积（5 条） |
+|------|------|-------------|
+| `results` | **答案用这个**：融合+精排后的条目（含 `score`/`rerank_dims`/`consensus_engines`/`fetch_suggested`/`image_url`/`full_text_url`） | 2.4 KB |
+| `sources` | **引用用这个**：底部相关链接形态的稳定 5 字段投影 | 1.0 KB |
+| `candidates` | **归档/策展才要**：provenance 封套（`candidate_id`/`canonical_url`/`platform`/`verification`/`metrics`/`limitations`） | 4.9 KB |
+
+- **Agent 消费默认加 `--no-envelope`**：去掉候选封套即可省一半以上；只有做归档
+  （`--archive`）或需要 provenance 时才保留（`--archive` 会强制保留）。
+- 另有一批诊断字段（`tfidf_scores`/`engine_outcomes`/`coverage`/`routes`/`limitations`/
+  `lang_pref`）体积不大但通常无用，别把它们当结果读。
+- 结果级字段：`fetch_suggested`（是否建议核验）、`has_fetched_evidence`（已核验）、
+  `post_fetch_absorption`（正文级吸收分，核验后回填）；`full_text_url` 是源给出的
+  **可确定性取正文**端点（如 e-Gov `lawdata`、Gutenberg 纯文本），有时代替 `url` 去 fetch。
+
+### `--list-engines` 的体积陷阱
+
+`--list-engines` 列名字约 3 KB；**`--detail` 全量是 216 条 × ~0.9 KB ≈ 186 KB**
+（含每引擎的熔断/配额/准入/依赖运行态），属诊断转储。查单个或几个引擎请**同时
+给 `--engine`**（逗号分隔），体积降到 KB 级；未收录的名字会走 stderr 提示。
+
+```bash
+python3 scripts/search.py --list-engines --detail --engine egov_law,kor_law   # ≈2 KB
+```
+
+
 ## research 输出字段
 
 取证包（`kind=dossier`），不是判断稿。协议：`references/research-protocol.md`。

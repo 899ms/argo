@@ -376,8 +376,38 @@ def _missing_env_for(eng: str) -> list[str]:
         return []
 
 
+class _QuotaBatch:
+    """一次搜索的配额记账收集器（累积 → 一次性落盘）。
+
+    为什么不是每引擎各写一次：每次 record 都是「全量状态序列化 + rename」，
+    一次 5 引擎搜索即 5 次全量写。合并后写盘次数从 N 降到 1，且整批在
+    同一个跨进程文件锁内完成（`QuotaManager.record_many`）。
+
+    失败静默：记账属于观测层，任何异常都不得拖累搜索主路径。
+    """
+
+    def __init__(self) -> None:
+        self._entries: list[tuple[str, bool]] = []
+
+    def add(self, engine: str, success: bool) -> None:
+        self._entries.append((engine, success))
+
+    def flush(self) -> None:
+        entries, self._entries = self._entries, []
+        if not entries:
+            return
+        try:
+            from quota import get_quota_manager
+            get_quota_manager().record_many(entries)
+        except Exception:
+            pass
+
+
 def _record_quota(engine: str, success: bool) -> None:
-    """真实打网后写配额；失败静默。"""
+    """单条配额记账（真实打网后写）；失败静默。
+
+    批量路径请用 `_QuotaBatch`——它把同一次搜索的 N 条合成一次落盘。
+    """
     try:
         from quota import get_quota_manager
         get_quota_manager().record(engine, success=success)
@@ -425,33 +455,16 @@ class Stage(str, Enum):
 
 # ── RRF 融合 ───────────────────────────────────────────────────────────────────
 
-_TRACKING_PARAMS = frozenset({
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "spm", "ref", "from", "share_token", "source", "refer", "trace",
-    "clicktime", "clickid", "scid", "scene", "sessionid",
-})
+# URL 归一化的单一真源在 url_canon：本仓曾有四份各自实现的「URL 归一」
+# （search / plan / candidate_envelope / research_dossier，追踪参数表与
+# 大小写规则各不相同），导致同一链接在融合层与 dossier 层归一成不同键。
+# 此处只做薄转发，规则改动一律进 url_canon。
+from url_canon import canonical_url as _canonical_url_impl  # noqa: E402
 
 
 def _canonical_url(url: str) -> str:
-    """URL 归一化：统一 http/https、小写、去 www.、去 tracking 参数、去 fragment 与尾斜杠。
-
-    用于融合/去重的键，保证 http/https、www、utm 等变体合并为同一结果。
-    """
-    if not url:
-        return ""
-    try:
-        from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
-        p = urlparse(url.lower())
-        netloc = p.netloc
-        if netloc.startswith("www."):
-            netloc = netloc[4:]
-        scheme = "https" if p.scheme in ("http", "https") else p.scheme
-        q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
-             if k.lower() not in _TRACKING_PARAMS]
-        path = p.path.rstrip("/")
-        return urlunparse((scheme, netloc, path, p.params, urlencode(q), ""))
-    except Exception:
-        return url
+    """URL 归一化（薄转发到 url_canon 单一真源）。"""
+    return _canonical_url_impl(url)
 
 
 # 引擎融合权重（WG-RRF：按来源质量加权，权威源提权、社交/低质源降权）
@@ -556,14 +569,20 @@ def rrf_merge(ranked_lists: list[list[dict[str, Any]]], k: int = 60,
     scores: dict[str, float] = {}
     items: dict[str, dict[str, Any]] = {}
 
-    for results in ranked_lists:
+    for _li, results in enumerate(ranked_lists):
         for i, r in enumerate(results):
-            # 无 URL 时用 title 兜底；模态卡再退到 card_type（避免空 title 互撞）
+            # 无 URL 时用 title 兜底；模态卡再退到 card_type（避免空 title 互撞）。
+            # 最后兜底必须带**列表身份**：此前用裸 `i`（单列表内的局部索引），
+            # 跨引擎必然同值 —— 两条都没有 url/title/card_type 的不同结果会在
+            # `__idx__:0` 处相撞，表现为 ①丢结果 ②伪造 consensus_engines
+            # （两个引擎"都投了"同一条，其实各是各的）③字段错配（_engine 留 A、
+            # snippet 被 B 覆盖）。同文件 deduplicate_by_url 用全局递增计数器
+            # `anon:{len(out)}` 就没有这个问题，此处对齐该写法。
             key = (
                 _canonical_url(r.get("url", ""))
                 or (f"__title__:{r.get('title', '')}" if r.get("title") else "")
                 or (f"__card__:{r.get('card_type', '')}" if r.get("card_type") else "")
-                or f"__idx__:{i}"
+                or f"__idx__:{_li}:{i}"
             )
             w = _engine_weight(r.get("_engine") or r.get("source") or "",
                                lang=lang) if weighted else 1.0
@@ -803,19 +822,52 @@ def _score_completeness(title: str, snippet: str) -> float:
     return round(min(1.0, 0.6 * length_score + 0.2 * has_digit + 0.2 * has_title), 4)
 
 
+def _consensus_prior(results: list[dict[str, Any]]) -> list[float]:
+    """融合先验：把 RRF 分与跨引擎共识数归一化成 [0,1]（逐条对齐 results）。
+
+    为什么需要它（这是本函数存在的唯一理由）：
+    `local_five_dim_rerank` 用 relevance(token 覆盖率)/completeness(文本长度)
+    等**文本自身**的维度重新打分，这在结构上偏爱「啰嗦的长网页」而压制
+    「多个引擎都认同但摘要简短」的结果。实测：一条 3 引擎共识条目
+    (RRF 0.0418) 会被单源长文本条目 (RRF 0.0164) 反超——融合层的核心产出
+    在最终排序中丢失。
+
+    这里**不改五维公式**，只把融合信号作为一个独立先验维度加进来，避免与
+    `score` 字段竞争（`score` 已被本函数覆写，拿它当输入是循环依赖）。
+
+    归一化口径：RRF 分取最大值归一到 1（保序，不放大）；共识数按
+    `min(n-1, 3)/3` 计（与 `apply_consensus_boost` 的封顶口径一致，
+    避免 5 源共识把量纲压过其他维度）。
+    """
+    priors: list[float] = []
+    raw = [float(r.get("_rrf_score", 0.0) or 0.0) for r in results]
+    peak = max(raw) if raw else 0.0
+    for r, rrf in zip(results, raw):
+        rrf_norm = (rrf / peak) if peak > 0 else 0.0
+        cons = len(r.get("consensus_engines") or [])
+        cons_norm = min(max(cons - 1, 0), 3) / 3.0
+        # 两个子信号取均值：单纯多引擎重复 != 更可信，RRF 分还含引擎权重
+        priors.append(0.5 * rrf_norm + 0.5 * cons_norm)
+    return priors
+
+
 def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
                           domain: str = "general", top_n: int = 10
                           ) -> list[dict[str, Any]]:
     """本地五维精排（无 Bocha Key / fallback 时兜底）。
 
-    维度权重（通用）：
-      相关性 0.30 + 权威性 0.30 + 时效性 0.20 + 完整性 0.15 + 新颖性 0.05
-    tech/code 域：权威 0.20、相关 0.40（技术查询更看内容匹配）。
+    维度权重（通用，前五维和为 0.88，余下 0.12 给融合先验）：
+      相关性 0.26 + 权威性 0.26 + 时效性 0.18 + 完整性 0.13 + 新颖性 0.05
+      + **融合先验 0.12**（RRF 分 + 跨引擎共识，见 `_consensus_prior`）
+    tech/code 域：权威 0.18、相关 0.35（技术查询更看内容匹配）。
+
+    无融合信息时（单引擎路径）先验恒为 0，与旧行为等价：此时五维按 0.88
+    整体折算，是原权重比例的等比缩放，排序结果不变。
 
     新颖性：标题 bigram 与「已排更高结果」的 Jaccard 互补（1 − overlap），
     奖励信息增量，抑制近重复堆叠。
 
-    每个结果写入 rerank_dims 明细，供可观测。
+    每个结果写入 rerank_dims 明细（含 prior），供可观测。
     """
     if not results:
         return results
@@ -825,14 +877,23 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
         # 精确匹配会漏掉合并后的结果，这里按「/」切分做成员判断。
         return name in str(source).split("/")
 
-    # 权重表（MECE，和为 1）
+    # 权重表（MECE）。前五维整体缩放 (1 - W_PRIOR)，把余量留给融合先验。
+    # 关键性质：prior 缺席时（单引擎路径）五维被同一常数缩放，是原权重比例的
+    # 等比变换 —— 排序结果与改造前逐位一致。该等价性由测试锁定。
+    W_PRIOR = 0.12
+    _BASE = 1.0 - W_PRIOR
     is_tech = domain in ("tech_deep", "code_search", "local_code", "academic")
     if is_tech:
-        w = {"relevance": 0.40, "authority": 0.20, "freshness": 0.20,
-             "completeness": 0.15, "novelty": 0.05}
+        # 原 tech 权重：rel .40 / auth .20 / fresh .20 / comp .15 / nov .05
+        w = {"relevance": 0.40 * _BASE, "authority": 0.20 * _BASE,
+             "freshness": 0.20 * _BASE, "completeness": 0.15 * _BASE,
+             "novelty": 0.05 * _BASE}
     else:
-        w = {"relevance": 0.30, "authority": 0.30, "freshness": 0.20,
-             "completeness": 0.15, "novelty": 0.05}
+        # 原通用权重：rel .30 / auth .30 / fresh .20 / comp .15 / nov .05
+        w = {"relevance": 0.30 * _BASE, "authority": 0.30 * _BASE,
+             "freshness": 0.20 * _BASE, "completeness": 0.15 * _BASE,
+             "novelty": 0.05 * _BASE}
+    _priors = _consensus_prior(results)
 
     # 复用 evidence 的权威/时效评分（若可用）
     try:
@@ -845,7 +906,7 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
 
     # 先计算前四维静态分
     enriched = []
-    for r in results:
+    for _i, r in enumerate(results):
         title = r.get("title", "") or ""
         snippet = r.get("snippet", "") or ""
         url = r.get("url", "") or ""
@@ -897,6 +958,10 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
             "r": r, "title": title,
             "relevance": relevance, "authority": authority,
             "freshness": freshness, "completeness": completeness,
+            # _priors 与 results 等长且同步推进（循环内无 continue），
+            # 原先的 `if len(enriched) < len(_priors)` 是恒真守卫，
+            # 会让「下标错位」这种真缺陷静默退化为 prior=0。
+            "prior": _priors[_i],
         })
 
     # 贪心排序：每步选边际得分最高者，novelty 相对已选集合动态计算
@@ -912,7 +977,8 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
                      + w["authority"] * e["authority"]
                      + w["freshness"] * e["freshness"]
                      + w["completeness"] * e["completeness"]
-                     + w["novelty"] * novelty)
+                     + w["novelty"] * novelty
+                     + W_PRIOR * e["prior"])
             if score > best_score:
                 best_idx, best_score, best_novelty = i, score, novelty
         chosen = pool.pop(best_idx)
@@ -924,6 +990,7 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
             "freshness": round(chosen["freshness"], 4),
             "completeness": chosen["completeness"],
             "novelty": round(best_novelty, 4),
+            "prior": round(chosen["prior"], 4),
         }
         selected_bigrams |= _bigrams(_tokens(chosen["title"]))
         ranked.append(r)
@@ -1337,7 +1404,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             except ImportError:
                 _attr = None
         goods = [r for r in res if isinstance(r, dict) and "error" not in r]
-        _record_quota(eng, success=bool(goods))
+        quota_batch.add(eng, bool(goods))
         if outcome["status"] == "quota-exhausted":
             # 远端配额耗尽：交由 quota 状态机接管（周期边界自愈），
             # 不计入下面的健康熔断——配额问题不是引擎健康问题
@@ -1390,6 +1457,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             nonlocal_wasted[0] += lat
 
     nonlocal_wasted = [0]
+    quota_batch = _QuotaBatch()
     early_stopped = False
     to_run = list(engines)
     # deep 模式全量并行；fast/auto/budget 可渐进 early-stop
@@ -1680,6 +1748,11 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 _extra_lists.append(_goods)
         if _extra_lists:
             merged = rrf_merge([merged] + _extra_lists)
+
+    # 配额记账：整批一次落盘（同一次搜索的 N 个引擎合并为一次写）。
+    # 必须放在 D6 补搜之后：那是最后一个 _ingest 调用点，flush 提前会让
+    # 补搜引擎的记账永远落不了盘（2026-09-13 审查实锤）。
+    quota_batch.flush()
 
     # ── P0：过滤 SERP/跳转 URL（搜索结果页、baidu.com/link 等不可当信源正文）──
     if merged:
@@ -2620,10 +2693,26 @@ def main():
     args = parser.parse_args()
 
     if args.list_engines:
+        # --engine 兼作清单过滤（`--engine auto` 是搜索默认值，不算过滤）。
+        # 全量详细行 216 × ~0.9 KB ≈ 186 KB，Agent 查单个引擎状态时不该付这个
+        # 代价——实测此前 `--list-engines --detail --engine egov_law` 忽略过滤、
+        # 照样吐全量。
+        _wanted = None
+        if args.engine and args.engine != "auto":
+            _wanted = [e.strip() for e in args.engine.split(",") if e.strip()] or None
         if args.detail:
             try:
                 from engine_status import list_engines_detail, format_engines_table
-                rows = list_engines_detail(routable_only=args.routable_only)
+                rows = list_engines_detail(routable_only=args.routable_only,
+                                           engines=_wanted)
+                if _wanted:
+                    # 未命中的名字要显式报出（走 stderr，保持 stdout 是纯 JSON）——
+                    # 否则「查了没输出」会被误读成「该引擎状态为空」。
+                    _got = {r.get("engine_id") for r in rows}
+                    _missing = [e for e in _wanted if e not in _got]
+                    if _missing:
+                        print(f"[list-engines] 未收录的引擎: {', '.join(_missing)}",
+                              file=sys.stderr)
                 if args.json_output:
                     print(json.dumps(rows, ensure_ascii=False, indent=2))
                 else:
@@ -2635,6 +2724,8 @@ def main():
                 names = available_engines(routable_only=args.routable_only)
             except TypeError:
                 names = available_engines()
+            if _wanted:
+                names = [n for n in names if n in set(_wanted)]
             print(json.dumps(names, ensure_ascii=False, indent=2))
         return
 

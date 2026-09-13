@@ -1,6 +1,6 @@
 ---
 name: argo
-description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；191 个源（159 个免密钥开箱可用）TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡（火车票/油价/贵金属/万年历/星座/手机/汽车/挂号）；日常 combo 预算与深度研究 boost；recovery 防污染；Selection×Absorption。CLI：argo search|research|fetch|crawl|extract|article|job|evidence|clarify|preflight|mcp（同引擎 MCP 14 工具按需启用，默认关）。
+description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；216 个源（182 个免密钥开箱可用）TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡；recovery 防污染。CLI：search|research|fetch|crawl|extract|article|job|evidence|clarify|preflight|mcp。
 version: 2.8.8
 triggers:
   - 搜索
@@ -26,18 +26,22 @@ triggers:
 
 # Argo v2.8.8 — 统一搜索与证据核验
 
-> 从「帮你搜到」升级为「帮你核到」。搜索输出自带**证据闭环**：高后果问题（金融/医疗/法律/事实核查）标 `fetch_required`，每条结果标 `fetch_suggested`；`--verify` 一键核验正文并回填「核实后证据分」，核实过的链接自动记忆，二次搜索直接显示已核实。
->
-> 本版增量 / 变更日志见 `docs/RELEASE_NOTES_v2.8.8.md`、`docs/RELEASE_NOTES_v2.8.7.md` 与 `docs/RELEASE_NOTES_v2.8.6.md`。
+> 不止「帮你搜到」，还要「帮你核到」：高后果问题标 `fetch_required`、结果标
+> `fetch_suggested`，`--verify` 核验正文并回填证据分。变更日志见 `docs/RELEASE_NOTES_v2.8.*.md`。
 
 ## 快速上手
 
 ```bash
-python3 scripts/search.py "查询词"            # 自动路由搜索
-python3 scripts/search.py "查询词" --json     # JSON 输出（供 Agent 消费）
-python3 scripts/search.py "查询词" --verify 3 # 核验 top-3 并回填证据分
-python3 scripts/research.py "复杂问题" --json # 取证包（扩词或多工作包 → dossier）
+python3 scripts/search.py "查询词"                      # 自动路由搜索
+python3 scripts/search.py "查询词" --json --no-envelope  # JSON（Agent 消费默认加 --no-envelope）
+python3 scripts/search.py "查询词" --verify 3            # 核验 top-3 并回填证据分
+python3 scripts/research.py "复杂问题" --json            # 取证包（扩词或多工作包 → dossier）
 ```
+
+`--no-envelope` 去掉归档用的候选封套，输出体积减半以上；要归档（`--archive`）或
+需要 provenance 时才不加。三个视图分工（`results` 答案 / `sources` 引用 /
+`candidates` 归档）、全量字段、以及 `--list-engines --detail` 的体积陷阱见
+`references/usage.md`。
 
 深度研究只走这一条路径。机器产出 **dossier**（来源/覆盖/缺口/门禁），不是判断稿。Agent 先读 `references/research-protocol.md`，写出工作包再取证；判断按事实/推断/建议写。不要另装「专业深度研究」skill。
 
@@ -48,7 +52,7 @@ python3 scripts/research.py "复杂问题" --json # 取证包（扩词或多工�
 | 参数 | 说明 |
 |------|------|
 | `--engine <name>` | 强制引擎（anysearch/byted/bocha/exa/tavily/eastmoney/zhihu/arxiv/pypi/mdn/hackernews/v2ex/redskill…，全量见 `--list-engines`） |
-| `--local-first` | 本地零成本聚合优先（local_search 33 引擎） |
+| `--local-first` | 本地零成本聚合优先（local_search 32 引擎） |
 | `--include-local` | 并入本机文件命中（seek 结果尾部，source=local_files；默认关） |
 | `--mode fast|auto|deep|budget` | fast 免费优先 / auto 成本感知（默认）/ deep 质量优先 / budget 配额控制 |
 | `--explain` | 解释路由决策（含 TF-IDF 分数） |
@@ -61,16 +65,9 @@ python3 scripts/research.py "复杂问题" --json # 取证包（扩词或多工�
 
 ```bash
 # research — 取证（扩词或 --work-packages → dossier + citations + 可判定门禁）
-python3 scripts/research.py "查询" [--sub-queries N] [--depth deep] [--budget N] \
-    [--route-strategy local_first|cost_aware|full] [--work-packages PATH|JSON] \
-    [--json] [--verify N] [--allow-recompute]
-
-# 工作包可带 file_inputs（本地一手数据入账）+ recompute（可复算脚本，fail-closed 授权）
-#   [{"id":"wp-rev","question":"…","file_inputs":[{"path":"~/data/company.xlsx","role":"原始数据"}],
-#     "recompute":{"script":"…","budget":{"timeout_s":30}}}]
-
-# 社交舆情模式
-python3 scripts/research.py "iPhone 16 用户评价" --mode social-sentiment --platforms xiaohongshu,reddit,twitter
+#   工作包可带 file_inputs（本地一手数据入账）+ recompute（可复算脚本，fail-closed 授权）
+#   社交舆情：--mode social-sentiment --platforms xiaohongshu,reddit,twitter
+python3 scripts/research.py "查询" [--work-packages PATH|JSON] [--depth deep] [--json] [--verify N]
 
 # evidence — 可信度评估（Selection×Absorption）
 echo '{"results": [...]}' | python3 scripts/evidence.py "查询词" --stdin --json [--high-stakes]
@@ -78,6 +75,8 @@ echo '{"results": [...]}' | python3 scripts/evidence.py "查询词" --stdin --js
 # clarify — 意图消歧
 python3 scripts/clarify.py "有歧义的查询" --explain --json
 ```
+
+> research 全参数、工作包骨架与输出字段见 `references/usage.md` 与 `references/research-templates.md`。
 
 ### 抓取三工具（`bin/argo` 入口）
 
@@ -95,14 +94,14 @@ argo pdf "https://example.com/paper.pdf" [--pages "1-5"] [--password "secret"]
 3. **SERP 链**（baidu/s、sogou/link）：禁止当正文来源
 4. **社交帖**：叙事/舆情，不进事实真值
 5. **深度研究**：先读 `references/research-protocol.md`；有决策含义就交工作包，不要靠扩词充问题树；`quality_gate_results.passed=false` 必须降级表述
+6. **上下文纪律**：搜索加 `--no-envelope`、按需 `-n`；读答案用 `results`，不要读 `candidates`（归档视图，占大头）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会吐 186 KB
 
 ## 证据闭环（v2.8.0）
 
-搜索输出已带证据门控，Agent 可编程判断「现在能不能下结论」：
-
-- `fetch_required`：bool。命中高后果域时为 true，下结论前必须核验正文
-- `evidence_loop.suggested / verified_count / pending_count`：建议核验 URL 列表 / 已核验 / 待核验
-- 每条结果：`fetch_suggested`（是否建议核验）、`has_fetched_evidence`（是否已核验）、`post_fetch_absorption`（正文级吸收分，核验后回填）
+搜索输出自带可编程门控，回答「现在能不能下结论」：`fetch_required`（高后果域为
+true，下结论前必须核验正文）、`evidence_loop.suggested/verified_count/pending_count`、
+每条结果的 `fetch_suggested` / `has_fetched_evidence` / `post_fetch_absorption`。
+字段语义见 `references/usage.md`。
 
 ```bash
 python3 scripts/search.py "贵州茅台股价" --verify 3

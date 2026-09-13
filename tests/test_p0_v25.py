@@ -371,6 +371,35 @@ class TestNewDomains(unittest.TestCase):
         d = route_query("刑法 判例 司法解释")
         self.assertEqual(d["domain"], "legal")
 
+    def test_law_domains_cover_both_scripts(self):
+        """日/韩法域的触发词必须同时收简繁字形。
+
+        实测（2026-09-13）：japan_law 的首条 pattern 写的是简体「宪法」，而
+        日文实际写「憲法」——「日本 憲法」因此掉进 chinese_general，被送到
+        博查/知乎这类中文通用源去打日文法令。韩侧更隐蔽：「韓」与「韩」是
+        两个不同字（不构成简化映射），「韓国 憲法」同样漏配。
+        """
+        cases = {
+            "日本 憲法": "japan_law",
+            "日本 宪法": "japan_law",
+            "日語 法律": "japan_law",
+            "韓国 憲法": "kor_law",
+            "韩国 宪法": "kor_law",
+            "韓国語 法令": "kor_law",
+        }
+        wrong = {q: route_query(q)["domain"] for q, want in cases.items()
+                 if route_query(q)["domain"] != want}
+        self.assertFalse(wrong, (
+            "简繁字形未覆盖——这些查询落到通用域后，会用中文通用源去打日/韩法令：\n  "
+            + "\n  ".join(f"{q} → {got}（期望 {cases[q]}）" for q, got in wrong.items())))
+
+    def test_chinese_law_queries_not_hijacked_by_script_variants(self):
+        """反向：放宽字形后，纯中文法条查询不得被日/韩法域吸走。"""
+        for q, want in (("民法典 第 1062 条", "law_text"),
+                        ("刑法 判例 司法解释", "legal")):
+            self.assertEqual(route_query(q)["domain"], want,
+                             f"{q} 被日/韩法域劫持")
+
     def test_domains_valid_config(self):
         # 所有新域在 config 中可解析
         names = {dom.get("name") for dom in get_domains()}

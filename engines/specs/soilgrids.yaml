@@ -1,0 +1,24 @@
+# ISRIC SoilGrids 全球土壤属性（逐点栅格，免认证）——【暂不启用】
+# 2026-09-13 实测：端点可达、schema 正确，但**所有 property × 所有深度的 values 全为 null**
+# （clay/sand/silt/soc/nitrogen/phh2o/bdod × 0-5cm… 全空，多坐标复核一致），
+# 属服务端降级（此前 also 出现过 503）。builder 逻辑已验证正确，待上游恢复后
+# 把 enabled 改回 true 即可启用，无需改代码。
+# 补 earth_science 域的「土壤」维度：usgs（地震/水文）、nasa_cmr（地球观测）、
+# 现在加上土壤属性。查地名 → 地理编码 → 取该点土壤理化属性。
+# 验证:
+#   python3 scripts/engine_validate.py --engine soilgrids --stage all --admit --write-doc
+
+engine_id: soilgrids
+type: soilgrids
+enabled: false
+cost_tier: free
+timeout: 25
+canary_query: "amsterdam"
+desc: "全球土壤属性（ISRIC SoilGrids，逐点栅格，免认证）"
+coverage: [earth_science, agriculture, environment]
+recommended: false
+latency_ms: 4000
+
+quality_queries:
+  - query: "amsterdam"
+  - query: "nairobi"

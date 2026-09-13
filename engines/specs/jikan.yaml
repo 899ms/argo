@@ -1,0 +1,23 @@
+# Jikan（MyAnimeList 数据，免认证非官方）——【暂不启用】
+# 2026-09-13 实测：/anime?q= 检索端点持续 504（curl 直连同样 504，非本机问题），
+# 而同站 /top/anime 与 /anime/{id} 返回 200 —— 是其检索端点的上游故障。
+# builder 逻辑已验证正确，待检索端点恢复后把 enabled 改回 true 即可。
+# 补 anime_encyclopedia 域：现有 bangumi（中文圈）+ 萌娘百科，Jikan 覆盖
+# MAL 的全球番剧库（含日文原名与评分）。社区接口，失败诚实空。
+# 验证:
+#   python3 scripts/engine_validate.py --engine jikan --stage all --admit --write-doc
+
+engine_id: jikan
+type: jikan
+enabled: false
+cost_tier: free
+timeout: 20
+canary_query: "naruto"
+desc: "动漫元数据（Jikan/MyAnimeList，免认证，含评分与集数）"
+coverage: [anime, media, entertainment, japanese]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "naruto"
+  - query: "attack on titan"

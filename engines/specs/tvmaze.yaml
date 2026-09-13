@@ -1,0 +1,20 @@
+# TVMaze 电视剧元数据（免认证）
+# 补 film_search 域的「剧集/电视」维度：现有 imdb/douban_movie 偏电影，
+# TVMaze 按剧集组织且含播出日期与语言，适合「某剧哪年首播」类查询。
+# 验证:
+#   python3 scripts/engine_validate.py --engine tvmaze --stage all --admit --write-doc
+
+engine_id: tvmaze
+type: tvmaze
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "dark"
+desc: "电视剧元数据（TVMaze，免认证，含首播/语言/评分）"
+coverage: [film, tv, media, entertainment]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "dark"
+  - query: "breaking bad"

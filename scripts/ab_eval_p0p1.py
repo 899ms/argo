@@ -11,6 +11,12 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+# 状态隔离必须早于任何状态模块 import：本脚本会走真实搜索路径
+# （super_search），不隔离就会把评测夹具写进生产 quota/breaker。
+# 历史后果：真实 circuit_breaker.json 被写入 190 个 eng_<hex> 夹具条目。
+import argo_paths as _argo_paths
+_ARGO_STATE = _argo_paths.isolate_state_dir("argo-abeval")
+
 from route import route_query
 from search import super_search, rrf_merge
 import tempfile

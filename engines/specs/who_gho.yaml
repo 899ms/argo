@@ -1,0 +1,20 @@
+# WHO GHO 全球卫生指标（官方 OData，免认证）
+# 补 medical 域的「全球公共卫生统计」维度：现有 medical 只有临床登记/药品/文献，
+# 没有国别卫生统计。指标目录本地过滤（OData contains 引号转义不可靠）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine who_gho --stage all --admit --write-doc
+
+engine_id: who_gho
+type: who_gho
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "malaria"
+desc: "WHO GHO 全球卫生指标（世卫官方统计目录，免认证）"
+coverage: [medical, health, statistics, official]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "malaria"
+  - query: "tobacco"

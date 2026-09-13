@@ -24,7 +24,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Any
 
-from engines_base import safe_search, _http_get_raw, http_open
+from engines_base import safe_search, _http_get_raw, http_open, rank_score
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -72,7 +72,7 @@ def _build_cnii_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"CiNii 失败: {e}")
             return []
         results = []
-        for it in (data.get("items") or [])[:n]:
+        for _rk, it in enumerate((data.get("items") or [])[:n]):
             if not isinstance(it, dict):
                 continue
             title = it.get("title", "")
@@ -90,7 +90,7 @@ def _build_cnii_engine(spec: dict[str, Any]) -> Any:
                 "url": url_,
                 "snippet": (" · ".join(parts) + " · " + str(it.get("description", "")))[:300],
                 "source": "cnii",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk),
             })
         return results
     return _engine
@@ -120,7 +120,7 @@ def _build_ndl_engine(spec: dict[str, Any]) -> Any:
         RSS = "http://purl.org/rss/1.0/"
         DC = "http://purl.org/dc/elements/1.1/"
         # NDL 的 <item> 无默认 namespace（rss 根只声明了带前缀的 xmlns）
-        for item in root.iter("item"):
+        for _rk1, item in enumerate(root.iter("item")):
             def _txt(ns: str, tag: str) -> str:
                 el = item.find(f"{{{ns}}}{tag}") if ns else item.find(tag)
                 return el.text.strip() if el is not None and el.text else ""
@@ -134,7 +134,7 @@ def _build_ndl_engine(spec: dict[str, Any]) -> Any:
                 "url": link,
                 "snippet": description[:300],
                 "source": "ndl",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk1),
             })
             if len(results) >= n:
                 break
@@ -190,7 +190,7 @@ def _build_kor_law_engine(spec: dict[str, Any]) -> Any:
                     "url": link,
                     "snippet": meta[:300],
                     "source": "kor_law",
-                    "score": 0.7,
+                    "score": rank_score(0.7, len(results)),
                 })
                 if len(results) >= n:
                     return results
@@ -221,7 +221,7 @@ def _build_hatena_bookmark_engine(spec: dict[str, Any]) -> Any:
         results = []
         RSS = "http://purl.org/rss/1.0/"
         DC = "http://purl.org/dc/elements/1.1/"
-        for item in root.iter(f"{{{RSS}}}item"):
+        for _rk3, item in enumerate(root.iter(f"{{{RSS}}}item")):
             def _txt(ns: str, tag: str) -> str:
                 el = item.find(f"{{{ns}}}{tag}")
                 return el.text.strip() if el is not None and el.text else ""
@@ -235,7 +235,7 @@ def _build_hatena_bookmark_engine(spec: dict[str, Any]) -> Any:
                 "url": link,
                 "snippet": (f"bookmarked: {date[:10]}" if date else "")[:300],
                 "source": "hatena_bookmark",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk3),
             })
             if len(results) >= n:
                 break
@@ -266,7 +266,7 @@ def _build_dnb_engine(spec: dict[str, Any]) -> Any:
             return []
         results = []
         SRW = "http://www.loc.gov/zing/srw/"
-        for rec in root.iter(f"{{{SRW}}}record"):
+        for _rk4, rec in enumerate(root.iter(f"{{{SRW}}}record")):
             title = ""
             link = ""
             # 记录内 RDF/DC 元数据：取 dc:title / dc:identifier 或链接
@@ -286,7 +286,7 @@ def _build_dnb_engine(spec: dict[str, Any]) -> Any:
                 "url": link or f"https://portal.dnb.de/opac/simpleSearch?query={urllib.parse.quote(title)}",
                 "snippet": "",
                 "source": "dnb",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk4),
             })
             if len(results) >= n:
                 break
@@ -310,7 +310,7 @@ def _build_doaj_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"DOAJ 失败: {e}")
             return []
         results = []
-        for r in (data.get("results") or [])[:n]:
+        for _rk5, r in enumerate((data.get("results") or [])[:n]):
             bib = r.get("bibjson") or {}
             title = bib.get("title", "")
             # link 是 [{url, type}] 数组，取 fulltext/doi 优先
@@ -334,7 +334,7 @@ def _build_doaj_engine(spec: dict[str, Any]) -> Any:
                 "url": link,
                 "snippet": (" · ".join(parts) + " · " + str(bib.get("abstract", "")))[:300],
                 "source": "doaj",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk5),
             })
         return results
     return _engine
@@ -357,7 +357,7 @@ def _build_europeana_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"Europeana 失败: {e}")
             return []
         results = []
-        for it in (data.get("items") or [])[:n]:
+        for _rk6, it in enumerate((data.get("items") or [])[:n]):
             if not isinstance(it, dict):
                 continue
             title = it.get("title")
@@ -374,7 +374,7 @@ def _build_europeana_engine(spec: dict[str, Any]) -> Any:
                 "url": link,
                 "snippet": (f"provider: {provider}" if provider else "")[:300],
                 "source": "europeana",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk6),
             })
         return results
     return _engine
@@ -398,7 +398,7 @@ def _build_hal_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"HAL 失败: {e}")
             return []
         results = []
-        for doc in (data.get("response", {}).get("docs") or [])[:n]:
+        for _rk7, doc in enumerate((data.get("response", {}).get("docs") or [])[:n]):
             title = doc.get("title_s")
             if isinstance(title, list):
                 title = title[0] if title else ""
@@ -413,7 +413,7 @@ def _build_hal_engine(spec: dict[str, Any]) -> Any:
                 "url": link,
                 "snippet": (" · ".join(parts) + " · " + str(doc.get("abstract_s", "")))[:300],
                 "source": "hal",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk7),
             })
         return results
     return _engine
@@ -435,7 +435,7 @@ def _build_eu_opendata_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"EU ODP 失败: {e}")
             return []
         results = []
-        for it in (data.get("result", {}).get("results") or [])[:n]:
+        for _rk8, it in enumerate((data.get("result", {}).get("results") or [])[:n]):
             if not isinstance(it, dict):
                 continue
             # title 是 {语言code: 标题} 映射；优先 en/zh，否则取首个
@@ -460,7 +460,7 @@ def _build_eu_opendata_engine(spec: dict[str, Any]) -> Any:
                 "url": str(url_),
                 "snippet": "",
                 "source": "eu_opendata",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk8),
             })
         return results
     return _engine
@@ -486,7 +486,7 @@ def _build_open_meteo_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"Open-Meteo geocode 失败: {e}")
             return []
         results = []
-        for place in (geo.get("results") or [])[:n]:
+        for _rk9, place in enumerate((geo.get("results") or [])[:n]):
             lat, lon = place.get("latitude"), place.get("longitude")
             if lat is None or lon is None:
                 continue
@@ -511,7 +511,7 @@ def _build_open_meteo_engine(spec: dict[str, Any]) -> Any:
                 "snippet": (f"当前 {temp}°C · {wmo} · 风速 {windspeed}km/h"
                             if temp is not None else "暂无数据")[:300],
                 "source": "open_meteo",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk9),
             })
         return results
     return _engine
@@ -538,7 +538,7 @@ def _build_searchmysite_engine(spec: dict[str, Any]) -> Any:
         results = []
         # 结果容器 class="search-result"，按容器切段后取标题与链接
         # （容器内 href 先于 class="result-link"，正则需兼容两种顺序）
-        for m in re.finditer(r'<div class="search-result[^"]*">(.*?)(?=<div class="search-result|$)', raw, re.S):
+        for _rk10, m in enumerate(re.finditer(r'<div class="search-result[^"]*">(.*?)(?=<div class="search-result|$)', raw, re.S)):
             seg = m.group(1)
             tm = re.search(r'result-title-txt[^>]*>(.*?)</span>', seg, re.S)
             lm = re.search(r'href="(https?://[^"]+)"[^>]*class="result-link"', seg) or \
@@ -552,7 +552,7 @@ def _build_searchmysite_engine(spec: dict[str, Any]) -> Any:
                 "url": link,
                 "snippet": "",
                 "source": "searchmysite",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk10),
             })
             if len(results) >= n:
                 break
@@ -580,9 +580,9 @@ def _build_lieu_engine(spec: dict[str, Any]) -> Any:
             return []
         results = []
         # 结果项 <li class="result|entry">，内含 <a href="https://...">文本</a>
-        for m in re.finditer(
+        for _rk11, m in enumerate(re.finditer(
                 r'<li class="(?:result|entry)[^"]*">.*?<a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>',
-                raw, re.S):
+                raw, re.S)):
             link = m.group(1)
             title = re.sub(r"<[^>]+>", "", m.group(2)).strip()
             if not title and not link:
@@ -592,7 +592,7 @@ def _build_lieu_engine(spec: dict[str, Any]) -> Any:
                 "url": link,
                 "snippet": "",
                 "source": "lieu",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk11),
             })
             if len(results) >= n:
                 break
@@ -635,7 +635,7 @@ def _build_opensky_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"OpenSky 失败: {e}")
             return []
         results = []
-        for st in (data.get("states") or [])[:n]:
+        for _rk12, st in enumerate((data.get("states") or [])[:n]):
             if not isinstance(st, list) or len(st) < 8:
                 continue
             callsign = (st[1] or "").strip()
@@ -650,7 +650,7 @@ def _build_opensky_engine(spec: dict[str, Any]) -> Any:
                 "snippet": (f"高度 {alt}m · 地速 {vel}m/s · 位置 {lat:.2f},{lon:.2f}"
                             if alt else f"位置 {lat:.2f},{lon:.2f}")[:300],
                 "source": "opensky",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk12),
             })
         return results
     return _engine
@@ -678,7 +678,7 @@ def _build_electricity_maps_engine(spec: dict[str, Any]) -> Any:
             return []
         q = query.lower()
         results = []
-        for key, zone in data.items():
+        for _rk13, (key, zone) in enumerate(data.items()):
             name = zone.get("zoneName", "")
             if q in key.lower() or q in name.lower() or q in (zone.get("countryCode") or "").lower():
                 results.append({
@@ -687,7 +687,7 @@ def _build_electricity_maps_engine(spec: dict[str, Any]) -> Any:
                     "snippet": (f"分区键 {key} · 商业可用: {zone.get('isCommerciallyAvailable')}"
                                 f" · 层级 {zone.get('tier')}")[:300],
                     "source": "electricity_maps",
-                    "score": 0.7,
+                    "score": rank_score(0.7, _rk13),
                 })
                 if len(results) >= n:
                     break
@@ -712,7 +712,7 @@ def _build_usda_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"USDA 失败: {e}")
             return []
         results = []
-        for food in (data.get("foods") or [])[:n]:
+        for _rk14, food in enumerate((data.get("foods") or [])[:n]):
             if not isinstance(food, dict):
                 continue
             desc = food.get("description", "")
@@ -726,7 +726,7 @@ def _build_usda_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://fdc.nal.usda.gov/food-details/{fdc}/nutrients" if fdc else "",
                 "snippet": (" · ".join(parts) + f" · FDC {fdc}")[:300] if fdc else " · ".join(parts)[:300],
                 "source": "usda",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk14),
             })
         return results
     return _engine
@@ -752,7 +752,7 @@ def _build_tatoeba_engine(spec: dict[str, Any]) -> Any:
         sentences = data.get("results")
         if isinstance(sentences, dict):
             sentences = sentences.get("Sentences") or []
-        for s in (sentences or [])[:n]:
+        for _rk15, s in enumerate((sentences or [])[:n]):
             if not isinstance(s, dict):
                 continue
             text = s.get("text", "")
@@ -771,7 +771,7 @@ def _build_tatoeba_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://tatoeba.org/en/sentences/show/{s.get('id', '')}" if s.get("id") else "",
                 "snippet": snippet,
                 "source": "tatoeba",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk15),
             })
         return results
     return _engine
@@ -794,7 +794,7 @@ def _build_figshare_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"Figshare 失败: {e}")
             return []
         results = []
-        for art in (data if isinstance(data, list) else [])[:n]:
+        for _rk16, art in enumerate((data if isinstance(data, list) else [])[:n]):
             if not isinstance(art, dict):
                 continue
             title = art.get("title", "")
@@ -805,7 +805,7 @@ def _build_figshare_engine(spec: dict[str, Any]) -> Any:
                 "url": art.get("url_public_api") or art.get("url_public_html") or "",
                 "snippet": f"DOI: {art.get('doi', '')}"[:300] if art.get("doi") else "",
                 "source": "figshare",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk16),
             })
         return results
     return _engine
@@ -876,7 +876,7 @@ def _build_tencent_kline_engine(spec: dict[str, Any]) -> Any:
             return []
         results = []
         # 最近 n 根：每根一行
-        for row in klines[-n:]:
+        for _rk17, row in enumerate(klines[-n:]):
             if len(row) < 6:
                 continue
             date, opn, close, high, low, vol = row[0], row[1], row[2], row[3], row[4], row[5]
@@ -885,7 +885,7 @@ def _build_tencent_kline_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://gu.qq.com/{symbol}/kline",
                 "snippet": (f"开 {opn} · 收 {close} · 高 {high} · 低 {low} · 量 {vol}")[:300],
                 "source": "tencent_kline",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk17),
             })
         return results
     return _engine
@@ -913,7 +913,7 @@ def _build_qq_music_engine(spec: dict[str, Any]) -> Any:
             return []
         songs = ((data.get("data") or {}).get("song") or {}).get("list") or []
         results = []
-        for s in songs[:n]:
+        for _rk18, s in enumerate(songs[:n]):
             if not isinstance(s, dict):
                 continue
             title = s.get("songname", "")
@@ -928,7 +928,7 @@ def _build_qq_music_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://y.qq.com/n/ryqq/songDetail/{mid}" if mid else "",
                 "snippet": (" · ".join(parts))[:300],
                 "source": "qq_music",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk18),
             })
         return results
     return _engine
@@ -1168,11 +1168,27 @@ def _build_met_museum_engine(spec: dict[str, Any]) -> Any:
             bits = [b for b in (artist, str(d.get("objectDate") or "").strip(),
                                 str(d.get("medium") or "").strip(),
                                 str(d.get("department") or "").strip()) if b]
-            out.append({
+            _row: dict[str, Any] = {
                 "title": title,
                 "url": str(d.get("objectURL") or "").strip(),
                 "snippet": " · ".join(bits)[:300],
                 "source": "met_museum",
-            })
+            }
+            # 图片字段：search 已带 hasImages=true（只筛有图的），但详情里
+            # primaryImage/primaryImageSmall 仍可能是空串，回落到 Small；
+            # 两者都空则不加字段，不发空链接。
+            #
+            # 上游权利策略是本字段的主要变量（实测 2026-09-13）：Met 对
+            # `isPublicDomain: false` 的藏品**一律不给图片链接**（"monet" 前
+            # 四个 objectID 全空，仅公版件有值）。所以这里取不到图不代表
+            # 解析坏了——Met 只开放公有领域影像，受版权保护的只给著录信息。
+            _img = (str(d.get("primaryImage") or "").strip()
+                    or str(d.get("primaryImageSmall") or "").strip())
+            if _img:
+                _row["image_url"] = _img
+                _row["image_license"] = (
+                    "公版（Met Open Access）" if d.get("isPublicDomain")
+                    else "受版权保护，仅供检索定位（Met）")
+            out.append(_row)
         return out
     return _engine

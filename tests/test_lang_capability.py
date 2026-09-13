@@ -59,11 +59,39 @@ def profile(monkeypatch):
 
 
 class TestProfileAvailable:
-    def test_available_when_real_profile_exists(self):
-        """真实画像应已被 C 阶段生成。"""
+    """画像可用性与过期策略。
+
+    **本类必须 hermetic**：原先直接断言 `lc.available() is True`，而
+    `available()` 取决于真实画像文件的 mtime 与 `MAX_AGE_S=30 天`。
+    画像随 C 阶段实测更新（最近一次 2026-09-10），于是该断言会在
+    2026-10-10 之后必然变红——与代码对错无关。已知的定时炸弹：
+    测试挂掉的日子由数据生成日期决定，不由缺陷决定。
+
+    改为显式操控 `MAX_AGE_S` 来测「策略」，不再依赖当天日期。
+    """
+
+    def test_available_when_profile_is_fresh(self, monkeypatch):
+        """画像在有效期内可用（把窗口放到极大以消除日期依赖）。"""
+        monkeypatch.setattr(lc, "MAX_AGE_S", 10 ** 9)
+        lc.reload()
         assert lc.available() is True
 
-    def test_real_profile_has_expected_shape(self):
+    def test_expired_profile_degrades_safely(self, monkeypatch):
+        """画像过期 → available() False，且各查询回落中性，不抛异常。"""
+        monkeypatch.setattr(lc, "MAX_AGE_S", -1)
+        lc.reload()
+        assert lc.available() is False
+        assert lc.score_adjust("wikipedia", "ja") == lc.NEUTRAL
+        assert lc.engines_for_lang("ja") == set()
+
+    def test_real_profile_has_expected_shape(self, monkeypatch):
+        """画像文件本身必须存在且形状正确（与有效期解耦）。
+
+        读文件内容而非 `_load()`：`_load()` 会被过期策略返回 None，
+        把「文件缺失」和「文件过期」两种故障混成一个断言。
+        """
+        monkeypatch.setattr(lc, "MAX_AGE_S", 10 ** 9)
+        lc.reload()
         p = lc._load()
         assert p and "lang_engines" in p and "summary" in p
         # 18 语言 × ≥17 引擎有良好覆盖

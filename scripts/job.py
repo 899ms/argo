@@ -45,6 +45,7 @@ v4（2026-08-11）：数据源扩容（一/二/四类，全部实测可用）
 """
 import argparse, json, os, re, subprocess, sys, threading, time, urllib.request
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote
 from typing import Optional
 
@@ -297,12 +298,15 @@ def load_snapshot(path: str) -> Optional[dict]:
 
 
 def save_snapshot(path: str, payload: dict) -> None:
+    """写快照（原子写走 argo_paths 单一真源）。
+
+    旧实现用固定的 `<path>.tmp`：两个 `argo job --watch` 并行时，
+    先完成的进程会把后者的 tmp 一并 replace 走，后者再 replace 抛
+    FileNotFoundError，快照直接丢失。
+    """
     os.makedirs(JOBS_DIR, exist_ok=True)
-    # 原子写：tmp + replace，避免并发快照 torn write 损坏 JSON
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    import argo_paths
+    argo_paths.atomic_write_json(Path(path), payload, indent=1)
 
 
 # ── HTTP 基础 ───────────────────────────────────────────────────────────

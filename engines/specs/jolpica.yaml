@@ -1,0 +1,20 @@
+# Jolpica F1 — Ergast API 的社区继任者（免认证）
+# 补 sports_search 域的「赛车」维度。Ergast 已于 2024 停止服务，Jolpica 兼容其接口。
+# 验证:
+#   python3 scripts/engine_validate.py --engine jolpica --stage all --admit --write-doc
+
+engine_id: jolpica
+type: jolpica
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "verstappen"
+desc: "F1 车手积分榜/赛程（Jolpica，Ergast 继任，免认证）"
+family: sports
+coverage: [sports, racing, statistics]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "verstappen"
+  - query: "f1 2026 standings"

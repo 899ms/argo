@@ -1,0 +1,20 @@
+# Deezer 音乐艺人/专辑（免认证）
+# 补 media_search 域：现有 qq_music（华语）、itunes（Apple 生态）、musicbrainz（元数据），
+# Deezer 补欧洲/西语圈曲库与粉丝量维度。
+# 验证:
+#   python3 scripts/engine_validate.py --engine deezer --stage all --admit --write-doc
+
+engine_id: deezer
+type: deezer
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "radiohead"
+desc: "音乐艺人/专辑（Deezer，免认证）"
+coverage: [media, music, entertainment]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "radiohead"
+  - query: "coldplay"

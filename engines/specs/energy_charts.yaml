@@ -1,0 +1,21 @@
+# Energy-Charts — 欧洲发电结构与可再生占比（Fraunhofer ISE，免认证）
+# 补 energy 域的「发电结构/可再生实时」维度：按国家给逐时发电类型曲线。
+# 文档要求署名（数据来源 Fraunhofer ISE），已在 desc 与 url 体现。
+# 国家码由 builder 侧按查询词解析，默认 de（德国）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine energy_charts --stage all --admit --write-doc
+
+engine_id: energy_charts
+type: energy_charts
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "germany power"
+desc: "Energy-Charts 欧洲发电结构/可再生占比（Fraunhofer ISE，免认证）"
+coverage: [energy, environment, statistics, europe]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "germany power"
+  - query: "france nuclear"

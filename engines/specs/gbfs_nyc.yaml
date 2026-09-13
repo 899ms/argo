@@ -1,0 +1,32 @@
+# GBFS — 通用共享单车/滑板车标准规范（免认证）
+# 补「共享单车实时站点」空白：GBFS 是标准规范，全球数百城市同构，
+# 换 base URL 即可复用（本 spec 以 NYC Citi Bike 为首发，其余城市按需追加）。
+# 榜单/快照型源：查询词不参与过滤，命中即给城市站点清单。
+# 验证:
+#   python3 scripts/engine_validate.py --engine gbfs_nyc --stage all --admit --write-doc
+
+engine_id: gbfs_nyc
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://gbfs.citibikenyc.com/gbfs/en/station_information.json
+timeout: 15
+query_param: ""
+canary_query: "bike"
+desc: "GBFS 共享单车站点（NYC Citi Bike，通用规范，免认证）"
+coverage: [transport, geo, realtime, open_data]
+recommended: false
+latency_ms: 1500
+
+headers:
+  User-Agent: argo-search/1.0 (+gbfs)
+
+output_map:
+  items: data.stations
+  item_title: name
+  item_summary: capacity
+  url_template: "https://maps.google.com/?q={lat},{lon}"
+
+quality_queries:
+  - query: "bike share"

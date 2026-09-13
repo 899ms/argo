@@ -158,14 +158,11 @@ def _save_state(state: dict[str, Any]) -> None:
     global _cache, _cache_mtime
     with _lock:
         try:
-            STATE_DIR.mkdir(parents=True, exist_ok=True)
             state["updated_at"] = time.time()
-            tmp = STATE_PATH.with_suffix(".tmp")
-            tmp.write_text(
-                json.dumps(state, ensure_ascii=False, separators=(",", ":")),
-                encoding="utf-8",
-            )
-            tmp.replace(STATE_PATH)
+            # 原子写走单一真源（唯一 tmp 名）——旧实现固定 `.tmp` 名，
+            # 并发进程会互相搬走临时文件导致写失败。
+            import argo_paths as _paths
+            _paths.atomic_write_json(STATE_PATH, state, indent=None)
             _cache = state
             _cache_mtime = STATE_PATH.stat().st_mtime
         except OSError:

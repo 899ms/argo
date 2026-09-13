@@ -27,7 +27,6 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -141,21 +140,13 @@ def list_backups(file_name: str) -> list[Path]:
 # ── 原子写 ──────────────────────────────────────────────────────────────
 
 def atomic_write(path: Path, content: str, secret: bool = False) -> None:
-    """同目录临时文件 + os.replace（原子）。含密钥时 0600 权限。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        if secret:
-            os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """原子写文本（薄转发到 argo_paths 单一真源）。含密钥时 0600 权限。
+
+    本函数曾自带一份 mkstemp + replace 实现，与 argo_paths.atomic_write_text
+    逐行重复；收敛到真源后，唯一 tmp 名/失败清理等不变量只有一处维护。
+    """
+    import argo_paths
+    argo_paths.atomic_write_text(path, content, mode=0o600 if secret else None)
 
 
 # ── JSON patch（保留未改动子树原文）──────────────────────────────────────

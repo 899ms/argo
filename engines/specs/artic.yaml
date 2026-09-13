@@ -1,0 +1,20 @@
+# Art Institute of Chicago 馆藏（免认证，含 IIIF 高清图）
+# 补 art_museum 域：现有 met_museum 单源，且欧洲博物馆免 key 端点基本全灭
+# （Europeana/DPLA/Harvard 需 key，Rijksmuseum 已 410），AIC + Cleveland 是免 key 仅存。
+# 验证:
+#   python3 scripts/engine_validate.py --engine artic --stage all --admit --write-doc
+
+engine_id: artic
+type: artic
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "monet"
+desc: "芝加哥艺术博物馆馆藏（免认证，含 IIIF 图像）"
+coverage: [art, museum, culture, image]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "monet"
+  - query: "woodblock print"

@@ -7,6 +7,7 @@ import functools
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -116,6 +117,46 @@ def safe_search(fn: Callable) -> Callable:
             logger.error(f"引擎 {name} 未预期异常: {type(e).__name__}: {e}", exc_info=True)
         return []
     return wrapper
+
+
+# ── 引擎内排序分（rank decay）─────────────────────────────────────────────────
+# 2026-09-13 修复「硬编码常量 score」：多数 builder 给同一引擎返回的每条结果
+# 写死同一个分（如全部 0.7），于是上游 API 自己的相关性排序在进 RRF 前就被
+# 抹平了——融合层只剩「引擎内序位」这点信息，且 local_five_dim_rerank 的
+# relevance 维度对同引擎结果无区分度。
+#
+# 约定：builder 返回的 list 顺序 = 上游 API 的相关性顺序（各实现均按 API 原序
+# append，未重排）。因此不需要猜上游分数语义，只需把「位置」编码进 score：
+#   base  —— 该引擎的质量档位（沿用原常量，保持引擎间相对权重不变）；
+#   rank  —— 在本次结果中的 0 基序位。
+# 衰减用 1/(1+rank*DECAY)：rank0=base、rank1≈0.97*base、rank4≈0.88*base，
+# 单调递减且差距温和（避免位置噪声压过引擎档位差）。
+#
+# 上游本身给了真实分数的引擎（openalex/crossref 等）不要用本函数——直接透传
+# 上游分更准；本函数只服务「原先写死常量」的场景。
+RANK_DECAY = 0.03
+
+
+def rank_score(base: float, rank: int) -> float:
+    """把常量基础分 + 结果序位转成单调递减的相关性分（保序、不夸大）。
+
+    base 保持引擎档位（跨引擎相对权重不变），rank 仅在引擎内做温和衰减。
+    """
+    try:
+        b = float(base)
+        r = int(rank)
+    except (TypeError, ValueError):
+        return float(base) if isinstance(base, (int, float)) else 0.7
+    # 边界加固：NaN/Inf 会一路传到融合层，而下游最终排序用 abs(score)
+    # （search.py 的 merged.sort），NaN 的比较结果恒 False 会让排序退化为
+    # 任意序；负分经 abs() 会**反转成最高分**。两者都不是调用方有意为之，
+    # 统一夹到 [0, 1] 并让非有限值退化为默认档位。
+    if not math.isfinite(b):
+        return 0.7
+    b = min(max(b, 0.0), 1.0)
+    if r <= 0:
+        return b
+    return round(b / (1.0 + r * RANK_DECAY), 4)
 
 
 def _run(cmd: list[str], timeout: float = 8, engine_name: str = "?") -> str:
@@ -638,9 +679,19 @@ def _parse_http_payload(raw: str, fmt: str, eng: str, n: int,
             "snippet": output_map.get("item_summary", "snippet"),
             "source": output_map.get("item_source", "source"),
             "published_at": output_map.get("item_published_at", "published_at"),
+            # 可选图片字段：图源（nasa_images 等）声明 item_image 后，结果里多出
+            # image_url / image_license，供「搜到图 → 直接看图」用。路径须指向
+            # **字符串**（如 links.0.href）——指向 dict 会被 _coerce_field 丢成空串
+            # （NASA 的 links.0 是 {href, rel, render, ...}）。
+            "image_url": output_map.get("item_image", ""),
+            "image_license": output_map.get("item_image_license", ""),
         }, url_template=output_map.get("url_template"))(data)
+        # spec 级授权常量：授权不随条目变化的源（如 NASA 公版）在 spec 上写一次
+        _lic = spec.get("image_license")
         for r in parsed:
             r.setdefault("source", eng)
+            if _lic and r.get("image_url"):
+                r.setdefault("image_license", _lic)
             if isinstance(r.get("snippet"), str) and len(r["snippet"]) > 300:
                 r["snippet"] = r["snippet"][:300]
         # preserve_source（声明式 spec）：保留 API 返回的真实来源标注

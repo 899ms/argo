@@ -1,6 +1,6 @@
 _generated: 由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。
 version: 2
-last_updated: '2026-09-12'
+last_updated: '2026-09-13'
 engines:
 - name: anysearch
   tier: T1
@@ -27,6 +27,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: Internet Archive 高级搜索（免认证）
+- name: artic
+  tier: T1
+  type: artic
+  coverage:
+  - art
+  - museum
+  - culture
+  - image
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 芝加哥艺术博物馆馆藏（免认证，含 IIIF 图像）
 - name: arxiv
   tier: T1
   type: http
@@ -178,6 +192,34 @@ engines:
   recommended: true
   explicit_only: false
   desc: 字节搜索 API，中文通用/news
+- name: carbon_intensity
+  tier: T1
+  type: http
+  coverage:
+  - environment
+  - energy
+  - realtime
+  - official
+  latency_ms: 1200
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 英国电网碳强度与发电结构（国家电网官方，免认证）
+- name: cleveland
+  tier: T1
+  type: cleveland
+  coverage:
+  - art
+  - museum
+  - culture
+  - image
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 克利夫兰艺术博物馆（CC0 开放图像，免认证）
 - name: clinicaltrials
   tier: T1
   type: clinicaltrials
@@ -325,6 +367,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: DBLP 计算机科学文献（免认证，偶发 SSL 抖动）
+- name: deezer
+  tier: T1
+  type: deezer
+  coverage:
+  - media
+  - music
+  - entertainment
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 音乐艺人/专辑（Deezer，免认证）
 - name: deps_dev
   tier: T1
   type: deps_dev
@@ -437,6 +492,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 东方财富，金融数据首选
+- name: egov_law
+  tier: T1
+  type: egov_law
+  coverage:
+  - legal
+  - law_text
+  - japanese
+  - official
+  latency_ms: 3000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 日本法令检索（e-Gov 官方全文，免认证）
 - name: electricity_maps
   tier: T1
   type: electricity_maps
@@ -497,6 +566,20 @@ engines:
   recommended: false
   explicit_only: false
   desc: 产品生命周期（版本/最新/支持期/EOL，endoflife.date 200+ 产品）
+- name: energy_charts
+  tier: T1
+  type: energy_charts
+  coverage:
+  - energy
+  - environment
+  - statistics
+  - europe
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: Energy-Charts 欧洲发电结构/可再生占比（Fraunhofer ISE，免认证）
 - name: eu_opendata
   tier: T1
   type: eu_opendata
@@ -681,6 +764,20 @@ engines:
   recommended: false
   explicit_only: false
   desc: FxTwitter 公开 API：X/Twitter 推文搜索（零认证，含互动元数据）
+- name: gbfs_nyc
+  tier: T1
+  type: http
+  coverage:
+  - transport
+  - geo
+  - realtime
+  - open_data
+  latency_ms: 1500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: GBFS 共享单车站点（NYC Citi Bike，通用规范，免认证）
 - name: gbif
   tier: T1
   type: gbif
@@ -693,6 +790,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 全球生物多样性物种检索（学名/俗名，api.gbif.org 免认证）
+- name: gdacs
+  tier: T1
+  type: gdacs
+  coverage:
+  - earth_science
+  - disaster
+  - environment
+  - official
+  latency_ms: 3000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: GDACS 全球多灾种预警（洪水/台风/野火/地震，EU JRC 官方，免认证）
 - name: gdelt
   tier: T1
   type: gdelt
@@ -892,6 +1003,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: iTunes Search API（中文 country=cn；专辑问 entity=album，免认证）
+- name: jikan
+  tier: T1
+  type: jikan
+  coverage:
+  - anime
+  - media
+  - entertainment
+  - japanese
+  latency_ms: 2500
+  cost: free
+  status: disabled
+  recommended: false
+  explicit_only: false
+  desc: 动漫元数据（Jikan/MyAnimeList，免认证，含评分与集数）
 - name: jin10
   tier: T1
   type: jin10
@@ -904,6 +1029,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: 金十数据财经快讯（免认证）
+- name: jolpica
+  tier: T1
+  type: jolpica
+  coverage:
+  - sports
+  - racing
+  - statistics
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: F1 车手积分榜/赛程（Jolpica，Ergast 继任，免认证）
 - name: juejin
   tier: T1
   type: juejin
@@ -917,6 +1055,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 掘金技术文章搜索（免认证）
+- name: k10plus
+  tier: T1
+  type: k10plus
+  coverage:
+  - book
+  - library
+  - academic
+  - german
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: K10plus 联合目录（德国最大图书馆联合目录，SRU，免认证）
 - name: keenable
   tier: T1
   type: http
@@ -968,6 +1120,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: webring 专用搜索（只索引加入 webring 的小众站点，HTML 解析）
+- name: listenbrainz
+  tier: T1
+  type: listenbrainz
+  coverage:
+  - media
+  - music
+  - statistics
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 音乐收听趋势榜（ListenBrainz，免认证）
 - name: local_arxiv
   tier: T2
   type: http
@@ -1403,6 +1568,34 @@ engines:
   recommended: false
   explicit_only: false
   desc: 网易云音乐搜索（中文曲库/专辑元数据，免认证，非官方接口）
+- name: nhtsa_vpic
+  tier: T1
+  type: nhtsa_vpic
+  coverage:
+  - shopping
+  - vehicle
+  - reference
+  - official
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 车辆厂商/车型本体（NHTSA vPIC，免认证）
+- name: noaa_swpc
+  tier: T1
+  type: noaa_swpc
+  coverage:
+  - astronomy
+  - space
+  - science
+  - official
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 空间天气（NOAA SWPC，Kp 指数/太阳活动区，官方免认证）
 - name: npm
   tier: T1
   type: http
@@ -1428,6 +1621,20 @@ engines:
   recommended: false
   explicit_only: false
   desc: NVD 漏洞情报（CVE 编号/描述/CVSS 与 KEV 标记；免认证 5 请求/30 秒）
+- name: obis
+  tier: T1
+  type: obis
+  coverage:
+  - species
+  - marine
+  - science
+  - open_data
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: OBIS 海洋物种观测（IOC/UNESCO 官方，2.29 亿条记录，免认证）
 - name: octen
   tier: T1
   type: octen
@@ -1490,6 +1697,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: OpenCorporates 全球公司注册（尽调/反欺诈，免认证）
+- name: openf1
+  tier: T1
+  type: openf1
+  coverage:
+  - sports
+  - racing
+  - realtime
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: F1 车手/车队/赛程数据（OpenF1，免认证，社区维护）
 - name: openfda
   tier: T1
   type: openfda
@@ -1502,6 +1722,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: openFDA 药品标签（免认证）
+- name: openligadb
+  tier: T1
+  type: openligadb
+  coverage:
+  - sports
+  - football
+  - realtime
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 德甲/欧洲联赛赛程比分（OpenLigaDB，免认证）
 - name: openreview
   tier: T1
   type: http
@@ -1710,6 +1943,33 @@ engines:
   recommended: true
   explicit_only: false
   desc: RFC/互联网标准文档检索（datatracker.ietf.org 免认证）
+- name: ror
+  tier: T1
+  type: ror
+  coverage:
+  - org_entity
+  - academic
+  - reference
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: ROR 研究机构标识（含域名映射，免认证）
+- name: satnogs
+  tier: T1
+  type: satnogs
+  coverage:
+  - astronomy
+  - space
+  - satellites
+  - open_data
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 卫星目录（SatNOGS DB，NORAD ID/发射信息，免认证）
 - name: searchmysite
   tier: T1
   type: searchmysite
@@ -1784,6 +2044,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: 新浪实时行情快照（现价/涨跌/成交量，免认证）
+- name: soilgrids
+  tier: T1
+  type: soilgrids
+  coverage:
+  - earth_science
+  - agriculture
+  - environment
+  latency_ms: 4000
+  cost: free
+  status: disabled
+  recommended: false
+  explicit_only: false
+  desc: 全球土壤属性（ISRIC SoilGrids，逐点栅格，免认证）
 - name: sspai
   tier: T1
   type: http
@@ -1951,6 +2224,19 @@ engines:
   recommended: true
   explicit_only: true
   desc: TinyFish 学术论文搜索（免费，含作者/发表处/年份/被引/pdf_url）
+- name: tle_mirror
+  tier: T1
+  type: tle_mirror
+  coverage:
+  - astronomy
+  - space
+  - satellites
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: TLE 轨道根数镜像（第三方，Celestrak 不可达时替代，免认证）
 - name: toutiao_hot
   tier: T1
   type: toutiao_hot
@@ -1976,6 +2262,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 火车余票查询（免 Key：12306 官方接口，车次时刻+余票）
+- name: tvmaze
+  tier: T1
+  type: tvmaze
+  coverage:
+  - film
+  - tv
+  - media
+  - entertainment
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 电视剧元数据（TVMaze，免认证，含首播/语言/评分）
 - name: twitter
   tier: T1
   type: cli
@@ -2157,6 +2457,34 @@ engines:
   recommended: true
   explicit_only: false
   desc: 微信读书图书搜索（中文书目/评分/在读，需 WEREAD_API_KEY）
+- name: who_don
+  tier: T1
+  type: who_don
+  coverage:
+  - medical
+  - health
+  - news
+  - official
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: WHO 疫情暴发通报（世卫官方公共卫生事件，免认证 OData）
+- name: who_gho
+  tier: T1
+  type: who_gho
+  coverage:
+  - medical
+  - health
+  - statistics
+  - official
+  latency_ms: 2500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: WHO GHO 全球卫生指标（世卫官方统计目录，免认证）
 - name: wiby
   tier: T1
   type: wiby
@@ -2233,6 +2561,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: 世界银行宏观指标（GDP/通胀/失业/人口，api.worldbank.org 免认证）
+- name: worms
+  tier: T1
+  type: worms
+  coverage:
+  - species
+  - marine
+  - science
+  - reference
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: WoRMS 海洋物种权威命名（分类学标准，免认证）
 - name: xiaohongshu
   tier: T1
   type: cli

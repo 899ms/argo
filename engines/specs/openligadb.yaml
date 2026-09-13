@@ -1,0 +1,20 @@
+# OpenLigaDB 德甲/欧洲联赛赛程比分（免认证）
+# 补 sports_search 域的足球赛程/比分维度（thesportsdb 偏球队元数据）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine openligadb --stage all --admit --write-doc
+
+engine_id: openligadb
+type: openligadb
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "bayern"
+desc: "德甲/欧洲联赛赛程比分（OpenLigaDB，免认证）"
+family: sports
+coverage: [sports, football, realtime]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "bayern"
+  - query: "bundesliga"

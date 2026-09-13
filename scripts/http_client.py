@@ -279,15 +279,33 @@ class _HostBucket:
         self._last_dispatch = 0.0
 
     def _wait_slot(self) -> None:
+        """等到本线程拿到「发起权」，并保证相邻发起间隔 >= interval。
+
+        实现是取号-复核循环：在锁内检查「现在是否已到允许时刻」，
+        到了就把下一允许时刻设为「**真实** now + interval」并返回；
+        没到就按剩余时间睡一觉后**重新复核**。
+
+        为什么必须复核，而不是一次算出 wait 就睡：
+        `time.sleep` 只保证「至少睡够」，实测过冲可达数十毫秒（GIL/
+        调度）。若按「进入函数时的 now + wait」预约下一位，过冲会让
+        **实际**发起时刻晚于预约值，下一位仍按旧预约值唤醒——相邻两
+        次真实发起就被过冲吃掉一段间隔。实测旧实现第 2 次间隔仅
+        0.0001~0.044s（声明 60ms），节流退化为「只对首次生效」；测试
+        test_min_interval_spread 在 HEAD 即因此间歇失败，是既有缺陷。
+        复核循环用真实时刻推进预约位，过冲只让等待变短、不让间隔变短。
+        """
         if self._interval <= 0:
             return
-        with self._lock:
-            now = time.monotonic()
-            wait = self._interval - (now - self._last_dispatch)
-            # 占位即推进：后续请求按「本次发起时间」排间距，避免多线程
-            # 同时算出同一个 wait 后齐步走
-            self._last_dispatch = now + max(0.0, wait)
-        if wait > 0:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                if now >= self._last_dispatch:
+                    # 拿到发起权：下一允许时刻按真实 now 推进，
+                    # 保证与本次真实发起严格相隔一个 interval
+                    self._last_dispatch = now + self._interval
+                    return
+                wait = self._last_dispatch - now
+            # 锁外睡眠；醒来后重新复核（过冲/并发都会在这里被纠正）
             time.sleep(wait)
 
     @contextmanager

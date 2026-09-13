@@ -20,26 +20,19 @@ import hashlib
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Any
-from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
-
-_TRACKING = {
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "spm", "fbclid", "gclid", "mc_cid", "mc_eid",
-}
+from urllib.parse import urlparse
 
 _TZ_CN = timezone(timedelta(hours=8))
 
 
 def canonicalize_url(url: str) -> str:
-    if not url:
-        return ""
-    try:
-        p = urlparse(url)
-        q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
-             if k.lower() not in _TRACKING]
-        return urlunparse((p.scheme, p.netloc, p.path, p.params, urlencode(q), ""))
-    except Exception:
-        return url
+    """URL 归一化（薄转发到 url_canon 单一真源）。
+
+    本函数曾自带一份较短的追踪参数表（缺 share_token/spm 族等），与
+    search/plan/research_dossier 的实现不一致；现统一到 url_canon。
+    """
+    from url_canon import canonical_url as _impl
+    return _impl(url)
 
 
 def _candidate_id(platform: str, url: str, source_id: str | None = None) -> str:

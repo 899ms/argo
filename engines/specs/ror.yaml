@@ -1,0 +1,20 @@
+# ROR 研究机构标识（免认证）
+# 补 org_entity 域的「学术机构」维度：现有 opencorporates/gleif 覆盖企业法人，
+# ROR 是研究机构的唯一标识（含域名映射），机构消歧刚需。
+# 验证:
+#   python3 scripts/engine_validate.py --engine ror --stage all --admit --write-doc
+
+engine_id: ror
+type: ror
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "tsinghua"
+desc: "ROR 研究机构标识（含域名映射，免认证）"
+coverage: [org_entity, academic, reference]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "tsinghua"
+  - query: "max planck"

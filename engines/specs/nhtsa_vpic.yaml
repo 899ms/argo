@@ -1,0 +1,20 @@
+# NHTSA vPIC 车辆厂商/车型本体（免认证）
+# 补 shopping 域：车辆厂商/车型标准命名（12361 个厂商），
+# 「某车型属于哪个厂商」类查询的权威答案源。
+# 验证:
+#   python3 scripts/engine_validate.py --engine nhtsa_vpic --stage all --admit --write-doc
+
+engine_id: nhtsa_vpic
+type: nhtsa_vpic
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "tesla"
+desc: "车辆厂商/车型本体（NHTSA vPIC，免认证）"
+coverage: [shopping, vehicle, reference, official]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "tesla"
+  - query: "toyota"

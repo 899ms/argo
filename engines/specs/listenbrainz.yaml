@@ -1,0 +1,19 @@
+# ListenBrainz 收听趋势（免认证，社区收听统计）
+# 补 media_search 域的「收听热度」维度（musicbrainz 只给元数据，无流行度）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine listenbrainz --stage all --admit --write-doc
+
+engine_id: listenbrainz
+type: listenbrainz
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "pop"
+desc: "音乐收听趋势榜（ListenBrainz，免认证）"
+coverage: [media, music, statistics]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "pop"
+  - query: "jazz"

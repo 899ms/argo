@@ -1,0 +1,21 @@
+# WHO Disease Outbreak News — 世卫官方疫情暴发通报（免认证 OData）
+# 补 medical 域的「官方疫情暴发」维度：现有 medical 只有 clinicaltrials（试验登记）
+# 与 openfda（药品/器械），没有公共卫生事件源。ProMED 无公开 API，此为其官方替代。
+# OData 支持 $top/$orderby/$filter。
+# 验证:
+#   python3 scripts/engine_validate.py --engine who_don --stage all --admit --write-doc
+
+engine_id: who_don
+type: who_don
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "cholera"
+desc: "WHO 疫情暴发通报（世卫官方公共卫生事件，免认证 OData）"
+coverage: [medical, health, news, official]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "cholera"
+  - query: "influenza"

@@ -39,9 +39,22 @@ class TestQueryNormalize(unittest.TestCase):
     def test_plain_unchanged(self):
         self.assertEqual(es._normalized_query("openai api"), "openai api")
 
+    def test_plain_slash_not_split(self):
+        # 核心规则：只拆「点号版本」斜杠（LongCat-2.0/1.6），普通斜杠可能是
+        # 路径/日期/分数，必须原样保留。本测试曾断言 "a/b c" → "a b c"，
+        # 是旧实现（全斜杠拆分）的遗留，与核心 normalize_query 矛盾，
+        # 且子技能测试不在主门禁收集范围，红了一年没人看见。
+        self.assertEqual(es._normalized_query("a/b c"), "a/b c")
+
     def test_import_fallback(self):
-        # normalize_query 缺失时应回退原 query（模拟核心不可用）
-        self.assertEqual(es._normalized_query("a/b c"), "a b c")
+        # normalize_query 缺失时应回退原 query（真正模拟核心不可用）
+        orig = es.normalize_query
+        try:
+            es.normalize_query = None
+            self.assertEqual(es._normalized_query("a/b c"), "a/b c")
+            self.assertEqual(es._normalized_query("LongCat-2.0/1.6"), "LongCat-2.0/1.6")
+        finally:
+            es.normalize_query = orig
 
     def test_core_scripts_path_is_argo_root(self):
         # 回归锚：相对路径必须指向 argo 根/scripts（parents[3]）。

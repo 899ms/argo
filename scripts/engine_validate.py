@@ -346,11 +346,16 @@ def validate_engine(
     # 写 admission
     if report.get("status") != "skipped":
         blocked = not ("health" in passed)
-        reason = ""
+        # reason 只在**被 block** 时写：它表达「为什么不能用」。
+        # 未 block 时留空——`record_validation` 的不变式是
+        # 「blocked=False ⇒ reason 为空」，成功路径上写
+        # `validation_passed` 会直接违反该不变式（实测线上 64 条记录
+        # blocked=false/reason=validation_passed，与注释宣称的语义矛盾）。
+        # 成功与否由 blocked/admitted_at/stages_passed 表达，不需要 reason。
         if blocked:
             reason = (health_res or {}).get("error") or "health_failed"
-        elif admit and "health" in passed:
-            reason = "validation_passed"
+        else:
+            reason = ""
         avg_lat = None
         qscore = None
         if quality_res:

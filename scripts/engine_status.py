@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -197,7 +197,15 @@ def list_engines_detail(
     *,
     routable_only: bool = False,
     include_disabled: bool = True,
+    engines: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
+    """引擎详细状态行。
+
+    engines：只保留这些 engine_id（None = 全量）。单引擎的详细行约 0.9 KB，
+    全量 216 个约 186 KB——`--list-engines --detail` 不带过滤时是诊断转储，
+    调用方（尤其 Agent）应按需过滤，别把全量拉进上下文。
+    """
+    wanted = set(engines) if engines else None
     cfg = load_config()
     tiers = get_cost_tiers(cfg)
     specs = _all_engine_specs(cfg)
@@ -205,6 +213,8 @@ def list_engines_detail(
     quota_marks = _quota_exhausted_marks()
     rows = []
     for name in sorted(specs.keys()):
+        if wanted is not None and name not in wanted:
+            continue
         row = engine_detail(name, specs[name], tiers, adaptive_scores, quota_marks)
         if not include_disabled and not row["enabled"]:
             continue

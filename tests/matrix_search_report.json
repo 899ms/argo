@@ -469,7 +469,7 @@
     {
       "name": "route:R_zh_stock",
       "status": "PASS",
-      "detail": "domain=stock_query eng=sina_quote combo=['sina_quote', 'tencent_quote'] lang=zh",
+      "detail": "domain=stock_query eng=sina_quote combo=['sina_quote', 'em_flow'] lang=zh",
       "meta": {
         "id": "R_zh_stock",
         "q": "贵州茅台股价",
@@ -479,7 +479,7 @@
         "engine": "sina_quote",
         "combo": [
           "sina_quote",
-          "tencent_quote"
+          "em_flow"
         ],
         "primary_lang": "zh"
       }
@@ -487,7 +487,7 @@
     {
       "name": "route:R_en_usstock",
       "status": "PASS",
-      "detail": "domain=us_stock eng=finviz combo=['finviz', 'eastmoney'] lang=en",
+      "detail": "domain=us_stock eng=finviz combo=['finviz', 'exa'] lang=en",
       "meta": {
         "id": "R_en_usstock",
         "q": "AAPL stock price",
@@ -497,7 +497,7 @@
         "engine": "finviz",
         "combo": [
           "finviz",
-          "eastmoney"
+          "exa"
         ],
         "primary_lang": "en"
       }
@@ -541,7 +541,7 @@
     {
       "name": "route:R_zh_security",
       "status": "PASS",
-      "detail": "domain=security_search eng=nvd combo=['nvd', 'crt_sh'] lang=en",
+      "detail": "domain=security_search eng=nvd combo=['nvd', 'anysearch'] lang=en",
       "meta": {
         "id": "R_zh_security",
         "q": "log4j 漏洞 CVSS",
@@ -551,7 +551,7 @@
         "engine": "nvd",
         "combo": [
           "nvd",
-          "crt_sh"
+          "anysearch"
         ],
         "primary_lang": "en"
       }
@@ -559,7 +559,7 @@
     {
       "name": "route:R_en_cve",
       "status": "PASS",
-      "detail": "domain=security_search eng=nvd combo=['nvd', 'crt_sh'] lang=en",
+      "detail": "domain=security_search eng=nvd combo=['nvd', 'anysearch'] lang=en",
       "meta": {
         "id": "R_en_cve",
         "q": "CVE-2021-44228 severity",
@@ -569,7 +569,7 @@
         "engine": "nvd",
         "combo": [
           "nvd",
-          "crt_sh"
+          "anysearch"
         ],
         "primary_lang": "en"
       }
@@ -667,7 +667,7 @@
     {
       "name": "route:R_en_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie'] lang=en",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'tvmaze', 'douban_movie', 'itunes'] lang=en",
       "meta": {
         "id": "R_en_film",
         "q": "Inception movie director",
@@ -677,7 +677,9 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "douban_movie"
+          "tvmaze",
+          "douban_movie",
+          "itunes"
         ],
         "primary_lang": "en"
       }
@@ -685,7 +687,7 @@
     {
       "name": "route:R_zh_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie'] lang=zh",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'tvmaze', 'douban_movie', 'itunes'] lang=zh",
       "meta": {
         "id": "R_zh_film",
         "q": "肖申克的救赎 主演",
@@ -695,7 +697,9 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "douban_movie"
+          "tvmaze",
+          "douban_movie",
+          "itunes"
         ],
         "primary_lang": "zh"
       }
@@ -703,7 +707,7 @@
     {
       "name": "route:R_en_film2",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie'] lang=en",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'tvmaze', 'douban_movie', 'itunes'] lang=en",
       "meta": {
         "id": "R_en_film2",
         "q": "Interstellar film cast",
@@ -713,7 +717,9 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "douban_movie"
+          "tvmaze",
+          "douban_movie",
+          "itunes"
         ],
         "primary_lang": "en"
       }
@@ -721,7 +727,7 @@
     {
       "name": "route:R_ja_film_kana",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'local_bing'] lang=ja",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'tvmaze', 'douban_movie', 'local_bing'] lang=ja",
       "meta": {
         "id": "R_ja_film_kana",
         "q": "宮崎駿 アニメ 映画",
@@ -732,6 +738,8 @@
         "combo": [
           "imdb",
           "anysearch",
+          "tvmaze",
+          "douban_movie",
           "local_bing"
         ],
         "primary_lang": "ja"
@@ -740,7 +748,7 @@
     {
       "name": "route:R_ko_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'local_bing'] lang=ko",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'tvmaze', 'douban_movie', 'local_bing'] lang=ko",
       "meta": {
         "id": "R_ko_film",
         "q": "기생충 영화 감독",
@@ -751,6 +759,8 @@
         "combo": [
           "imdb",
           "anysearch",
+          "tvmaze",
+          "douban_movie",
           "local_bing"
         ],
         "primary_lang": "ko"
@@ -759,7 +769,7 @@
     {
       "name": "route:R_zh_sports",
       "status": "PASS",
-      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'wikipedia'] lang=zh",
+      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'jolpica', 'anysearch', 'openf1'] lang=zh",
       "meta": {
         "id": "R_zh_sports",
         "q": "梅西 俱乐部",
@@ -769,7 +779,9 @@
         "engine": "thesportsdb",
         "combo": [
           "thesportsdb",
-          "wikipedia"
+          "jolpica",
+          "anysearch",
+          "openf1"
         ],
         "primary_lang": "zh"
       }
@@ -777,7 +789,7 @@
     {
       "name": "route:R_en_sports",
       "status": "PASS",
-      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'wikipedia'] lang=en",
+      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'jolpica', 'anysearch', 'openf1'] lang=en",
       "meta": {
         "id": "R_en_sports",
         "q": "LeBron James team",
@@ -787,7 +799,9 @@
         "engine": "thesportsdb",
         "combo": [
           "thesportsdb",
-          "wikipedia"
+          "jolpica",
+          "anysearch",
+          "openf1"
         ],
         "primary_lang": "en"
       }
@@ -795,7 +809,7 @@
     {
       "name": "route:R_en_sports2",
       "status": "PASS",
-      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'wikipedia'] lang=en",
+      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'jolpica', 'anysearch', 'openf1'] lang=en",
       "meta": {
         "id": "R_en_sports2",
         "q": "Cristiano Ronaldo club",
@@ -805,7 +819,9 @@
         "engine": "thesportsdb",
         "combo": [
           "thesportsdb",
-          "wikipedia"
+          "jolpica",
+          "anysearch",
+          "openf1"
         ],
         "primary_lang": "en"
       }
@@ -813,7 +829,7 @@
     {
       "name": "route:R_zh_sports2",
       "status": "PASS",
-      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'wikipedia'] lang=zh",
+      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'jolpica', 'anysearch', 'openf1'] lang=zh",
       "meta": {
         "id": "R_zh_sports2",
         "q": "库里 球队",
@@ -823,7 +839,9 @@
         "engine": "thesportsdb",
         "combo": [
           "thesportsdb",
-          "wikipedia"
+          "jolpica",
+          "anysearch",
+          "openf1"
         ],
         "primary_lang": "zh"
       }
@@ -831,7 +849,7 @@
     {
       "name": "route:R_en_wc",
       "status": "PASS",
-      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'wikipedia'] lang=en",
+      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'jolpica', 'anysearch', 'openf1'] lang=en",
       "meta": {
         "id": "R_en_wc",
         "q": "World Cup 2022 winner",
@@ -841,7 +859,9 @@
         "engine": "thesportsdb",
         "combo": [
           "thesportsdb",
-          "wikipedia"
+          "jolpica",
+          "anysearch",
+          "openf1"
         ],
         "primary_lang": "en"
       }
@@ -849,7 +869,7 @@
     {
       "name": "route:R_ja_sports",
       "status": "PASS",
-      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'anysearch', 'local_bing'] lang=ja",
+      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'anysearch', 'jolpica', 'local_bing'] lang=ja",
       "meta": {
         "id": "R_ja_sports",
         "q": "メッシ クラブ",
@@ -860,6 +880,7 @@
         "combo": [
           "thesportsdb",
           "anysearch",
+          "jolpica",
           "local_bing"
         ],
         "primary_lang": "ja"
@@ -868,7 +889,7 @@
     {
       "name": "route:R_ko_sports",
       "status": "PASS",
-      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'anysearch', 'local_bing'] lang=ko",
+      "detail": "domain=sports_search eng=thesportsdb combo=['thesportsdb', 'anysearch', 'jolpica', 'local_bing'] lang=ko",
       "meta": {
         "id": "R_ko_sports",
         "q": "손흥민 팀",
@@ -879,6 +900,7 @@
         "combo": [
           "thesportsdb",
           "anysearch",
+          "jolpica",
           "local_bing"
         ],
         "primary_lang": "ko"
@@ -887,7 +909,7 @@
     {
       "name": "route:R_zh_geo",
       "status": "PASS",
-      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikipedia'] lang=zh",
+      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikidata'] lang=zh",
       "meta": {
         "id": "R_zh_geo",
         "q": "埃菲尔铁塔在哪",
@@ -897,7 +919,7 @@
         "engine": "local_openstreetmap",
         "combo": [
           "local_openstreetmap",
-          "wikipedia"
+          "wikidata"
         ],
         "primary_lang": "zh"
       }
@@ -905,7 +927,7 @@
     {
       "name": "route:R_en_geo",
       "status": "PASS",
-      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikipedia'] lang=en",
+      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikidata'] lang=en",
       "meta": {
         "id": "R_en_geo",
         "q": "where is Eiffel Tower",
@@ -915,7 +937,7 @@
         "engine": "local_openstreetmap",
         "combo": [
           "local_openstreetmap",
-          "wikipedia"
+          "wikidata"
         ],
         "primary_lang": "en"
       }
@@ -923,7 +945,7 @@
     {
       "name": "route:R_zh_geo2",
       "status": "PASS",
-      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikipedia'] lang=zh",
+      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikidata'] lang=zh",
       "meta": {
         "id": "R_zh_geo2",
         "q": "黄河 流经省份",
@@ -933,7 +955,7 @@
         "engine": "local_openstreetmap",
         "combo": [
           "local_openstreetmap",
-          "wikipedia"
+          "wikidata"
         ],
         "primary_lang": "zh"
       }
@@ -960,7 +982,7 @@
     {
       "name": "route:R_zh_org",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia'] lang=zh",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'baidu_baike', 'zh_wikipedia', 'wikipedia'] lang=zh",
       "meta": {
         "id": "R_zh_org",
         "q": "国务院职能",
@@ -970,6 +992,8 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
+          "baidu_baike",
+          "zh_wikipedia",
           "wikipedia"
         ],
         "primary_lang": "zh"
@@ -978,7 +1002,7 @@
     {
       "name": "route:R_en_org",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia'] lang=en",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'zh_wikipedia', 'wikipedia', 'ror'] lang=en",
       "meta": {
         "id": "R_en_org",
         "q": "NASA founding year",
@@ -988,7 +1012,9 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
-          "wikipedia"
+          "zh_wikipedia",
+          "wikipedia",
+          "ror"
         ],
         "primary_lang": "en"
       }
@@ -996,7 +1022,7 @@
     {
       "name": "route:R_en_org2",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia'] lang=en",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'zh_wikipedia', 'wikipedia', 'ror'] lang=en",
       "meta": {
         "id": "R_en_org2",
         "q": "Apple Inc headquarters",
@@ -1006,7 +1032,9 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
-          "wikipedia"
+          "zh_wikipedia",
+          "wikipedia",
+          "ror"
         ],
         "primary_lang": "en"
       }
@@ -1014,7 +1042,7 @@
     {
       "name": "route:R_zh_org2",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia'] lang=zh",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'baidu_baike', 'zh_wikipedia', 'wikipedia'] lang=zh",
       "meta": {
         "id": "R_zh_org2",
         "q": "清华大学 创办年份",
@@ -1024,6 +1052,8 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
+          "baidu_baike",
+          "zh_wikipedia",
           "wikipedia"
         ],
         "primary_lang": "zh"
@@ -1032,7 +1062,7 @@
     {
       "name": "route:R_en_media",
       "status": "PASS",
-      "detail": "domain=media_search eng=itunes combo=['itunes', 'musicbrainz'] lang=en",
+      "detail": "domain=media_search eng=itunes combo=['itunes', 'musicbrainz', 'deezer', 'listenbrainz'] lang=en",
       "meta": {
         "id": "R_en_media",
         "q": "Taylor Swift album",
@@ -1042,7 +1072,9 @@
         "engine": "itunes",
         "combo": [
           "itunes",
-          "musicbrainz"
+          "musicbrainz",
+          "deezer",
+          "listenbrainz"
         ],
         "primary_lang": "en"
       }
@@ -1050,7 +1082,7 @@
     {
       "name": "route:R_zh_media",
       "status": "PASS",
-      "detail": "domain=media_search eng=itunes combo=['itunes', 'musicbrainz'] lang=zh",
+      "detail": "domain=media_search eng=itunes combo=['itunes', 'musicbrainz', 'deezer', 'listenbrainz'] lang=zh",
       "meta": {
         "id": "R_zh_media",
         "q": "周杰伦 专辑",
@@ -1060,7 +1092,9 @@
         "engine": "itunes",
         "combo": [
           "itunes",
-          "musicbrainz"
+          "musicbrainz",
+          "deezer",
+          "listenbrainz"
         ],
         "primary_lang": "zh"
       }
@@ -1068,7 +1102,7 @@
     {
       "name": "route:R_zh_weather",
       "status": "PASS",
-      "detail": "domain=weather_query eng=open_meteo combo=['open_meteo', 'byted', 'local_openstreetmap'] lang=zh",
+      "detail": "domain=weather_query eng=open_meteo combo=['open_meteo', 'weather', 'local_openstreetmap'] lang=zh",
       "meta": {
         "id": "R_zh_weather",
         "q": "北京 天气",
@@ -1078,7 +1112,7 @@
         "engine": "open_meteo",
         "combo": [
           "open_meteo",
-          "byted",
+          "weather",
           "local_openstreetmap"
         ],
         "primary_lang": "zh"
@@ -1087,16 +1121,15 @@
     {
       "name": "route:R_en_weather",
       "status": "PASS",
-      "detail": "domain=weather_query eng=byted combo=['byted', 'weather'] lang=en",
+      "detail": "domain=weather_query eng=weather combo=['weather'] lang=en",
       "meta": {
         "id": "R_en_weather",
         "q": "weather Tokyo",
         "scenario": "weather",
         "lang": "en",
         "domain": "weather_query",
-        "engine": "byted",
+        "engine": "weather",
         "combo": [
-          "byted",
           "weather"
         ],
         "primary_lang": "en"
@@ -1125,7 +1158,7 @@
     {
       "name": "route:R_en_academic",
       "status": "PASS",
-      "detail": "domain=academic eng=arxiv combo=['arxiv', 'openalex'] lang=en",
+      "detail": "domain=academic eng=arxiv combo=['arxiv', 'crossref'] lang=en",
       "meta": {
         "id": "R_en_academic",
         "q": "transformer attention paper",
@@ -1135,7 +1168,7 @@
         "engine": "arxiv",
         "combo": [
           "arxiv",
-          "openalex"
+          "crossref"
         ],
         "primary_lang": "en"
       }
@@ -1143,7 +1176,7 @@
     {
       "name": "route:R_zh_chem",
       "status": "PASS",
-      "detail": "domain=chem_search eng=pubchem combo=['pubchem', 'openalex'] lang=zh",
+      "detail": "domain=chem_search eng=pubchem combo=['pubchem', 'local_bing'] lang=zh",
       "meta": {
         "id": "R_zh_chem",
         "q": "阿司匹林 分子式",
@@ -1153,7 +1186,7 @@
         "engine": "pubchem",
         "combo": [
           "pubchem",
-          "openalex"
+          "local_bing"
         ],
         "primary_lang": "zh"
       }
@@ -1179,7 +1212,7 @@
     {
       "name": "route:R_en_tech",
       "status": "PASS",
-      "detail": "domain=english_tech eng=octen combo=['octen', 'anysearch'] lang=en",
+      "detail": "domain=english_tech eng=octen combo=['octen', 'exa'] lang=en",
       "meta": {
         "id": "R_en_tech",
         "q": "React vs Vue",
@@ -1189,7 +1222,7 @@
         "engine": "octen",
         "combo": [
           "octen",
-          "anysearch"
+          "exa"
         ],
         "primary_lang": "en"
       }
@@ -1270,7 +1303,7 @@
     {
       "name": "route:R_ko_gen",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'local_bing'] lang=ko",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'tvmaze', 'douban_movie', 'local_bing'] lang=ko",
       "meta": {
         "id": "R_ko_gen",
         "q": "한국 영화 추천",
@@ -1281,6 +1314,8 @@
         "combo": [
           "imdb",
           "anysearch",
+          "tvmaze",
+          "douban_movie",
           "local_bing"
         ],
         "primary_lang": "ko"
@@ -1361,17 +1396,17 @@
     {
       "name": "route:R_zh_gen",
       "status": "PASS",
-      "detail": "domain=chinese_tech_deep eng=byted combo=['byted', 'octen'] lang=zh",
+      "detail": "domain=chinese_tech_deep eng=octen combo=['octen', 'cn_ai_news'] lang=zh",
       "meta": {
         "id": "R_zh_gen",
         "q": "如何学习机器学习",
         "scenario": "general",
         "lang": "zh",
         "domain": "chinese_tech_deep",
-        "engine": "byted",
+        "engine": "octen",
         "combo": [
-          "byted",
-          "octen"
+          "octen",
+          "cn_ai_news"
         ],
         "primary_lang": "zh"
       }
@@ -1397,7 +1432,7 @@
     {
       "name": "route:R_en_tech_py",
       "status": "PASS",
-      "detail": "domain=english_tech eng=octen combo=['octen', 'anysearch'] lang=en",
+      "detail": "domain=english_tech eng=octen combo=['octen', 'exa'] lang=en",
       "meta": {
         "id": "R_en_tech_py",
         "q": "python asyncio tutorial",
@@ -1407,7 +1442,7 @@
         "engine": "octen",
         "combo": [
           "octen",
-          "anysearch"
+          "exa"
         ],
         "primary_lang": "en"
       }

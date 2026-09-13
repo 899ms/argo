@@ -1,0 +1,21 @@
+# OpenF1 — 一级方程式遥测与赛程（免认证，社区维护）
+# 补 sports_search 域的「赛车」维度（现有 thesportsdb 偏足篮）。
+# 先查 sessions 端点拿 session_key 再查 drivers，两级解析由 builder 完成。
+# 验证:
+#   python3 scripts/engine_validate.py --engine openf1 --stage all --admit --write-doc
+
+engine_id: openf1
+type: openf1
+enabled: true
+cost_tier: free
+timeout: 20
+canary_query: "verstappen"
+desc: "F1 车手/车队/赛程数据（OpenF1，免认证，社区维护）"
+family: sports
+coverage: [sports, racing, realtime]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "verstappen"
+  - query: "monza"

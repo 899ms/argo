@@ -24,9 +24,9 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.5-informational">
-  <img alt="engines" src="https://img.shields.io/badge/engines-150+-orange">
-  <img alt="mcp" src="https://img.shields.io/badge/MCP-12%20tools-purple">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
+  <img alt="engines" src="https://img.shields.io/badge/engines-216-orange">
+  <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
 
 > **Este repositorio es parte del conjunto de plugins DeepSeek Harness de taxueseek** — hermanos: [dsh-files](https://github.com/taxueseek/dsh-files) (enviar archivos, leer documentos) · [dsh-snippets](https://github.com/taxueseek/dsh-snippets) (favoritos de snippets) · [dsh-healthcheck](https://github.com/taxueseek/dsh-healthcheck) (chequeo de solo lectura) · [dsh-plugin-guard](https://github.com/taxueseek/dsh-plugin-guard) (auditoría de seguridad de plugins) · [taxue-dsh-artisan](https://github.com/taxueseek/taxue-dsh-artisan) (ingeniería inversa de prompts e imágenes multi-proveedor) — todos los plugins en el [perfil](https://github.com/taxueseek)

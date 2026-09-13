@@ -1,0 +1,20 @@
+# K10plus SRU 联合目录（德国最大，SRU 标准协议，免认证）
+# 补 book_search 域的馆藏维度：现有 open_library/gutenberg 偏英文公版，
+# K10plus 覆盖德语区学术馆藏（3000+ 万条），SRU 标准协议可复用到其他 SRU 馆。
+# 验证:
+#   python3 scripts/engine_validate.py --engine k10plus --stage all --admit --write-doc
+
+engine_id: k10plus
+type: k10plus
+enabled: true
+cost_tier: free
+timeout: 30
+canary_query: "tesla"
+desc: "K10plus 联合目录（德国最大图书馆联合目录，SRU，免认证）"
+coverage: [book, library, academic, german]
+recommended: false
+latency_ms: 2500
+
+quality_queries:
+  - query: "tesla"
+  - query: "kant kritik"

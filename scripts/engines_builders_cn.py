@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from engines_base import safe_search, _run, _resolve, _get_path, _coerce_field, _http_get_raw, http_open
+from engines_base import safe_search, _run, _resolve, _get_path, _coerce_field, _http_get_raw, http_open, rank_score
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -216,7 +216,7 @@ def _build_em_miaoxiang_engine(spec: dict[str, Any]) -> Any:
             return []
         results = []
         seen: set[str] = set()
-        for it in items:
+        for _rk, it in enumerate(items):
             title = (it.get("title") or "").strip()
             if not title or title in seen:
                 continue
@@ -231,7 +231,7 @@ def _build_em_miaoxiang_engine(spec: dict[str, Any]) -> Any:
                 "url": it.get("jumpUrl") or "https://eastmoney.com",
                 "snippet": " | ".join(parts)[:280],
                 "source": "em_miaoxiang",
-                "score": 0.85,
+                "score": rank_score(0.85, _rk),
             })
             if len(results) >= n:
                 break
@@ -285,7 +285,7 @@ def _build_cninfo_engine(spec: dict[str, Any]) -> Any:
                 return []
             results = []
             seen: set[str] = set()
-            for it in items:
+            for _rk5, it in enumerate(items):
                 raw_title = (it.get("announcementTitle") or "").strip()
                 if not raw_title or raw_title in seen:
                     continue
@@ -301,7 +301,7 @@ def _build_cninfo_engine(spec: dict[str, Any]) -> Any:
                     "url": pdf_url,
                     "snippet": " | ".join(p for p in (date, "公告原文 PDF", "巨潮资讯网官方") if p)[:280],
                     "source": "cninfo",
-                    "score": 0.9,
+                    "score": rank_score(0.9, _rk5),
                 })
                 if len(results) >= n:
                     break
@@ -601,7 +601,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
             rows.append((name, amt, date))
         results = []
         total = 0.0
-        for name, amt, date in rows:
+        for _rk1, name, amt, date in enumerate(rows):
             try:
                 f = float(amt) / 1e8
             except (TypeError, ValueError):
@@ -612,7 +612,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
                 "url": "https://data.eastmoney.com/hsgt/index.html",
                 "snippet": f"日期 {date} | 沪深港通北向资金 | 东方财富数据中心".strip(),
                 "source": "em_flow",
-                "score": 0.9,
+                "score": rank_score(0.9, _rk1),
             })
         if total:
             results.append({
@@ -644,7 +644,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
         except (KeyError, TypeError):
             return []
         results = []
-        for it in diff:
+        for _rk2, it in enumerate(diff):
             name = it.get("f14", "")
             chg = it.get("f3")
             flow = it.get("f62")
@@ -668,7 +668,7 @@ def _build_em_flow_engine(spec: dict[str, Any]) -> Any:
                 "url": "https://data.eastmoney.com/bkzj/hy.html",
                 "snippet": " | ".join(x for x in (chg_s, pct_s, "东方财富板块资金流") if x)[:200],
                 "source": "em_flow",
-                "score": 0.9,
+                "score": rank_score(0.9, _rk2),
             })
         return results
 
@@ -1106,7 +1106,7 @@ def _build_zhihu_global_engine(spec: dict[str, Any]) -> Any:
                      "source": "zhihu_global"}]
         items = (data.get("Data") or {}).get("Items") or []
         results = []
-        for item in items[:n]:
+        for _rk3, item in enumerate(items[:n]):
             title = (item.get("Title") or "").strip()
             # API 标题统一带「 - 知乎」尾巴：截断前剥掉（先剥再切，尾巴不占正文）
             if title.endswith(" - 知乎"):
@@ -1131,7 +1131,7 @@ def _build_zhihu_global_engine(spec: dict[str, Any]) -> Any:
                 "url": url_,
                 "snippet": snippet[:300],
                 "source": "zhihu_global",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk3),
                 "authority_level": social_meta["authority_level"],
                 "social_meta": social_meta,
             })
@@ -1429,7 +1429,7 @@ def _build_bocha_ai_engine(spec: dict[str, Any]) -> Any:
             return _bocha_http_error(e, "bocha_ai")
 
         results: list[dict[str, Any]] = []
-        for message in data.get("messages") or []:
+        for _rk4, message in enumerate(data.get("messages") or []):
             ct = message.get("content_type") or ""
             raw = message.get("content") or "{}"
             try:
@@ -1453,7 +1453,7 @@ def _build_bocha_ai_engine(spec: dict[str, Any]) -> Any:
                     "url": "",
                     "snippet": flat[:300],
                     "source": "bocha_ai",
-                    "score": 1.0,
+                    "score": rank_score(1.0, _rk4),
                     "card_type": ct,
                     "card_data": parsed,
                 })
@@ -1501,7 +1501,10 @@ def _build_std_samr_engine(spec: dict[str, Any]) -> Any:
             return []
         out = []
         for r in rows:
-            code = str(r.get("C_STD_CODE") or "").strip()
+            # C_STD_CODE 同样带 <sacinfo> 高亮：旧实现只剥了 C_C_NAME，
+            # 把 XML 标签直接印进了结果标题（实测
+            # '<sacinfo>GB</sacinfo>/<sacinfo>T</sacinfo> <sacinfo>45577</sacinfo>-2025 …'）。
+            code = _SACINFO_TAG_RE.sub("", str(r.get("C_STD_CODE") or "")).strip()
             name = _SACINFO_TAG_RE.sub("", str(r.get("C_C_NAME") or "")).strip()
             if not code and not name:
                 continue
@@ -1770,6 +1773,12 @@ def _build_people_daily_engine(spec: dict[str, Any]) -> Any:
 # flk 时效性枚举（官网 enumData/前端常量）：1 已废止 / 2 已修改 / 3 有效 / 4 尚未生效
 _FLK_SXX = {1: "已废止", 2: "已修改", 3: "有效", 4: "尚未生效"}
 
+# flk 的模糊检索对「第 N 条」内部带空格的写法返回 0 条，压掉空格后返回
+# 8-10 条（实测 2026-09-12：「民法典 第 1062 条」→「民法典 第1062条」）。
+# 只压「第…条」内部的空白，不动查询里其余空格——法名与并列检索词之间的
+# 空格是有语义的分隔（「个人信息保护 数据安全」必须原样透传）。
+_FLK_ARTICLE_SPACE_RE = re.compile(r"第\s*(\d{1,7})\s*条")
+
 
 def _build_flk_law_engine(spec: dict[str, Any]) -> Any:
     """国家法律法规数据库（法律/行政法规/司法解释/地方性法规，权威法条源）。
@@ -1787,7 +1796,7 @@ def _build_flk_law_engine(spec: dict[str, Any]) -> Any:
 
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
-        q = query.strip()
+        q = _FLK_ARTICLE_SPACE_RE.sub(r"第\1条", query.strip())
         if not q:
             return []
         to = _timeout or timeout

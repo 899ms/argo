@@ -32,6 +32,13 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+# 复用 scripts/ 的原子写单一真源（本文件在 scripts/redskill/ 子目录，
+# 父目录不在 sys.path 上，需显式加）。
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent)
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+import argo_paths  # noqa: E402
+
 DATA_URL = "https://cowork.xiaohongshu.com/s/redskill-rank/data.json"
 PAGE_URL = "https://cowork.xiaohongshu.com/s/redskill-rank/"
 EXPLORE_URL = "https://www.xiaohongshu.com/explore/{}"
@@ -112,10 +119,10 @@ def _download(force: bool = False) -> dict[str, Any]:
     data = json.loads(raw.decode("utf-8"))
     if "allSkills" not in data:
         raise ValueError("data.json 结构异常：缺少 allSkills")
-    tmp = CACHE_FILE.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
-    tmp.replace(CACHE_FILE)
+    # 原子写走 argo_paths 单一真源（唯一 tmp 名）；旧实现固定 `.tmp` 名，
+    # 并发刷新（手动 update 撞上搜索自动刷新）会互相搬走临时文件而写失败。
+    # 14.6MB 缓存用 indent=None 省掉格式化的时间与体积。
+    argo_paths.atomic_write_json(CACHE_FILE, data, indent=None)
     if force:
         _log(f"已强制刷新缓存: {CACHE_FILE} ({CACHE_FILE.stat().st_size / 1e6:.1f}MB, dataDate={data.get('dataDate')})")
     return data

@@ -23,6 +23,44 @@ CLI 桥接关键字段：
 - `output_format: yaml`：走通用 YAML 解析，支持 `results`/`items`/`data` 或顶层 list，字段别名 `title|name`、`url|link`、`snippet|description|content`，并保留 `published_at` 发布时间维度。
 - `filter_args`：条件参数表。查询带 `--since`/`--until`（如 `7d` / `2026-08-01`）时自动追加对应 CLI 参数；未携带则不追加。缓存按时间窗隔离，不会串结果。
 
+## 可选结果字段（图源 / 全文源必看）
+
+结果 dict 只要求 `title` / `url`，其余字段原样透传到融合、精排与 JSON 输出
+（无字段白名单，`rrf_merge` 与 `local_five_dim_rerank` 都不会裁字段）。三个
+**可选**字段有下游消费者，写对了才有价值：
+
+| 字段 | 语义 | 谁在用 |
+|------|------|--------|
+| `image_url` | 可直接打开的图片地址 | 结果展示；判断「这是图源」的唯一依据 |
+| `image_license` | 该图的授权/权利状态 | 合规展示（如 `CC0`、`公有领域（NASA）`） |
+| `full_text_url` | **可确定性取到正文**的端点 | `evidence_loop.gate_results` 的取数建议优先用它，见下 |
+
+> **字段落点**：这些字段进的是 `results`（以及归档用的 `candidates` 视图），
+> **不进** `sources`。`build_sources` 是「底部相关链接」形态的**稳定 5 字段投影**
+> （`ref/title/url/engine/score/snippet`），有意裁剪，别往里加字段。消费方要拿
+> 图片/正文端点请读 `results`。
+
+### `image_url` 的三条硬约束
+
+1. **不对就不写**：上游没给图（或 Met 这类对非公版件不给链接）时**不要**填空串或详情页 URL——宁缺勿假，下游据此判断「有无图」。
+2. **路径必须指向字符串**：声明式 `output_map` 里写 `item_image: links.0.href`。NASA 的 `links.0` 是 `{href, rel, render, …}`，写成 `links.0` 会被 `_coerce_field` 当 dict 丢成空串。
+3. **图床可能有额外要求**：AIC 的 IIIF 要求 `AIC-User-Agent` 头才放行（否则 403），复用该 URL 抓图时要带上。
+
+声明式源可在 spec 顶层写 `image_license: "…"` 作为常量（授权不随条目变化时用，
+如 NASA 公版）。
+
+### `full_text_url` 什么时候该写
+
+当**给人看的页面拿不到正文**、而该源另有确定性正文端点时写它。两个实测例子：
+
+- `gutenberg`：`/ebooks/{id}` 是下载门户页（去标签首段全是 noprint 脚本），gutendex 在 `formats` 里已给纯文本 URL；
+- `egov_law`：`/law/{id}` 是 JS 空壳页（去标签后只剩「e-Gov 法令検索」），`/api/1/lawdata/{id}` 才是官方全文 XML。
+
+写它的收益是让取数建议走直连，省掉「门户页找下载链」或浏览器渲染那几级；
+**如果人类页面本身就能取到正文，不要写**（那是无消费方的装饰字段）。
+
+回归门禁：`tests/test_image_sources.py`、`tests/test_full_text_sources.py`。
+
 ## 环境变量规范
 
 ```bash

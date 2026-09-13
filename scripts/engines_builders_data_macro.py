@@ -117,13 +117,13 @@ def _build_fred_engine(spec: dict[str, Any]) -> Any:
         # 近 N 期各为一条结果（url 带日期锚点防去重合并），RRF 分数累计上浮
         label = _FRED_LABELS.get(series_id, f"FRED {series_id}")
         results = []
-        for date, val in rows[-min(n, 5):]:
+        for _rk, (date, val) in enumerate(rows[-min(n, 5):]):
             results.append({
                 "title": f"{label} · {date} = {val:g}",
                 "url": f"https://fred.stlouisfed.org/series/{series_id}?obs={date}",
                 "snippet": f"FRED {series_id} 最新值 {val:g}（截至 {date}）",
                 "source": "fred",
-                "score": 0.9,
+                "score": rank_score(0.9, _rk),
             })
         # 首条附趋势方向
         if len(results) > 1:
@@ -339,7 +339,7 @@ def _build_worldbank_engine(spec: dict[str, Any]) -> Any:
             return []
         cname = rows[0].get("country", {}).get("value", cc)
         results = []
-        for it in rows:
+        for _rk1, it in enumerate(rows):
             year = it.get("date", "")
             val = it.get("value")
             if val is None or year is None:
@@ -354,7 +354,7 @@ def _build_worldbank_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://data.worldbank.org/indicator/{ind}?locations={cc}",
                 "snippet": f"{ind_label} | {cname} | 世界银行开放数据 | 数据截至 {year}".strip(),
                 "source": "worldbank",
-                "score": 0.9,
+                "score": rank_score(0.9, _rk1),
             })
             if len(results) >= min(n, 5):
                 break
@@ -611,10 +611,10 @@ def _build_nbs_stats_engine(spec: dict[str, Any]) -> Any:
                     "url": "https://data.stats.gov.cn/easyquery.htm",
                     "snippet": f"{label} 排行第{i}名 | 数据来源：国家统计局",
                     "source": "nbs_stats",
-                    "score": 0.95,
+                    "score": rank_score(0.95, i),
                 })
         else:
-            for it in rows:
+            for _rk2, it in enumerate(rows):
                 vals = it.get("values") or []
                 if not vals:
                     continue
@@ -629,7 +629,7 @@ def _build_nbs_stats_engine(spec: dict[str, Any]) -> Any:
                     "url": "https://data.stats.gov.cn/easyquery.htm",
                     "snippet": f"{label} | 数据来源：国家统计局 | 统计周期 {dt_name}",
                     "source": "nbs_stats",
-                    "score": 0.95,
+                    "score": rank_score(0.95, _rk2),
                 })
         return results[: max(n, 5)]
 

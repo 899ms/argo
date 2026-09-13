@@ -14,7 +14,7 @@ import urllib.request
 from datetime import datetime
 from typing import Any
 
-from engines_base import (safe_search, _run, _resolve, _get_path, _coerce_field,
+from engines_base import (safe_search, _run, _resolve, _get_path, _coerce_field, rank_score,
                           _http_get_raw, mcp_error_of as _mcp_error_of, http_open)
 
 logger = logging.getLogger("unified_search.engines")
@@ -170,7 +170,7 @@ def _build_anysearch_engine(spec: dict[str, Any]) -> Any:
                 if title:
                     results.append({
                         "title": title[:200], "url": item_url, "snippet": snippet,
-                        "source": "anysearch", "score": 0.7,
+                        "source": "anysearch", "score": rank_score(0.7, len(results)),
                     })
         return results
     return _engine
@@ -791,7 +791,7 @@ def _build_deps_dev_engine(spec: dict[str, Any]) -> Any:
             "published_at": str(latest.get("publishedAt") or "")[:10],
         }
         results = [overview]
-        for v in versions[: max(1, n - 1)]:
+        for _rk1, v in enumerate(versions[: max(1, n - 1)]):
             vname = v.get("versionKey", {}).get("version", "")
             if vname == latest.get("versionKey", {}).get("version"):
                 continue
@@ -801,7 +801,7 @@ def _build_deps_dev_engine(spec: dict[str, Any]) -> Any:
                 "snippet": (f"发布 {str(v.get('publishedAt') or '')[:10]}"
                             + ("（已弃用）" if v.get("isDeprecated") else "")),
                 "source": "deps_dev",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk1),
                 "published_at": str(v.get("publishedAt") or "")[:10],
             })
         return results[:n]

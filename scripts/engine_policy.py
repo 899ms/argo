@@ -76,14 +76,21 @@ def combo_budget(
     mode: str = "auto",
     depth: str = "fast",
     context: str = "search",
+    extra: int = 0,
 ) -> int | None:
-    """combo 最大引擎数；None = 不截断。"""
+    """combo 最大引擎数；None = 不截断。
+
+    extra：垂直域的「新专源加成」。批次九的 11 个新源声明在 combo 后排
+    （位次 3~6），而日常预算只有 2~3 —— 截断后它们永不参与自动路由。
+    直接调大全局预算会拖慢所有查询，用 must_keep 顶位又会挤掉既有可用源
+    （实测会把 open_library/douban_movie/musicbrainz 挤出）。故只给
+    「确有新专源待接」的垂直域加固定额度，其余域预算不变。
+    """
     if is_research_context(mode=mode, depth=depth, context=context):
         return None
-    if (mode or "auto") in ("fast", "budget") or (depth or "fast") == "fast":
-        return 2
-    # auto + balanced：主源 + 最多 2 备选
-    return 3
+    base = 2 if ((mode or "auto") in ("fast", "budget")
+                 or (depth or "fast") == "fast") else 3
+    return base + max(0, int(extra or 0))
 
 
 def get_engine_tier(engine_id: str, spec: dict[str, Any] | None = None) -> str:
@@ -119,11 +126,14 @@ def filter_combo_by_policy(
     depth: str = "fast",
     context: str = "search",
     tier_of: Callable[[str], str] | None = None,
+    budget_extra: int = 0,
 ) -> list[str]:
     """按 tier + budget 过滤 combo。
 
     若 research_only 过滤后为空（域内全是研究源），保留原 combo 再截断预算，
     避免「问蛋白质却一个引擎都没有」。
+
+    budget_extra：垂直域新专源加成，见 `combo_budget` 的 extra 说明。
     """
     if not combo:
         return []
@@ -136,7 +146,8 @@ def filter_combo_by_policy(
         kept = [e for e in combo if tier_of(e) != "research_only"]
         filtered = kept if kept else list(combo)
 
-    budget = combo_budget(mode=mode, depth=depth, context=context)
+    budget = combo_budget(mode=mode, depth=depth, context=context,
+                          extra=budget_extra)
     if budget is not None and len(filtered) > budget:
         filtered = filtered[:budget]
     return filtered

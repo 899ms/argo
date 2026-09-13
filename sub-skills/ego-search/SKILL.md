@@ -3,12 +3,12 @@ name: ego-search
 description: >-
   ego-search 是 argo 的浏览器态搜索增强子技能，基于真实 Chromium 浏览器运行时，提供
   登录态继承、JS 渲染、反爬穿透、动态交互与同源接口数据直取（api 模式）能力。专业搜索
-  模式默认关闭，需用户明确要求并执行开启指令后启用。当 argo
-  的 120+ API/HTML 引擎覆盖不到时启用：登录墙后的内容（知乎/小红书/微博/X/公众号）、
-  JS 渲染与 SPA 页面、反爬与 Cloudflare 保护页、需要交互（翻页/展开/滚动加载）的动态搜索、
-  SPA/XHR 接口数据直取、以及需要真实登录态才能搜到的私有内容。输出对齐 argo 统一 JSON
-  schema，可直接进入 evidence 评分与 RRF 融合。Triggers include 浏览器搜索、登录后才能
-  搜到、JS 渲染页面、SERP 补充、动态内容抓取、登录态抓取、API 数据直取、接口数据。
+  模式默认关闭，需用户明确要求并执行开启指令后启用。当 argo 的 API/HTML 引擎覆盖不到
+  时启用：登录墙后的内容（知乎/小红书/微博/X/公众号）、JS 渲染与 SPA 页面、反爬与
+  Cloudflare 保护页、需要交互（翻页/展开/滚动加载）的动态搜索、SPA/XHR 接口数据直取、
+  以及需要真实登录态才能搜到的私有内容。输出对齐 argo 统一 JSON schema，可直接进入
+  evidence 评分与 RRF 融合。Triggers include 浏览器搜索、登录后才能搜到、JS 渲染页面、
+  SERP 补充、动态内容抓取、登录态抓取、API 数据直取、接口数据。
 metadata:
   version: "1.6.0"
   date: "2026-08-07"
@@ -41,41 +41,6 @@ ego-search 是 argo 的**登录态专业搜索**子技能（v1.4 完全态）：
 - **任一可用即可**：`search` / `fetch` / `act` / `api` 在至少一条运行时在线时可用
 - **与常规检索隔离**：登录态结果 `cache_eligible=false`，禁止进公共 SearchCache
 - **汇总可融合**：输出带 `merge_with_public_ok=true`，分析层可把 public + login 两路结果一起喂 evidence
-
-## 完全态架构
-
-```text
-常规检索（argo public）          登录态专业搜索（本技能）
-  cache: argo public                 partition: login
-  cache_eligible: 可写             cache_eligible: false
-         \                              /
-          \                            /
-           └── 汇总分析（evidence / RRF 可选）──┘
-                 按 source / search_partition 区分，再综合判断
-```
-
-| 运行时 | 何时用 | 优势 |
-|--------|--------|------|
-| **ego**（默认优先） | `ego-browser` 可用 | 任务空间隔离、Agent 专用浏览器、learnings |
-| **webbridge** | 无 ego 或 auto 降级 | 用户 Chrome/Edge 现成登录态、扩展桥 |
-
-```bash
-# 探测双运行时 + 专业模式
-python3 sub-skills/ego-search/scripts/ego_search.py status
-python3 sub-skills/ego-search/scripts/ego_search.py status --fix   # 幂等启 WebBridge 桥
-
-# 显式指定运行时（任一安装即可）
-python3 .../ego_search.py search "查询" --runtime auto        # 默认：有 ego 用 ego，否则 WebBridge
-python3 .../ego_search.py search "查询" --runtime webbridge
-python3 .../ego_search.py fetch "https://..." --runtime ego
-
-# 同站登录态保温
-python3 .../ego_search.py fetch "https://www.zhihu.com/..." --site zhihu.com
-
-# 汇总分析：public 常规 JSON + login 专业 JSON
-python3 .../ego_search.py merge --public /tmp/public.json --login /tmp/login.json
-```
-
 ## 专业搜索模式（默认关闭）
 
 本子技能涉及真实浏览器**登录态继承**，出于安全与可靠性考虑**默认关闭**。开启后
@@ -93,26 +58,6 @@ python3 sub-skills/ego-search/scripts/ego_search.py status
 - **纪律**：Agent 不得自行开启——只有用户明确表达开启意图时才运行 `enable`。
 - 未开启时，同样不得用 heredoc 直连浏览器运行时绕开闸门。
 - 状态持久化于 `~/.local/state/ego-search/pro-mode.json`，开启后长期生效，直到手动关闭。
-
-## 能力基础（MECE 对照）
-
-| 能力 | ego | WebBridge | 说明 |
-|------|:---:|:---------:|------|
-| 登录态搜索/取正文 | ✅ | ✅ | 任一可用即可 |
-| 任务空间隔离 | ✅ | session 标签组 | ego 更强隔离 |
-| 已知 URL 同源 API | ✅ browserFetch | ✅ page fetch | api 模式 |
-| 语义快照/复杂交互 | ✅ heredoc 全 helper | ✅ snapshot/@e | 复杂操作用原版运行时能力 |
-| 被动 network 发现 | — | ✅ network | 需原生扩展能力时走 WebBridge |
-| 写入公共 SearchCache | ❌ | ❌ | 一律 cache_eligible=false |
-
-**边界**：
-
-| 在范围内 | 不在范围内 |
-|----------|------------|
-| 双运行时 search/fetch/act/api | 放弃任一侧只留单后端 |
-| 登录分区 + 分析层融合 | 登录结果写入 public 缓存 |
-| auto 择优与失败降级 | 与常规 argo 召回混进同一 cache key |
-
 ## 定位与升级决策
 
 主系统 API/HTML 检索覆盖不足时，升级到 **ego-search**：
@@ -152,7 +97,11 @@ python3 sub-skills/ego-search/scripts/ego_search.py status
 # 首次使用：先开启专业搜索模式（需用户确认；开启后长期生效）
 python3 sub-skills/ego-search/scripts/ego_search.py enable
 
+# 探测运行时与专业模式（--fix 幂等启 WebBridge 桥）
+python3 sub-skills/ego-search/scripts/ego_search.py status [--fix]
+
 # 浏览器态搜索（真实 SERP，输出 argo JSON schema）
+#   --runtime auto(默认: 有 ego 用 ego，否则 webbridge) | ego | webbridge
 python3 sub-skills/ego-search/scripts/ego_search.py search "AI agent 浏览器自动化" --engine bing --n 8
 
 # 强制登录态站点搜索（如知乎/小红书，需登录态）
@@ -214,17 +163,6 @@ python3 sub-skills/ego-search/scripts/ego_search.py search "竞品分析" --task
 2. 单次取证：默认即可（跑完关空间）  
 3. `quality.login_likely_ok=false` → 在 ego App 或用户 Chrome 人工登录后重试  
 4. 不要把登录态 body 写入 public cache；汇总用 `merge`  
-
-### 与原版 ego-browser 技能的关系（不是「超过」）
-
-| 维度 | 原版 ego-browser skill | ego-search |
-|------|------------------------|------------|
-| 通用交互面 | **完整**（点选/填表/截图/handoff/learnings） | 故意收窄 |
-| 登录态专业搜索 CLI | 需手写 heredoc | **更强**（双运行时 + schema + 隔离） |
-| 安全/缓存/融合 | 弱文档约束 | **更强**（闸门+SSRF+provenance） |
-
-ego-search **在搜证管线维度更强**，**在通用浏览器自动化维度仍弱于原版**。复杂操作继续用原版；见 `references/original-ego-upgrade.md`。
-
 ### search 模式
 
 打开指定搜索引擎的真实结果页，`js()` 提取结构化 SERP，输出：
@@ -307,64 +245,9 @@ ego-search **在搜证管线维度更强**，**在通用浏览器自动化维度
 4. **防污染**：内容安全引擎照常；**缓存隔离**靠 `cache_eligible=false` + SearchCache 硬守卫。
 5. **缓存策略**：默认不缓存登录态 body；若未来做短缓存，必须独立库
    `~/.cache/ego-search/`，键含 `auth_partition`，禁止 soft-hit 公共 combo。
+## 按需读取
 
-## 直接浏览器操作
-
-复杂交互路径用浏览器运行时命令 `ego-browser nodejs` heredoc 直接编排（本子技能继承完整
-运行时）。核心纪律：
-
-```bash
-ego-browser nodejs <<'EOF'
-// 同名任务空间跨轮次复用；同一用户目标不新建空间
-const task = await useOrCreateTaskSpace('竞品调研')
-await openOrReuseTab('https://example.com', { wait: true, timeout: 20 })
-cliLog(await snapshotText())   // 语义快照，带 [ref=N, loc=..., url=...]
-EOF
-```
-
-**Helpers 速查**：
-
-- 任务空间：`useOrCreateTaskSpace` / `listTaskSpaces` / `claimTaskSpace` / `handOffTaskSpace` / `takeOverTaskSpace` / `completeTaskSpace`
-- 导航：`openOrReuseTab` / `gotoAndWait` / `pageInfo` / `listTabs` / `switchTab`
-- 观察：`snapshotText` / `captureScreenshot` / `drainEvents`
-- 动作：`click` / `fillInput` / `typeText` / `pressKey` / `scrollToBottomUntil` / `hover` / `uploadFile`
-- 等待：`wait` / `waitForElement` / `waitForNetworkIdle`
-- 提取：`js`（页面内 JS）/ `cdp`（浏览器协议）
-- 输出：`cliLog`（唯一输出通道；`-e` 模式下输出到 stderr）
-
-**关键纪律**：
-
-1. **任务空间隔离 + 登录态继承**：Agent 在独立空间操作，不抢用户标签页；登录态默认继承，可访问已登录站点。
-2. **跨轮次复用**：Node 运行时每次 heredoc 退出即释放，后续轮次用 `useOrCreateTaskSpace(同名)` 或
-   `takeOverTaskSpace`（用户确认继续后）恢复。
-3. **归属权**：用户接管空间时（"user is controlling"）是硬停——问用户并等待，不重试不抢回；
-   `handOffTaskSpace` 交还用户后，只有用户明确确认（Ask 的 Continue）才 `takeOverTaskSpace`。
-4. **收尾**：任务完成必须 `completeTaskSpace(name, { keep: false })` 关掉空间；
-   仅当用户明确要求保留页面/需人工操作/结果无法用 URL 交付时才 `{ keep: true }`。
-5. **`js()` 用法**：页面内逻辑包成单个 IIFE 一次返回；`js()` 返回求值结果而非 JSON 字符串，
-   不要包 `JSON.parse`；模板字符串里正则反斜杠要双写或 `String.raw`。
-6. **输出通道**：heredoc 模式 `cliLog` 输出到 stdout；`ego-browser nodejs -e "..."` 模式输出到 **stderr**。
-
-**三种工作流**：普通 DOM 页用语义流（`snapshotText` + `@N`/`loc=` 引用）；canvas/富编辑器
-（Google Docs/Notion/Figma 等）用视觉流（截图 + 坐标 + 键盘）；需要浏览器态/紧凑数据提取用
-直接 DOM/CDP 流（`js`/`cdp`）。
-
-## 文件结构
-
-```
-sub-skills/ego-search/
-├── SKILL.md               # 本文件
-├── scripts/
-│   ├── ego_search.py      # CLI：双运行时路由 + 闸门 + provenance + merge
-│   ├── runtime.py         # ego / WebBridge 探测
-│   ├── webbridge_adapter.py
-│   ├── safety.py          # URL 守卫
-│   ├── quality.py         # 登录墙/空页信号
-│   └── merge.py           # public+login 分析融合
-└── references/
-    ├── install.md
-    └── original-ego-upgrade.md
-```
+复杂交互、heredoc 全 helper 速查、任务空间归属权纪律 → `references/browser-runtime.md`；安装细节 → `references/install.md`；升级到原版运行时 → `references/original-ego-upgrade.md`。
 
 ## 参考
 

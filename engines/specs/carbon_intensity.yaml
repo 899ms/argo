@@ -1,0 +1,32 @@
+# UK Carbon Intensity — 英国电网碳强度（国家电网 ESO 官方，免认证）
+# 补 environment 域的「电网碳强度」维度。无查询参数：返回当前全国碳强度快照；
+# 同域兄弟端点 /regional 给区域碳强度 + 发电燃料占比（generationmix）。
+# 验证:
+#   python3 scripts/engine_validate.py --engine carbon_intensity --stage all --admit --write-doc
+
+engine_id: carbon_intensity
+type: http
+enabled: true
+cost_tier: free
+method: GET
+url: https://api.carbonintensity.org.uk/regional
+timeout: 12
+query_param: ""
+canary_query: "carbon intensity"
+desc: "英国电网碳强度与发电结构（国家电网官方，免认证）"
+coverage: [environment, energy, realtime, official]
+recommended: false
+latency_ms: 1200
+
+headers:
+  User-Agent: argo-search/1.0 (+carbon_intensity)
+  Accept: application/json
+
+output_map:
+  items: data.0.regions
+  item_title: shortname
+  item_summary: intensity.index
+  url_template: "https://carbonintensity.org.uk/"
+
+quality_queries:
+  - query: "carbon intensity"

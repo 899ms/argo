@@ -1,0 +1,19 @@
+# WoRMS 世界海洋物种名录（分类学权威，免认证）
+# 与 OBIS 互补：OBIS 给观测记录，WoRMS 给分类学「正确学名/接受名」判定。
+# 验证:
+#   python3 scripts/engine_validate.py --engine worms --stage all --admit --write-doc
+
+engine_id: worms
+type: worms
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "Gadus morhua"
+desc: "WoRMS 海洋物种权威命名（分类学标准，免认证）"
+coverage: [species, marine, science, reference]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "Gadus morhua"
+  - query: "Octopus vulgaris"

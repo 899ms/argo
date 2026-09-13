@@ -2153,5 +2153,155 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "artic": {
+    "label": "artic",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "carbon_intensity": {
+    "label": "carbon_intensity",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "cleveland": {
+    "label": "cleveland",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "deezer": {
+    "label": "deezer",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "egov_law": {
+    "label": "egov_law",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "energy_charts": {
+    "label": "energy_charts",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "gbfs_nyc": {
+    "label": "gbfs_nyc",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "gdacs": {
+    "label": "gdacs",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "jikan": {
+    "label": "jikan",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "jolpica": {
+    "label": "jolpica",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "k10plus": {
+    "label": "k10plus",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "listenbrainz": {
+    "label": "listenbrainz",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "nhtsa_vpic": {
+    "label": "nhtsa_vpic",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "noaa_swpc": {
+    "label": "noaa_swpc",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "obis": {
+    "label": "obis",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "openf1": {
+    "label": "openf1",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "openligadb": {
+    "label": "openligadb",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "ror": {
+    "label": "ror",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "satnogs": {
+    "label": "satnogs",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "soilgrids": {
+    "label": "soilgrids",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "tle_mirror": {
+    "label": "tle_mirror",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "tvmaze": {
+    "label": "tvmaze",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "who_don": {
+    "label": "who_don",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "who_gho": {
+    "label": "who_gho",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "worms": {
+    "label": "worms",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

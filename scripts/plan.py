@@ -38,10 +38,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
 _URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
-_TRACKING_PARAMS = {
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "spm", "from", "ref", "fbclid", "gclid", "mc_cid", "mc_eid",
-}
 
 ExecutionTier = Literal["daily", "professional", "deep_research"]
 
@@ -134,16 +130,14 @@ def _is_single_tweet(url: str) -> bool:
 
 
 def canonicalize_url(url: str) -> str:
-    """去掉明确追踪参数；失败则原样返回。"""
-    if not url:
-        return url
-    try:
-        p = urlparse(url)
-        q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
-             if k.lower() not in _TRACKING_PARAMS]
-        return urlunparse((p.scheme, p.netloc, p.path, p.params, urlencode(q), ""))
-    except Exception:
-        return url
+    """URL 归一化（薄转发到 url_canon 单一真源）。
+
+    本函数曾自带一份追踪参数表与归一规则，与 search/candidate_envelope/
+    research_dossier 的实现互不一致；现统一到 url_canon，保证同一条链接
+    在计划层与融合层归一成同一个键。
+    """
+    from url_canon import canonical_url as _impl
+    return _impl(url)
 
 
 def classify_input_kind(query: str, explicit: str = "auto") -> str:

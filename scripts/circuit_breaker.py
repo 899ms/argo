@@ -15,6 +15,7 @@ import json
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Any, Optional
 
 # 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
@@ -55,12 +56,14 @@ class CircuitBreaker:
 
     def _save(self) -> None:
         try:
-            os.makedirs(os.path.dirname(self._path), exist_ok=True)
-            # 只持久化引擎熔断态
-            tmp = self._path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"engines": self._engines, "updated": time.time()}, f)
-            os.replace(tmp, self._path)
+            # 原子写走单一真源（唯一 tmp 名 + 同目录 rename）。
+            # 旧实现写固定的 `<path>.tmp`：并发进程互相搬走对方的 tmp，
+            # os.replace 抛 FileNotFoundError，熔断态静默丢失。
+            _paths.atomic_write_json(
+                Path(self._path),
+                {"engines": self._engines, "updated": time.time()},
+                indent=None,
+            )
         except Exception:
             pass
 

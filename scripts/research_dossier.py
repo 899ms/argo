@@ -25,10 +25,6 @@ except ImportError:  # pragma: no cover
 
 _COVERAGE_OK_MIN = 3
 _COVERAGE_PARTIAL_MIN = 1
-_TRACKING_KEYS = frozenset({
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "spm", "from", "ref", "fbclid", "gclid",
-})
 
 
 def detect_cross_references(
@@ -116,26 +112,14 @@ def evidence_tier(source: str, source_grades: dict[str, Any] | None) -> str:
 
 
 def canonical_url(url: str) -> str:
-    """去跟踪参数、fragment、www、尾斜杠，供同源去重。"""
-    if not url:
-        return ""
-    try:
-        p = urlparse(url.strip())
-    except Exception:
-        return url
-    host = (p.netloc or "").lower()
-    if host.startswith("www."):
-        host = host[4:]
-    qs = [
-        (k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
-        if k.lower() not in _TRACKING_KEYS
-    ]
-    path = p.path or ""
-    if path != "/" and path.endswith("/"):
-        path = path[:-1]
-    return urlunparse((p.scheme.lower(), host, path, "", "&".join(
-        f"{k}={v}" for k, v in qs
-    ), ""))
+    """URL 归一化（薄转发到 url_canon 单一真源），供同源去重。
+
+    本函数曾自带一份实现（去 www/尾斜杠、查询参数用 '&' 手工拼接而非
+    urlencode），与融合层 search._canonical_url 的键不一致——融合层已合并
+    的同稿链接，进了 dossier 又被算成两条。现统一到 url_canon。
+    """
+    from url_canon import canonical_url as _impl
+    return _impl(url)
 
 
 def build_local_sources(file_inputs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:

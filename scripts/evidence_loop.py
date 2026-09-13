@@ -203,7 +203,11 @@ def gate_results(results: list[dict[str, Any]],
             r["fetch_suggested"] = False
             continue
         r["fetch_suggested"] = True
-        suggested.append(url)
+        # 源内全文直出优先：gutenberg / e-Gov 这类结果的 `url` 是下载门户或
+        # JS 空壳页（实测去标签后取不到正文），而 `full_text_url` 是该源给出
+        # 的、可确定性取到正文的端点（公版书纯文本 / 法令全文 XML）。取数建议
+        # 据此走直连，省掉「门户页 → 找下载链」或浏览器渲染那几级。
+        suggested.append(str(r.get("full_text_url") or url))
 
     hc = is_high_consequence_domain(domain)
     return {

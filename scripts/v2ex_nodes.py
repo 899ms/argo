@@ -115,11 +115,10 @@ def _save_nodes(nodes: list[dict]) -> None:
         return
     p = _cache_path()
     try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"nodes": nodes}, ensure_ascii=False),
-                       encoding="utf-8")
-        tmp.replace(p)
+        # 原子写走单一真源（唯一 tmp 名）——旧实现固定 `.tmp` 名，
+        # 并发进程互相搬走临时文件导致写失败。
+        import argo_paths as _paths
+        _paths.atomic_write_json(p, {"nodes": nodes}, indent=None)
     except Exception:
         pass  # 缓存是加速层，写失败不影响功能
 

@@ -38,6 +38,7 @@ import time
 import traceback
 import urllib.parse
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -338,13 +339,9 @@ def _identity_remember_mobile(host: str) -> None:
     _identity_load()
     _identity_mem[host] = time.time() + _IDENTITY_TTL
     try:
-        parent = os.path.dirname(_IDENTITY_PATH)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        tmp = _IDENTITY_PATH + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(_identity_mem, f)
-        os.replace(tmp, _IDENTITY_PATH)
+        # 原子写走 argo_paths 单一真源（唯一 tmp 名）；旧实现固定 `.tmp` 名，
+        # 并发抓取进程会互相搬走临时文件，身份记忆静默丢失。
+        _paths.atomic_write_json(Path(_IDENTITY_PATH), _identity_mem, indent=None)
     except Exception:
         pass
 

@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any
 
 from engines_base import (
+    rank_score,
     safe_search, _run, _resolve, _get_path, _coerce_field, _detect_anti_bot,
     http_open,
 )
@@ -44,7 +45,7 @@ def _build_open_library_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"Open Library 失败: {e}")
             return []
         results = []
-        for d in (data.get("docs") or [])[:n]:
+        for _rk, d in enumerate((data.get("docs") or [])[:n]):
             title = d.get("title", "")
             key = d.get("key", "")
             if not title and not key:
@@ -57,7 +58,7 @@ def _build_open_library_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://openlibrary.org{key}" if key else "",
                 "snippet": " · ".join(parts)[:300],
                 "source": "open_library",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk),
             })
         return results
     return _engine
@@ -129,7 +130,7 @@ def _build_weread_engine(spec: dict[str, Any]) -> Any:
                     "url": bi.get("deepLink") or f"https://weread.qq.com/book-detail?type=1&bookId={bi.get('bookId', '')}",
                     "snippet": " · ".join(parts)[:300],
                     "source": "weread",
-                    "score": 0.85,
+                    "score": rank_score(0.85, len(results)),
                 })
                 if len(results) >= n:
                     break
@@ -177,7 +178,7 @@ def _build_douban_book_engine(spec: dict[str, Any]) -> Any:
             return []
         results = []
         seen: set[str] = set()
-        for item in (data.get("items") or []):
+        for _rk2, item in enumerate((data.get("items") or [])):
             if item.get("tpl_name") != "search_subject":
                 continue
             title = item.get("title", "")
@@ -197,7 +198,7 @@ def _build_douban_book_engine(spec: dict[str, Any]) -> Any:
                 "url": item.get("url") or f"https://book.douban.com/subject/{item.get('id', '')}/",
                 "snippet": " · ".join(parts)[:300],
                 "source": "douban_book",
-                "score": 0.85,
+                "score": rank_score(0.85, _rk2),
             })
             if len(results) >= n:
                 break
@@ -228,7 +229,7 @@ def _build_free_dictionary_engine(spec: dict[str, Any]) -> Any:
         if not isinstance(entries, list):
             return []
         results = []
-        for e in entries[:n]:
+        for _rk3, e in enumerate(entries[:n]):
             w = e.get("word", "")
             if not w:
                 continue
@@ -243,7 +244,7 @@ def _build_free_dictionary_engine(spec: dict[str, Any]) -> Any:
                 "url": eurl,
                 "snippet": " / ".join(x for x in defs if x)[:300],
                 "source": "free_dictionary",
-                "score": 0.8,
+                "score": rank_score(0.8, _rk3),
             })
         return results
     return _engine
@@ -273,7 +274,7 @@ def _build_baidu_baike_engine(spec: dict[str, Any]) -> Any:
         try:
             with http_open(urllib.request.Request(sug_url, headers=headers), timeout=to, engine=spec.get("_name", "")) as resp:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
-            for item in (data.get("list") or [])[:n]:
+            for _rk25, item in enumerate((data.get("list") or [])[:n]):
                 title = item.get("lemmaTitle") or ""
                 lid = item.get("lemmaId") or ""
                 desc = item.get("lemmaDesc") or ""
@@ -286,7 +287,7 @@ def _build_baidu_baike_engine(spec: dict[str, Any]) -> Any:
                     "url": url,
                     "snippet": str(desc)[:300],
                     "source": "baidu_baike",
-                    "score": 0.85,
+                    "score": rank_score(0.85, _rk25),
                 })
         except Exception as e:
             logger.warning(f"baidu_baike suggest 失败: {e}")
@@ -363,7 +364,7 @@ def _build_pypi_engine(spec: dict[str, Any]) -> Any:
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
         headers = {"User-Agent": "argo-search/2.5 (unified-search@local)", "Accept": "application/json"}
-        for name in _candidates(query):
+        for _rk4, name in enumerate(_candidates(query)):
             if len(results) >= n:
                 break
             url = f"https://pypi.org/pypi/{name}/json"
@@ -389,7 +390,7 @@ def _build_pypi_engine(spec: dict[str, Any]) -> Any:
                 "url": home,
                 "snippet": snippet[:300],
                 "source": "pypi",
-                "score": 0.9,
+                "score": rank_score(0.9, _rk4),
             })
         return results[:n]
     return _engine
@@ -418,7 +419,7 @@ def _build_clinicaltrials_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"clinicaltrials 失败: {e}")
             return []
         results = []
-        for st in (data.get("studies") or [])[:n]:
+        for _rk5, st in enumerate((data.get("studies") or [])[:n]):
             ps = st.get("protocolSection") or {}
             ident = ps.get("identificationModule") or {}
             desc = ps.get("descriptionModule") or {}
@@ -433,7 +434,7 @@ def _build_clinicaltrials_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://clinicaltrials.gov/study/{nct}" if nct else "",
                 "snippet": str(summary).replace("\n", " ")[:300],
                 "source": "clinicaltrials",
-                "score": 0.85,
+                "score": rank_score(0.85, _rk5),
             })
         return results
     return _engine
@@ -474,7 +475,7 @@ def _build_openfda_engine(spec: dict[str, Any]) -> Any:
                 logger.warning(f"openfda 失败: {e2}")
                 return []
         results = []
-        for item in (data.get("results") or [])[:n]:
+        for _rk6, item in enumerate((data.get("results") or [])[:n]):
             of = item.get("openfda") or {}
             brands = of.get("brand_name") or []
             generics = of.get("generic_name") or []
@@ -489,7 +490,7 @@ def _build_openfda_engine(spec: dict[str, Any]) -> Any:
                 "url": url_out,
                 "snippet": str(purpose).replace("\n", " ")[:300],
                 "source": "openfda",
-                "score": 0.8,
+                "score": rank_score(0.8, _rk6),
             })
         return results
     return _engine
@@ -526,7 +527,7 @@ def _build_juejin_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"juejin 失败: {e}")
             return []
         results = []
-        for item in (data.get("data") or [])[: n * 2]:
+        for _rk7, item in enumerate((data.get("data") or [])[: n * 2]):
             model = item.get("result_model") or {}
             info = model.get("article_info") or model
             title = info.get("title") or item.get("title_highlight") or ""
@@ -544,7 +545,7 @@ def _build_juejin_engine(spec: dict[str, Any]) -> Any:
                 "url": aurl,
                 "snippet": brief[:300],
                 "source": "juejin",
-                "score": 0.75,
+                "score": rank_score(0.75, _rk7),
             })
             if len(results) >= n:
                 break
@@ -656,7 +657,7 @@ def _build_models_dev_engine(spec: dict[str, Any]) -> Any:
                     "snippet": snippet[:300],
                     "source": "models_dev",
                     # 0.8 固定基线分（结构化目录条目，非语义搜索，不宜 0.95 压过真实相关结果）
-                    "score": 0.8,
+                    "score": rank_score(0.8, len(results)),
                 })
                 if len(results) >= n:
                     break
@@ -1016,7 +1017,7 @@ def _build_octen_engine(spec: dict[str, Any]) -> Any:
                                     "url": url_key,
                                     "snippet": r.get("highlight", "")[:300],
                                     "source": "octen",
-                                    "score": 0.8,
+                                    "score": rank_score(0.8, len(results)),
                                 })
                                 if len(results) >= n:
                                     return results
@@ -1268,7 +1269,7 @@ def _build_pubchem_engine(spec: dict[str, Any]) -> Any:
                                 if chembl_id else "https://www.ebi.ac.uk/chembl/"),
                         "snippet": snippet,
                         "source": "chembl",
-                        "score": 0.9,
+                        "score": rank_score(0.9, len(results)),
                     })
                 if results:
                     break
@@ -1326,7 +1327,7 @@ def _build_gbif_engine(spec: dict[str, Any]) -> Any:
 
         items = sorted((r for r in (d.get("results") or []) if r.get("scientificName")), key=_key, reverse=True)
         results = []
-        for r in items[:n]:
+        for _rk9, r in enumerate(items[:n]):
             sci = r.get("scientificName", "")
             rank = r.get("rank", "")
             kingdom = r.get("kingdom") or r.get("kingdomKey") or ""
@@ -1345,7 +1346,7 @@ def _build_gbif_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://www.gbif.org/species/{key}" if key else "https://www.gbif.org/",
                 "snippet": snip,
                 "source": "gbif",
-                "score": 0.92,
+                "score": rank_score(0.92, _rk9),
             })
         return results[: max(n, 3)]
 
@@ -1480,7 +1481,7 @@ def _build_uniprot_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"UniProt 失败: {e}")
             return []
         results = []
-        for x in (data.get("results") or [])[:n]:
+        for _rk10, x in enumerate((data.get("results") or [])[:n]):
             acc = x.get("primaryAccession", "")
             pd = x.get("proteinDescription") or {}
             rn = ((pd.get("recommendedName") or {}).get("fullName") or {}).get("value", "")
@@ -1496,7 +1497,7 @@ def _build_uniprot_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://www.uniprot.org/uniprotkb/{acc}" if acc else "",
                 "snippet": snip[:300],
                 "source": "uniprot",
-                "score": 0.9,
+                "score": rank_score(0.9, _rk10),
             })
         return results
     return _engine
@@ -1535,7 +1536,7 @@ def _build_rcsb_pdb_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"RCSB PDB 失败: {e}")
             return []
         results = []
-        for x in (data.get("result_set") or [])[:n]:
+        for _rk11, x in enumerate((data.get("result_set") or [])[:n]):
             pid = x.get("identifier", "")
             if not pid:
                 continue
@@ -1544,7 +1545,7 @@ def _build_rcsb_pdb_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://www.rcsb.org/structure/{pid}",
                 "snippet": f"RCSB PDB 实验结构 {pid}，分辨率 {x.get('score', '')}"[:300],
                 "source": "rcsb_pdb",
-                "score": 0.85,
+                "score": rank_score(0.85, _rk11),
             })
         return results
     return _engine
@@ -1579,7 +1580,7 @@ def _build_courtlistener_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"CourtListener 失败: {e}")
             return []
         results = []
-        for x in (data.get("results") or [])[:n]:
+        for _rk12, x in enumerate((data.get("results") or [])[:n]):
             name = x.get("caseName") or q
             rel = x.get("absolute_url") or ""
             date = (x.get("dateFiled") or "")[:10]
@@ -1592,7 +1593,7 @@ def _build_courtlistener_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://www.courtlistener.com{rel}" if rel else "",
                 "snippet": " · ".join(parts)[:300],
                 "source": "courtlistener",
-                "score": 0.9,
+                "score": rank_score(0.9, _rk12),
             })
         return results
     return _engine
@@ -1625,7 +1626,7 @@ def _build_gutenberg_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"Gutendex 失败: {e}")
             return []
         results = []
-        for x in (data.get("results") or [])[:n]:
+        for _rk13, x in enumerate((data.get("results") or [])[:n]):
             title = x.get("title") or q
             gid = x.get("id") or ""
             authors = ", ".join((a.get("name") or "") for a in (x.get("authors") or [])[:2])
@@ -1633,13 +1634,20 @@ def _build_gutenberg_engine(spec: dict[str, Any]) -> Any:
             fmt = x.get("formats") or {}
             txt = fmt.get("text/plain; charset=us-ascii") or fmt.get("text/html")
             snip = " · ".join(p for p in (authors, langs, "公版书全文") if p)
-            results.append({
+            _row = {
                 "title": title,
                 "url": f"https://www.gutenberg.org/ebooks/{gid}" if gid else txt or "",
                 "snippet": snip[:300],
                 "source": "gutenberg",
-                "score": 0.85,
-            })
+                "score": rank_score(0.85, _rk13),
+            }
+            # 源内全文直出：`/ebooks/{id}` 是下载门户页（实测首段全是 noprint
+            # 脚本），不是正文；gutendex 本来就把纯文本 URL 放在 formats 里，
+            # 此前只在缺 id 时当兜底，正常路径直接丢掉。这里单独带上，供下游
+            # 取正文时优先使用（省掉从门户页找下载链这一步）。
+            if txt:
+                _row["full_text_url"] = txt
+            results.append(_row)
         return results
     return _engine
 
@@ -1682,7 +1690,7 @@ def _build_wayback_cdx_engine(spec: dict[str, Any]) -> Any:
         if rows and rows[0] and rows[0][0] == "timestamp":
             rows = rows[1:]
         results = []
-        for r in rows[:n]:
+        for _rk14, r in enumerate(rows[:n]):
             if len(r) < 3:
                 continue
             ts, orig, status = r[0], r[1], r[2]
@@ -1697,7 +1705,7 @@ def _build_wayback_cdx_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://web.archive.org/web/{ts}/{orig}",
                 "snippet": f"Wayback 快照 {ts} · HTTP {status}"[:300],
                 "source": "wayback_cdx",
-                "score": 0.8,
+                "score": rank_score(0.8, _rk14),
             }
             if published_at:
                 item["published_at"] = published_at
@@ -1780,7 +1788,7 @@ def _build_usgs_engine(spec: dict[str, Any]) -> Any:
             if kw:
                 feats = [f for f in feats if re.search(kw, str(f.get("properties", {}).get("place", "")).lower())]
         results = []
-        for f in feats[:n]:
+        for _rk15, f in enumerate(feats[:n]):
             p = f.get("properties", {})
             mag = p.get("mag")
             place = p.get("place", "")
@@ -1791,7 +1799,7 @@ def _build_usgs_engine(spec: dict[str, Any]) -> Any:
                 "url": url_ or "",
                 "snippet": f"USGS 地震 · {ts and time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(ts))}"[:300],
                 "source": "usgs",
-                "score": 0.85,
+                "score": rank_score(0.85, _rk15),
             })
         return results
     return _engine
@@ -1824,7 +1832,7 @@ def _build_nasa_cmr_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"NASA CMR 失败: {e}")
             return []
         results = []
-        for x in ((data.get("feed") or {}).get("entry") or [])[:n]:
+        for _rk16, x in enumerate(((data.get("feed") or {}).get("entry") or [])[:n]):
             title = x.get("title") or q
             cid = x.get("id") or ""
             summary = (x.get("summary") or "")[:200]
@@ -1833,7 +1841,7 @@ def _build_nasa_cmr_engine(spec: dict[str, Any]) -> Any:
                 "url": f"https://search.earthdata.nasa.gov/search/granules?p={cid}" if cid else "",
                 "snippet": summary[:300],
                 "source": "nasa_cmr",
-                "score": 0.8,
+                "score": rank_score(0.8, _rk16),
             })
         return results
     return _engine
@@ -2323,7 +2331,7 @@ def _build_gdelt_engine(spec: dict[str, Any]) -> Any:
             return []
         articles = data.get("articles") or []
         results: list[dict[str, Any]] = []
-        for a in articles[:n]:
+        for _rk18, a in enumerate(articles[:n]):
             title = a.get("title") or ""
             if not title:
                 continue
@@ -2336,7 +2344,7 @@ def _build_gdelt_engine(spec: dict[str, Any]) -> Any:
                 "url": url_a,
                 "snippet": (a.get("seentext") or "")[:300],
                 "source": "gdelt",
-                "score": 0.8,
+                "score": rank_score(0.8, _rk18),
                 "published": date_s,
                 "country": src,
                 "language": a.get("lang") or "",
@@ -2375,7 +2383,7 @@ def _build_opencorporates_engine(spec: dict[str, Any]) -> Any:
             return []
         companies = ((data.get("results") or {}).get("companies")) or []
         results: list[dict[str, Any]] = []
-        for c in companies[:n]:
+        for _rk19, c in enumerate(companies[:n]):
             comp = c.get("company") or {}
             name = comp.get("name") or ""
             if not name:
@@ -2395,7 +2403,7 @@ def _build_opencorporates_engine(spec: dict[str, Any]) -> Any:
                     f"{' · '+cc if cc else ''}"
                 )[:300],
                 "source": "opencorporates",
-                "score": 0.8,
+                "score": rank_score(0.8, _rk19),
                 "company_number": num,
                 "jurisdiction": juris,
                 "incorporation_date": inc_date,
@@ -2458,7 +2466,7 @@ def _build_google_patents_engine(spec: dict[str, Any]) -> Any:
                         "url": f"https://patents.google.com/patent/{pub_id}" if pub_id else "",
                         "snippet": (r.get("snippet") or "")[:300],
                         "source": "google_patents",
-                        "score": 0.8,
+                        "score": rank_score(0.8, len(results)),
                         "publication_date": pub_date,
                         "publication_number": pub_num,
                         "assignee": assignee,
@@ -2491,7 +2499,7 @@ def _build_marginalia_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"Marginalia 失败: {e}")
             return []
         results = []
-        for r in (data.get("results") or [])[:n]:
+        for _rk20, r in enumerate((data.get("results") or [])[:n]):
             title = r.get("title", "")
             url_ = r.get("url", "")
             if not title and not url_:
@@ -2501,7 +2509,7 @@ def _build_marginalia_engine(spec: dict[str, Any]) -> Any:
                 "url": url_,
                 "snippet": r.get("description", "")[:300],
                 "source": "marginalia",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk20),
             })
         return results
     return _engine
@@ -2529,7 +2537,7 @@ def _build_wiby_engine(spec: dict[str, Any]) -> Any:
             logger.warning(f"Wiby 失败: {e}")
             return []
         results = []
-        for r in (data if isinstance(data, list) else [])[:n]:
+        for _rk21, r in enumerate((data if isinstance(data, list) else [])[:n]):
             if not isinstance(r, dict):
                 continue
             title = r.get("Title", r.get("title", ""))
@@ -2541,7 +2549,7 @@ def _build_wiby_engine(spec: dict[str, Any]) -> Any:
                 "url": url_,
                 "snippet": r.get("Snippet", r.get("Description", ""))[:300],
                 "source": "wiby",
-                "score": 0.7,
+                "score": rank_score(0.7, _rk21),
             })
         return results
     return _engine

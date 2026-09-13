@@ -1,0 +1,20 @@
+# NOAA SWPC 空间天气（官方免认证）
+# 补 astronomy 域的「空间天气」维度：Kp 地磁指数 + 太阳活动区。
+# 榜单型源（查询词不参与过滤），与太阳活动/极光/卫星安全类查询相关。
+# 验证:
+#   python3 scripts/engine_validate.py --engine noaa_swpc --stage all --admit --write-doc
+
+engine_id: noaa_swpc
+type: noaa_swpc
+enabled: true
+cost_tier: free
+timeout: 15
+canary_query: "solar"
+desc: "空间天气（NOAA SWPC，Kp 指数/太阳活动区，官方免认证）"
+coverage: [astronomy, space, science, official]
+recommended: false
+latency_ms: 2000
+
+quality_queries:
+  - query: "solar"
+  - query: "geomagnetic storm"

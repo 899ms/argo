@@ -120,13 +120,29 @@ def record_validation(
         # 保持历史 admitted_at，但 blocked 生效
         pass
 
+    # reason 必须反映**本次**判定，不得粘滞历史原因。
+    # 此前写 `reason or current.get("reason")`：先跑 `--stage health` 失败会留下
+    # `health_failed`；之后补跑 `--stage quality`（health 已并入 merged_stages、
+    # 本次 health.ok=true 且 blocked=False）时本次 reason 为空 → 回退到历史
+    # `health_failed`，与 blocked=False 自相矛盾。引擎详情页据此显示
+    # 「blocked=true / reason=health_failed」而 health.status=pass，导致
+    # routable=False——实测 24 个引擎（批次九全部 + realtime_index）因此被
+    # 错误拉黑、装了没通电。
+    if reason:
+        eff_reason = reason
+    elif blocked:
+        eff_reason = "validation_failed"
+    else:
+        # 本次未 block：清掉历史失败原因，避免与 blocked=False 矛盾
+        eff_reason = ""
+
     record = {
         "admitted_at": admitted_at,
         "stages_passed": merged_stages,
         "quality_score": quality_score if quality_score is not None else current.get("quality_score"),
         "avg_latency_ms": avg_latency_ms if avg_latency_ms is not None else current.get("avg_latency_ms"),
         "blocked": blocked,
-        "reason": reason or current.get("reason") or "",
+        "reason": eff_reason,
         "health": health if health is not None else current.get("health"),
         "quality": quality if quality is not None else current.get("quality"),
     }

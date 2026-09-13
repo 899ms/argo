@@ -62,7 +62,12 @@ domains:
   parallel: false
   patterns:
   - (?i)(google.?scholar|学术论文|论文搜索|research.*paper|journal.*article)
-  - (?i)(sci-hub|学术文献|学位论文|会议论文)
+  # 触发词只描述**检索意图**，不引用任何具体站点——尤其是盗版/影子图书馆
+  # 类站点名。配置是公开产物，出现站名既无功能价值（意图词已足够触发本域），
+  # 又会把本仓牵进它并不提供的服务：本域只把查询送往 google_scholar/arxiv。
+  # 门禁见 tests/test_public_config_compliance.py（双向锁定：既禁站名，
+  # 也要求下载意图词仍在，防「禁站名」被偷换成「删能力」）。
+  - (?i)(学术文献|学位论文|会议论文|论文下载|下载论文|文献下载|文献获取|全文获取)
   primary: google_scholar
 - desc: V2EX 社区搜索
   engines_combo:
@@ -132,10 +137,13 @@ domains:
   - (招股书|财报申报|年报申报|季报申报|证券申报|申报文件)
   primary: sec_edgar
 - desc: 美股筛选/分析（Finviz + Seeking Alpha；须排在 stock_query 前，避免「美股/ticker」被 A 股域吸走）
+  # 通用兜底源必须留在前 2 位（combo_budget=2，见 security_search 注）。
+  # finviz/seeking_alpha 皆为英文窄源，中文问法（「英伟达 财报」）两源皆 0；
+  # exa 5 条、anysearch 10 条。
   engines_combo:
   - finviz
-  - seeking_alpha
   - exa
+  - seeking_alpha
   - anysearch
   - eastmoney
   fallback: anysearch
@@ -199,6 +207,8 @@ domains:
   engines_combo:
   - gbif
   - wikipedia
+  - obis
+  - worms
   fallback: wikipedia
   name: species_search
   parallel: false
@@ -241,11 +251,19 @@ domains:
   - (?i)\b(roe\s+v\.?\s*wade|marbury\s+v\.?\s*madison|brown\s+v\.?\s*board|miranda\s+v\.?\s*arizona)\b
   - (美国判例|美国最高法院|判例法|联邦法院|美国法律)
   primary: courtlistener
-- desc: 地球科学/遥感数据（USGS 地震 + NASA CMR + NASA 图像）
+- desc: 地球科学/遥感数据（USGS 地震 + GDACS 多灾种 + NASA CMR/图像）
+  # combo_budget(fast)=2 只取前 2 位。GDACS 是多灾种预警（洪水/台风/野火/
+  # 地震）的答案源，usgs 只覆盖地震、nasa_cmr/images 只给数据集与图像，
+  # 全是窄模态。anysearch 作通用兜底必须在前 2 位，否则中文自然语言查询
+  # 被窄源吃满预算返回 0（实测 2026-09-13「地震 预警」走
+  # [usgs, nasa_images] 得 0 条）。
   engines_combo:
   - usgs
+  - gdacs
+  - anysearch
   - nasa_cmr
   - nasa_images
+  - soilgrids
   fallback: usgs
   name: earth_science
   parallel: true
@@ -254,10 +272,14 @@ domains:
   - (?i)(earthquake|seismic|usgs|geology|remote\s+sensing|satellite\s+data)
   primary: usgs
 - desc: 安全漏洞情报（NVD 漏洞 + crt.sh 证书/子域情报）
+  # 通用兜底源 anysearch 必须留在前 2 位：combo_budget(depth=fast)=2，
+  # 截断只按声明顺序取前 N 个。原先 [nvd, crt_sh, anysearch] 使两个
+  # 窄模态源吃满预算，中文自然语言查询（如「log4j 漏洞 影响」）两源
+  # 均返回 0（实测 2026-09-12），而 anysearch 有 10 条。
   engines_combo:
   - nvd
-  - crt_sh
   - anysearch
+  - crt_sh
   fallback: anysearch
   name: security_search
   parallel: false
@@ -301,6 +323,111 @@ domains:
   - (?i)(进口|出口|import|export).{0,12}\bHS?\s?\d{4}\b
   primary: un_comtrade
 
+- desc: 天文/空间天气/卫星（Kp 指数、太阳活动区、卫星目录与 TLE 轨道根数）
+  engines_combo:
+  - noaa_swpc
+  - satnogs
+  - tle_mirror
+  - nasa_images
+  - wikipedia
+  fallback: wikipedia
+  name: astro_space
+  primary: noaa_swpc
+  parallel: false
+  patterns:
+  - '(?i)(天文|天文学|astronomy|天体|asteroid|小行星|彗星|comet)'
+  - '(?i)(空间天气|space weather|太阳活动|solar flare|太阳黑子|sunspot|极光|aurora)'
+  - '(?i)(卫星|satellite|TLE|轨道根数|NORAD)'
+  - '(?i)(Kp\s*指数|地磁|geomagnetic|CME|日冕)'
+- desc: 电网/发电结构/碳强度（发电类型占比、电网碳强度、可再生占比）
+  engines_combo:
+  - energy_charts
+  - carbon_intensity
+  - anysearch
+  fallback: anysearch
+  name: energy_grid
+  primary: energy_charts
+  parallel: false
+  patterns:
+  - '(?i)(电网|发电结构|发电量|电力结构|power grid|electricity mix|generation mix)'
+  - '(?i)(碳强度|carbon intensity|碳排放强度|可再生|renewable)'
+  - '(?i)(现货电价|spot price|电价)'
+- desc: 交通实时（共享单车 GBFS 标准；与 train 引擎互补）
+  engines_combo:
+  - gbfs_nyc
+  - train
+  - anysearch
+  fallback: anysearch
+  name: transport_rt
+  primary: gbfs_nyc
+  parallel: false
+  patterns:
+  - '(?i)(共享单车|bike share|bikeshare|滑板车|scooter|GBFS)'
+  - '(?i)(公交|地铁|metro|班次|时刻表|timetable|departure)'
+- desc: 车辆厂商/车型本体（NHTSA vPIC 权威命名映射）
+  engines_combo:
+  - nhtsa_vpic
+  - anysearch
+  fallback: anysearch
+  name: vehicle_data
+  primary: nhtsa_vpic
+  parallel: false
+  patterns:
+  - '(?i)(车型|厂商|vehicle make|make and model|汽车厂商|VIN)'
+  - '(?i)(哪款车|什么车|车型库)'
+- desc: 日本法令检索（e-Gov 官方全文；与 flk_law/kor_law 构成东亚法条三源）
+  # 触发词必须带日本语境。此前第二条 pattern 写成
+  # `(日本法|e-Gov|法令検索|憲法|民法|刑法)`，其中裸的「民法」「刑法」
+  # 会把「刑法 判例 司法解释」这类**纯中文**查询吸进本域（实测
+  # test_p0_v25::test_legal_domain 由 legal 漂移到 japan_law）。
+  # 日文汉字词只在同现日本语境或日文假名时才成立，故加语境限定。
+  engines_combo:
+  - egov_law
+  - anysearch
+  fallback: anysearch
+  name: japan_law
+  primary: egov_law
+  parallel: false
+  patterns:
+  # 简繁字形：日文法律词用「憲法」，简体输入用「宪法」，两者都要收
+  # （实测漏收「憲法」会让「日本 憲法」掉进 chinese_general 用中文源打日文法令）。
+  - '(?i)(日本|日语|日語|和文).{0,10}(法令|法律|法条|民法|刑法|商法|宪法|憲法|条例|判例)'
+  - '(?i)(日本法|e-Gov|法令検索|法令データ|日本の法律)'
+  # 日文假名是强信号：含假名的法条查询一律归本域
+  - '(?i)[ぁ-んァ-ヶ].{0,10}(法令|法律|法条|民法|刑法|憲法|条例|判例)'
+  - '(?i)(日本|日语).{0,6}第\s*\d+\s*条'
+- desc: 韩国法令/判例检索（law.go.kr 官方全文；与 flk_law/egov_law 构成东亚法条三源）
+  # 触发词纪律同 japan_law：韩文汉字词（宪法/民法/刑法）不得裸用，否则会把
+  # 纯中文法条查询吸进本域。汉字词一律带韩国语境限定，谚文（한글）作独立强信号。
+  # 有此域之前 kor_law 只是「能 --engine 显式调用」，自动路由从未带上它。
+  engines_combo:
+  - kor_law
+  - anysearch
+  fallback: anysearch
+  name: kor_law
+  primary: kor_law
+  parallel: false
+  patterns:
+  # 国名/法名同时收简繁字形。注意「韩」与「韓」是两个不同字（不是异体映射），
+  # 必须都写进字符类——实测「韓国 憲法」因繁体写法漏配，掉进 chinese_general
+  # 用中文通用源去打韩国法令。同类：日本侧的「憲法/宪法」。
+  - '(?i)([韩韓][国國]|南[韩韓]|大[韩韓]|[韩韓][语語]|[韩韓]文).{0,10}(法令|法律|法条|民法|刑法|商法|宪法|憲法|条例|判例)'
+  - '(?i)(韩国法|law\.go\.kr|국가법령|대한민국\s*법)'
+  # 谚文是强信号：含韩文的法律查询一律归本域
+  - '(?i)[가-힣].{0,10}(법령|법률|조문|판례|헌법|민법|형법)'
+  - '(?i)(韩国|韩语|韩文).{0,6}第\s*\d+\s*条'
+- desc: 土壤/农业（ISRIC SoilGrids 土壤理化属性；当前上游降级，源已就位）
+  engines_combo:
+  - soilgrids
+  - usda
+  - anysearch
+  fallback: anysearch
+  name: soil_agri
+  primary: soilgrids
+  parallel: false
+  patterns:
+  - '(?i)(土壤|soil|土质|clay content|土壤属性|土壤类型)'
+  - '(?i)(农业|作物|crop|耕地|农田)'
 - desc: 国家标准检索（std.samr + openstd 全文）
   engines_combo:
   - std_samr
@@ -314,8 +441,13 @@ domains:
   primary: std_samr
 
 - desc: 法律法规条文（flk 权威法条 + gov.cn 规章）
+  # 通用兜底源 anysearch 必须留在前 2 位（combo_budget=2，见 security_search 注）。
+  # flk_law 的模糊检索对「民法典 第 1062 条」这类带空格条文号返回 0，
+  # gov_regulations 同为 0；anysearch 有 10 条。查询侧的空格归一化见
+  # engines_builders_cn._build_flk_law_engine。
   engines_combo:
   - flk_law
+  - anysearch
   - gov_regulations
   - wenshu
   fallback: gov_regulations
@@ -331,6 +463,8 @@ domains:
   engines_combo:
   - met_museum
   - wikipedia
+  - artic
+  - cleveland
   fallback: wikipedia
   name: art_museum
   parallel: true
@@ -506,10 +640,13 @@ domains:
   - (?i)(模型下载|模型检索|模型库|diffusion model|text.to.image model)
   primary: huggingface
 - desc: AI 模型信息搜索（价格/上下文/能力/多模态，models.dev）
+  # 通用兜底源 anysearch 必须留在前 2 位（combo_budget=2，见 security_search 注）。
+  # models_dev/huggingface 均为目录型窄源，中文问法（「开源 大模型 排行」）
+  # 两源皆 0；anysearch 10 条。
   engines_combo:
   - models_dev
-  - huggingface
   - anysearch
+  - huggingface
   fallback: anysearch
   name: ai_model
   parallel: false
@@ -553,13 +690,29 @@ domains:
   patterns:
   - (?i)(裁判文书|判决书|裁定书|wenshu|court\.gov)
   primary: wenshu
+- desc: 公共卫生事件/疫情暴发（WHO 官方通报与全球卫生指标）
+  engines_combo:
+  - who_don
+  - who_gho
+  - anysearch
+  fallback: anysearch
+  name: outbreak_health
+  primary: who_don
+  parallel: false
+  patterns:
+  - '(?i)(疫情|暴发|流行病|传染病|outbreak|epidemic|pandemic)'
+  - '(?i)(霍乱|cholera|疟疾|malaria|流感|influenza|登革热|dengue|埃博拉|ebola|猴痘|mpox|新冠|covid)'
+  - '(?i)(WHO|世界卫生组织).{0,12}(通报|疫情|卫生|指标|统计)'
+  - '(?i)(公共卫生|卫生指标|疾病负担|发病率|死亡率|卫生统计)'
 - desc: 医学/临床试验/药品标签
   engines_combo:
   - clinicaltrials
+  - anysearch
   - openfda
   - local_pubmed
   - wikipedia
-  - anysearch
+  - who_don
+  - who_gho
   fallback: clinicaltrials
   name: medical
   parallel: true
@@ -567,6 +720,8 @@ domains:
   - (?i)(临床试验|clinical trial|nct\d+|clinicaltrials\.gov|openfda|fda 药品|药品说明书|药物标签|drug label|适应症|不良反应)
   - (?i)(medicine|pharmaceutical|dosage|contraindication|药物|药品|处方药|otc)
   - (?i)(症状|用药|适应症|临床|指南|副作用|禁忌|诊断|治疗|病因)
+  - '(?i)(WHO|世界卫生组织).{0,12}(通报|疫情|卫生|指标|统计)'
+  - '(?i)(公共卫生|卫生指标|疾病负担|死亡率|发病率|卫生统计)'
   primary: clinicaltrials
 - desc: 游戏商店（Steam）
   engines_combo:
@@ -629,6 +784,7 @@ domains:
   - moegirl
   - bangumi
   - zh_wikipedia
+  - jikan
   fallback: moegirl
   name: anime_encyclopedia
   parallel: false
@@ -642,6 +798,7 @@ domains:
   - open_library
   - gutenberg
   - anysearch
+  - k10plus
   fallback: anysearch
   name: book_search
   parallel: true
@@ -657,6 +814,7 @@ domains:
   - itunes
   - wikipedia
   - wikidata
+  - tvmaze
   fallback: imdb
   name: film_search
   parallel: true
@@ -672,8 +830,16 @@ domains:
   - (?i)(영화|감독|주연|출연|개봉|드라마|수상|칸|아카데미|시사회)
   primary: imdb
 - desc: 体育赛事/球员/球队（先于媒体域；修复 MVP 误匹配 MV）
+  # combo_budget(fast)=2 只取前 2 位。thesportsdb 偏球队/球员元数据，
+  # 对「F1 积分榜」「德甲赛程比分」这类赛程/积分查询是窄源（实测
+  # 2026-09-13「F1 积分榜」走 [thesportsdb] 得 0 条）。赛车（jolpica/
+  # openf1）与赛程比分（openligadb）须能与主源同场竞技，且补通用兜底。
   engines_combo:
   - thesportsdb
+  - jolpica
+  - anysearch
+  - openf1
+  - openligadb
   - wikipedia
   - wikidata
   - zh_wikipedia
@@ -721,6 +887,8 @@ domains:
   - wikipedia
   - baidu_baike
   - zh_wikipedia
+  - ror
+  - gleif
   fallback: wikidata
   name: org_entity
   parallel: true
@@ -741,12 +909,21 @@ domains:
   - (?i)\b(headquarters|founded\s+in|founded\s+by|founding\s+year|year\s+founded|established\s+in|subsidiary|parent\s+company|NGO|nonprofit|foundation)\b
   - (?i)\b(when\s+was\b.{0,40}\bfounded|when\s+founded)\b
   - (?i)(非政府组织|非营利|基金会|商会|协会|联合会|红十字|慈善组织|职能|职责|组织机构)
+  # 科研机构标识（ROR）：combo 里的 ror 是研究机构权威标识源，但原 pattern
+  # 全在讲政府/公司实体，没有任何一条能把「研究机构 标识」这类查询送进本域
+  # ——ror 因此只有 --engine 显式可达（实测 2026-09-13）。补的这条**必须带
+  # 标识语境**（标识/编号/机构号/域名/ROR），否则裸的「大学/研究所」会把
+  # 通用高校查询整片吸进来（同 japan_law 的汉字词教训）。
+  - (?i)(研究机构|科研机构|研究院|研究所|科学院|实验室|高校|大专院校).{0,10}(标识|编号|机构号|域名|ROR)
+  - (?i)\bROR\b|\bROR\s*(ID|identifier)\b|机构标识|机构编号
   primary: wikidata
 - desc: 音乐/播客媒体搜索（影视已拆 film_search；MV 用词界避免误伤 MVP）
   engines_combo:
   - itunes
   - musicbrainz
   - netease_music
+  - deezer
+  - listenbrainz
   fallback: itunes
   name: media_search
   parallel: true
