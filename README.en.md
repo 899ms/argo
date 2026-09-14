@@ -52,6 +52,18 @@
 
 ---
 
+## What changed in search by 2026
+
+1. **From links to evidence.** Agents need structured material they can rank, verify and fit in context — Argo returns credibility-decomposed JSON, not SERP lists.
+2. **Context is the first cost.** A single page scrape can burn 10k+ tokens; Argo's agent profile is ~3.7KB per call, with field sets and byte budgets pinned by gates.
+3. **Sites now prepare content for AI.** llms.txt and `.md` direct-out are spreading across major doc sites — Argo's fetch chain probes them at level 0, with an r.jina.ai reader fallback.
+4. **The free/open ecosystem is enough.** Government, academic, standards and security open APIs plus keyless engines cover most domains (184 keyless sources).
+5. **Quality is measurable.** Ranking golden floors, fusion-ablation gates and negative routing controls — "is this version better" is now a number, not a vibe.
+
+> v2.8.7 ships all of the above: 218 sources, 89 domains, 184 keyless. Details in [docs/为什么选择argo.md](docs/为什么选择argo.md).
+
+---
+
 ## What it is
 
 **Argo is multilingual search infrastructure for AI agents.**
@@ -83,7 +95,7 @@ Real-world retrieval is never “one language + one search box”: someone asks 
 
 | You ask | What tends to happen |
 |---------|----------------------|
-| 贵州茅台股价 | A-share market domain; snapshot sources first; early-stop when enough |
+| python asyncio error handling | Coding-QA domain → StackOverflow/StackExchange official API, with score & accepted-answer markers |
 | AAPL / US pre-market | US equities domain, split from A-shares |
 | 肖申克的救赎 主演 / Inception director | Film domain → IMDb etc. |
 | 梅西 俱乐部 / 库里 球队 | Sports domain → TheSportsDB etc. |
@@ -91,7 +103,9 @@ Real-world retrieval is never “one language + one search box”: someone asks 
 | NASA founding year / 国务院职能 | Org entity → Wikidata etc. |
 | 周杰伦 专辑 / Taylor Swift album | Media domain → iTunes etc. |
 | アニメ おすすめ / 한국 영화 추천 | Detect JA/KO → language-friendly sources; avoid Chinese-only sites |
-| US CPI, China GDP | Macro domain; country split |
+| US CPI, Japan inflation | Macro domain; country split (national authoritative sources first) |
+| log4j CVSS / nodejs 22 end of life | Security → NVD official; lifecycle → endoflife.date |
+| attention is all you need | Academic → arXiv/OpenAlex/CrossRef metadata with DOI links |
 | 阿司匹林 分子式 | Chemistry → PubChem-style answers |
 | TSMC valuation debate (deep research) | Sub-questions + parallel sources; verticals boosted |
 
@@ -139,7 +153,7 @@ Results include `selection`, `absorption`, `credibility_fast`, `evidence_flags`,
 
 ## Quick start
 
-Pick any path. **GitHub is the only install source of truth** (`npx github:taxueseek/argo` or `install.sh`); current recommendation **v2.8.6**. **Do not `npm install argo-search`** — the npm registry copy is an **unofficial stale v1.0.1** (not this repo, incomplete, not updated). This package sets `private: true` so it is not published to npm by mistake.
+Pick any path. **GitHub is the only install source of truth** (`npx github:taxueseek/argo` or `install.sh`); current recommendation **v2.8.7**. **Do not `npm install argo-search`** — the npm registry copy is an **unofficial stale v1.0.1** (not this repo, incomplete, not updated). This package sets `private: true` so it is not published to npm by mistake.
 
 **Zero-config works**: without API keys, free engines + local `local_*` engines run; keyed engines are skipped when missing (and usually better when present).
 
@@ -159,7 +173,7 @@ curl -fsSL https://raw.githubusercontent.com/taxueseek/argo/main/scripts/install
 Verify:
 
 ```bash
-python3 ~/.local/share/argo/scripts/search.py "贵州茅台股价" --json
+python3 ~/.local/share/argo/scripts/search.py "python asyncio error handling" --json
 python3 ~/.local/share/argo/scripts/search.py --list-engines
 ```
 
@@ -275,7 +289,7 @@ python3 scripts/search.py --list-engines
 | `deep` | research, surveys | quality first; more engines allowed |
 | `budget` | tight quota | quota control; degrade when exhausted |
 
-### Rough capability set (v2.8.6)
+### Rough capability set (v2.8.7)
 
 - **Local data fusion (new in v2.8.4)**: research work packages take `file_inputs` (first-hand local data; sha256/lineage registered) + `recompute` (sandboxed recalc); dossier emits `local_sources`
 - **One-command MCP inject (new in v2.8.4)**: `argo mcp inject` for Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (atomic write + backup + undo; source `mcp/clients.yaml`)
@@ -321,7 +335,7 @@ No separate SearXNG service. Main path uses in-process HTML / RSS / JSON parsing
 ### Finance
 
 ```bash
-python3 scripts/search.py "贵州茅台股价" --explain
+python3 scripts/search.py "python asyncio error handling" --explain
 # typical: stock_query → quote snapshot sources
 ```
 
@@ -515,6 +529,7 @@ argo/
 | Version | Notes |
 |---------|-------|
 | **v2.8.5** | **Native DSH plugin tools + MCP off by default + Windows compat + quota self-healing + fetch deadline**: `argo_search`/`argo_fetch` as first-class native tools (CLI one-shot, same engine & guards as MCP, schema single-source + drift gate); three plugin shapes, MCP on-demand; Windows compatibility (temp paths / GBK / interpreter resolution / junction / `install.ps1`, PR #11); quota self-healing loop (HTTP 200 envelope detection + route exclusion + period self-heal); global fetch deadline (`ARGO_FETCH_DEADLINE_S`) + tinyfish rendering + `.md` variant probes; hot-reload env & state-dir single source. See [release notes](docs/RELEASE_NOTES_v2.8.5.md) |
+| **v2.8.7** | **218 sources / 89 domains + three fetch direct-out channels + routing trigger discipline + macro zero-result fix**: 50 new sources across batches 7/8/9 (statutes, standards, security intel, academia, news, entertainment, energy/transport, legal), stackexchange & doi engines; fetch chain level-0 llms.txt and `.md` variant probing plus r.jina.ai reader level; `--engine` comma-list fix, tfidf scope & route_reason, negative routing-control matrix, ranking golden & fusion-ablation gates; China macro queries promote national statistics first, zero-result recovery unlocks L3, rescue engines recorded. See [release notes](docs/RELEASE_NOTES_v2.8.7.md) |
 | **v2.8.6** | **Hedged racing + Zhihu three-source split + declarative language dispatch + reachability gate + academic search protocol**: first-engine grace-window racing (fast engines pay 1 call), Zhihu global-search/personal-data onboarding with starvation fix, per-sub-query language/academic dispatch (English + 17 academic sources in research collection), engine language metadata & reachability gate (dead sources surface), geo tail −56%, academic query-construction protocol. See [release notes](docs/RELEASE_NOTES_v2.8.6.md) |
 | **v2.8.4** | **Local data fusion + multi-client MCP inject + structured search + Keenable**: research L1 first-hand local data (`file_inputs` + `recompute` + `local_sources`); `argo mcp inject` (declarative `mcp/clients.yaml`); query normalize / variants / complexity gate / social-syntax first / TF-IDF fix / `--include-local`; Keenable web engine (free trial); security hardenings. See [release notes](docs/RELEASE_NOTES_v2.8.4.md) |
 | **v2.8.3** | **Multilingual routing fix + in-process anysearch + weighted RRF**: ja/ko queries return the target language; DE/FR/ES/IT via anysearch; weakest-link downweight (paper 2508.01405). See [release notes](docs/RELEASE_NOTES_v2.8.3.md) |

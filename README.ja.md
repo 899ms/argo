@@ -52,6 +52,18 @@
 
 ---
 
+## 2026 年、検索で何が変わったか
+
+1. **リンクから証拠へ。** エージェントには並べ替え可能・検証可能・コンテキストに収まる構造化データが必要 — Argo は信頼度内訳付き JSON を返す。
+2. **コンテキストが第一コスト。** エージェントプロファイルは 1 回約 3.7KB、フィールドとバイト予算はゲートで固定。
+3. **サイトは AI 向け資料を備え始めた。** llms.txt と `.md` 直出しが主要ドキュメントサイトに普及 — フェッチチェーンはレベル 0 で自動探知、r.jina.ai リーダーもfallback。
+4. **無料オープン生態系で足りる。** 政府・学術・標準・セキュリティの公開 API とキーレス エンジンで大部分をカバー（184 ソースが無設定）。
+5. **品質は測定可能。** ランキング金標・融合利得アブレーション・負のルーティング制御。
+
+> v2.8.7 はこの全てを実装：218 ソース / 89 ドメイン / 184 無設定。
+
+---
+
 ## これは何か
 
 **Argo は AI エージェント向けの多言語検索インフラです。**
@@ -83,7 +95,7 @@
 
 | こう聞くと | だいたいこう動く |
 |------------|------------------|
-| 贵州茅台股价 | A 株相場ドメイン、スナップショット優先、足りれば early-stop |
+| python asyncio error handling | プログラミング QA ドメイン → StackOverflow/StackExchange 公式 API、スコアと採答マーカー付き |
 | AAPL / 米株プレマーケット | 米株ドメイン、A 株と分離 |
 | 肖申克的救赎 主演 / Inception director | 映像ドメイン → IMDb など |
 | 梅西 俱乐部 / 库里 球队 | スポーツ → TheSportsDB など |
@@ -91,7 +103,9 @@
 | NASA founding year / 国务院职能 | 組織 → Wikidata など |
 | 周杰伦 专辑 / Taylor Swift album | メディア → iTunes など |
 | アニメ おすすめ / 한국 영화 추천 | 日/韓を検出 → 言語に合うソース、中国語専用サイトを避ける |
-| 米国 CPI、中国 GDP | マクロ；国別分流 |
+| 米国 CPI、日本 インフレ率 | マクロ；国別振り分け（自国の一次ソース優先） |
+| log4j CVSS / nodejs 22 end of life | セキュリティ → NVD 公式；ライフサイクル → endoflife.date |
+| attention is all you need | 学術 → arXiv/OpenAlex/CrossRef のメタデータと DOI リンク |
 | 阿司匹林 分子式 | 化学 → PubChem 系 |
 | 台積電バリュエーション議論（深掘り） | サブ問題分割 + 並列ソース、垂直を boost |
 
@@ -159,7 +173,7 @@ curl -fsSL https://raw.githubusercontent.com/taxueseek/argo/main/scripts/install
 確認：
 
 ```bash
-python3 ~/.local/share/argo/scripts/search.py "贵州茅台股价" --json
+python3 ~/.local/share/argo/scripts/search.py "python asyncio error handling" --json
 python3 ~/.local/share/argo/scripts/search.py --list-engines
 ```
 
@@ -323,7 +337,7 @@ python3 scripts/search.py --list-engines
 - **MCP 一発注入（v2.8.4 新）**：`argo mcp inject` で Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline（アトミック書き込み + バックアップ + 可逆。真源 `mcp/clients.yaml`）
 - **構造化検索の強化（v2.8.4 新）**：クエリ正規化 + 変体 + 複雑さゲート；SNS 構文優先；TF-IDF は中国語エンジンを捨てた後も候補を見る；`--include-local`
 - **Keenable（v2.8.4 新）**：汎用ウェブ検索エンジン追加（L1 宣言的 HTTP、無料体験、`ARGO_KEENABLE_API_KEY`）
-- **約 150+ ソース、70+ ドメイン**：一般ウェブ + 金融 / マクロ / 映像 / スポーツ / 地理 / 組織 / メディア / 化学 / 学術 / コード（真源：`config.yaml`）
+- **218 ソース、89 ドメイン**（184 は設定不要）：一般ウェブ + 金融 / マクロ / 映像 / スポーツ / 地理 / 組織 / メディア / 化学 / 学術 / コード（真源：`config.yaml`）
 - **12 の MCP ツール**：検索、研究、証拠、曖昧さ解消、取得、スクショ、PDF、SNS、ローカル、クロール、ローカルプレビュー、再計算
 - **多言語検索**：中・英・日・韓・キリル・タイ・アラビア・ヘブライ・ギリシャ・デーヴァナーガリーなど。ルーティングとエンジンパラメータが言語に追従。非中国語クエリは知乎 / 搜狗微信 / A 株スナップショットなど中国語専用源を避ける
 - **垂直復旧の門禁**：空結果復旧で pypi / npm / 速報などを映像・スポーツへ「混ぜない」
@@ -333,7 +347,7 @@ python3 scripts/search.py --list-engines
 
 ## エンジンとルーティング
 
-設定上およそ **150+** ソース、**70+** ドメイン（`config.yaml` と `--list-engines` が基準）。
+設定上およそ **218** ソース、**89** ドメイン（`config.yaml` と `--list-engines` が基準）。
 
 ### 直結・垂直（抜粋）
 
@@ -363,7 +377,7 @@ python3 scripts/search.py --list-engines
 ### 金融
 
 ```bash
-python3 scripts/search.py "贵州茅台股价" --explain
+python3 scripts/search.py "python asyncio error handling" --explain
 # 典型：stock_query → 相場スナップショット
 ```
 

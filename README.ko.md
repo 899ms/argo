@@ -52,6 +52,18 @@
 
 ---
 
+## 2026년 검색에서 바뀐 것
+
+1. **링크에서 증거로.** 에이전트는 정렬·검증 가능하고 컨텍스트에 맞는 구조화 자료가 필요 — Argo는 신뢰도 분해 JSON을 반환.
+2. **컨텍스트가 첫 번째 비용.** 에이전트 프로필은 회당 약 3.7KB, 필드와 바이트 예산은 게이트로 고정.
+3. **사이트들이 AI용 콘텐츠를 준비.** llms.txt와 `.md` 직접 출력이 확산 — fetch 체인이 레벨 0에서 자동 탐지, r.jina.ai 리더가 fallback.
+4. **무료 오픈 생태계로 충분.** 정부·학술·표준·보안 공개 API와 키리스 엔진이 대부분 도메인을 커버 (무설정 184개).
+5. **품질은 측정 가능.** 랭킹 골든 플로어, 융합 이득 어블레이션 게이트, 음의 라우팅 제어.
+
+> v2.8.7은 이 모두를 구현: 218 소스 / 89 도메인 / 184 무설정.
+
+---
+
 ## 무엇인가
 
 **Argo는 AI 에이전트를 위한 다국어 검색 인프라입니다.**
@@ -83,7 +95,7 @@
 
 | 이렇게 물으면 | 대개 일어나는 일 |
 |---------|----------------------|
-| 贵州茅台股价 | A주 시세 도메인, 스냅샷 소스 우선, 충분하면 early-stop |
+| python asyncio error handling | 코딩 QA 도메인 → StackOverflow/StackExchange 공식 API, 점수·채택 마커 포함 |
 | AAPL / US pre-market | 미국 주식 도메인, A주와 분리 |
 | 肖申克的救赎 主演 / Inception director | 영화 도메인 → IMDb 등 |
 | 梅西 俱乐部 / 库里 球队 | 스포츠 도메인 → TheSportsDB 등 |
@@ -91,7 +103,9 @@
 | NASA founding year / 国务院职能 | 조직 엔티티 → Wikidata 등 |
 | 周杰伦 专辑 / Taylor Swift album | 미디어 도메인 → iTunes 등 |
 | アニメ おすすめ / 한국 영화 추천 | JA/KO 감지 → 언어 친화 소스, 중국어 전용 사이트 회피 |
-| US CPI, China GDP | 매크로 도메인, 국가 분리 |
+| US CPI, 일본 인플레이션 | 매크로 도메인, 국가 분리 (자국 1차 소스 우선) |
+| log4j CVSS / nodejs 22 end of life | 보안 → NVD 공식; 수명주기 → endoflife.date |
+| attention is all you need | 학술 → arXiv/OpenAlex/CrossRef 메타데이터 및 DOI 링크 |
 | 阿司匹林 分子式 | 화학 → PubChem 계열 답 |
 | TSMC valuation debate (deep research) | 하위 질문 + 병렬 소스, 수직 소스 가중 |
 
@@ -159,7 +173,7 @@ curl -fsSL https://raw.githubusercontent.com/taxueseek/argo/main/scripts/install
 확인:
 
 ```bash
-python3 ~/.local/share/argo/scripts/search.py "贵州茅台股价" --json
+python3 ~/.local/share/argo/scripts/search.py "python asyncio error handling" --json
 python3 ~/.local/share/argo/scripts/search.py --list-engines
 ```
 
@@ -323,7 +337,7 @@ python3 scripts/search.py --list-engines
 - **MCP 한 줄 주입 (v2.8.4 신규)**: `argo mcp inject`로 Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (원자 쓰기 + 백업 + 가역; 진원 `mcp/clients.yaml`)
 - **구조화 검색 강화 (v2.8.4 신규)**: 쿼리 정규화 + 변체 + 복잡도 게이트; 소셜 문법 우선; TF-IDF는 중국어 엔진을 버린 뒤에도 후보를 봄; `--include-local`
 - **Keenable (v2.8.4 신규)**: 일반 웹 검색 엔진 추가 (L1 선언적 HTTP, 무료 체험, `ARGO_KEENABLE_API_KEY`)
-- **약 150+ 소스, 70+ 도메인**: 일반 웹 + 금융 / 매크로 / 영화 / 스포츠 / 지리 / 조직 / 미디어 / 화학 / 학술 / 코드 (진원: `config.yaml`)
+- **218 소스, 89 도메인** (184개 무설정): 일반 웹 + 금융 / 매크로 / 영화 / 스포츠 / 지리 / 조직 / 미디어 / 화학 / 학술 / 코드 (진원: `config.yaml`)
 - **MCP 도구 12개**: search, research, evidence, clarify, fetch, screenshot, PDF, social, local files, crawl, local preview, recompute
 - **다국어 검색**: 중국어, 영어, 일본어, 한국어, 키릴, 태국어, 아랍어, 히브리어, 그리스어, 데바나가리, …; 라우팅과 엔진 파라미터가 언어를 따름; 비중국어 쿼리는 중국어 전용 소스 회피 (Zhihu / Sogou WeChat / A주 스냅샷 등)
 - **수직 복구 게이트**: 빈 결과 복구 시 영화·스포츠에 pypi / npm / 속보 등이 「새지」 않음
@@ -333,7 +347,7 @@ python3 scripts/search.py --list-engines
 
 ## 엔진과 라우팅
 
-설정에는 현재 약 **150+** 소스와 **70+** 도메인이 있습니다 (`config.yaml`, `--list-engines` 참고).
+설정에는 현재 약 **218** 소스와 **89** 도메인이 있습니다 (`config.yaml`, `--list-engines` 참고).
 
 ### 직접·수직 (발췌)
 
@@ -363,7 +377,7 @@ python3 scripts/search.py --list-engines
 ### 금융
 
 ```bash
-python3 scripts/search.py "贵州茅台股价" --explain
+python3 scripts/search.py "python asyncio error handling" --explain
 # typical: stock_query → quote snapshot sources
 ```
 

@@ -52,6 +52,18 @@
 
 ---
 
+## Qué está cambiando en la búsqueda en 2026
+
+1. **De enlaces a evidencia.** Los agentes necesitan material estructurado, verificable y compacto — Argo devuelve JSON con desglose de credibilidad.
+2. **El contexto es el primer coste.** Argo perfil agente: ~3,7KB por llamada, con presupuestos de bytes fijados por gates.
+3. **Los sitios preparan contenido para IA.** llms.txt y `.md` se extienden — la cadena de fetch los sondea en el nivel 0, con lector r.jina.ai como respaldo.
+4. **El ecosistema libre basta.** APIs abiertas de gobiernos/academia/estándares/seguridad + motores sin clave cubren la mayoría de dominios (184 sin configuración).
+5. **Calidad medible.** Pisos golden de ranking, gates de ablación de fusión y controles negativos de enrutamiento.
+
+> v2.8.7 lo implementa todo: 218 fuentes, 89 dominios, 184 sin clave.
+
+---
+
 ## Qué es
 
 **Argo es infraestructura de búsqueda multilingüe para agentes de IA.**
@@ -83,7 +95,7 @@ La recuperación real nunca es «un idioma + un cuadro de búsqueda»: alguien p
 
 | Preguntas así | Lo que suele ocurrir |
 |---------|----------------------|
-| 贵州茅台股价 | Dominio de cotizaciones A-share; fuentes snapshot primero; early-stop si basta |
+| python asyncio error handling | Dominio de QA de programación → API oficial de StackOverflow/StackExchange, con puntuación y respuesta aceptada |
 | AAPL / US pre-market | Dominio de acciones EE. UU., separado de A-shares |
 | 肖申克的救赎 主演 / Inception director | Dominio cine → IMDb etc. |
 | 梅西 俱乐部 / 库里 球队 | Dominio deportes → TheSportsDB etc. |
@@ -91,7 +103,9 @@ La recuperación real nunca es «un idioma + un cuadro de búsqueda»: alguien p
 | NASA founding year / 国务院职能 | Entidad org → Wikidata etc. |
 | 周杰伦 专辑 / Taylor Swift album | Dominio media → iTunes etc. |
 | アニメ おすすめ / 한국 영화 추천 | Detecta JA/KO → fuentes amigables al idioma; evita sitios solo en chino |
-| US CPI, China GDP | Dominio macro; separa por país |
+| US CPI, inflación de Japón | Dominio macro; separa por país (fuentes nacionales primero) |
+| log4j CVSS / nodejs 22 end of life | Seguridad → NVD oficial; ciclo de vida → endoflife.date |
+| attention is all you need | Académico → metadatos de arXiv/OpenAlex/CrossRef con DOI |
 | 阿司匹林 分子式 | Química → respuestas tipo PubChem |
 | TSMC valuation debate (deep research) | Subpreguntas + fuentes en paralelo; verticales reforzados |
 
@@ -159,7 +173,7 @@ curl -fsSL https://raw.githubusercontent.com/taxueseek/argo/main/scripts/install
 Verificar:
 
 ```bash
-python3 ~/.local/share/argo/scripts/search.py "贵州茅台股价" --json
+python3 ~/.local/share/argo/scripts/search.py "python asyncio error handling" --json
 python3 ~/.local/share/argo/scripts/search.py --list-engines
 ```
 
@@ -323,7 +337,7 @@ python3 scripts/search.py --list-engines
 - **Inyección MCP de un comando (nuevo en v2.8.4)**: `argo mcp inject` para Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (escritura atómica + backup + deshacer; fuente `mcp/clients.yaml`)
 - **Mejoras de búsqueda estructurada (nuevo en v2.8.4)**: normalización + variantes + puerta de complejidad; sintaxis social primero; TF-IDF sigue mirando tras descartar un motor chino; `--include-local`
 - **Keenable (nuevo en v2.8.4)**: motor web general extra (HTTP declarativo L1, prueba gratis, `ARGO_KEENABLE_API_KEY`)
-- **~150+ fuentes, 70+ dominios**: web general + finanzas / macro / cine / deportes / geo / orgs / media / química / academia / código (fuente de verdad: `config.yaml`)
+- **218 fuentes, 89 dominios** (184 sin configuración): web general + finanzas / macro / cine / deportes / geo / orgs / media / química / academia / código (fuente de verdad: `config.yaml`)
 - **12 herramientas MCP**: search, research, evidence, clarify, fetch, screenshot, PDF, social, archivos locales, crawl, preview local, recompute
 - **Búsqueda multilingüe**: chino, inglés, japonés, coreano, cirílico, tailandés, árabe, hebreo, griego, devanagari, …; el enrutamiento y los params de motor siguen el idioma; consultas no chinas evitan fuentes solo en chino (Zhihu / Sogou WeChat / snapshots A-share, etc.)
 - **Compuertas de recuperación vertical**: la recuperación de vacío no «filtra» pypi / npm / flash news a cine o deportes
@@ -333,7 +347,7 @@ python3 scripts/search.py --list-engines
 
 ## Motores y enrutamiento
 
-La config tiene ahora unos **150+** fuentes y **70+** dominios (ver `config.yaml` y `--list-engines`).
+La config tiene ahora unos **218** fuentes y **89** dominios (ver `config.yaml` y `--list-engines`).
 
 ### Directos y verticales (extracto)
 
@@ -363,7 +377,7 @@ No hace falta un servicio SearXNG aparte. La ruta principal usa parseo in-proces
 ### Finanzas
 
 ```bash
-python3 scripts/search.py "贵州茅台股价" --explain
+python3 scripts/search.py "python asyncio error handling" --explain
 # typical: stock_query → quote snapshot sources
 ```
 
