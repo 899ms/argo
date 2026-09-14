@@ -504,6 +504,15 @@ argo/
 
 ## Recent updates
 
+### v2.8.7: sources expanded to 218 + a batch of fixes
+
+- **Source expansion**: 168 → 218 sources, 72 → 89 domains (new official sources incl. StackExchange Q&A, DOI metadata, vulnerability intel, product lifecycles), plus three direct-out fetch channels
+- **A batch of fixes**: multi-engine routing, zero-result fallback, Chinese redirects, local search degradation, etc.; see [release notes](docs/RELEASE_NOTES_v2.8.7.md)
+
+### v2.8.6: faster search + multi-source split
+
+- Engine racing, Zhihu three-source split, language/academic dispatch widened, dead-source gate
+
 ### v2.8.5: native DSH plugin tools + MCP off by default + Windows support
 
 - **Native plugin tools**: `argo_search` / `argo_fetch` register as first-class native tools, available by default without an MCP connection; schemas are generated from the single source of truth (`mcp_tools.py`), zero drift; all 13 tools (except `argo_research`) can be enabled via `nativeTools`

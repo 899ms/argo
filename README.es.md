@@ -546,6 +546,15 @@ argo/
 
 ## Actualizaciones recientes
 
+### v2.8.7: fuentes ampliadas a 218 + una tanda de correcciones
+
+- **Ampliación de fuentes**: 168 → 218 fuentes, 72 → 89 dominios (nuevas fuentes oficiales: StackExchange Q&A, metadatos DOI, inteligencia de vulnerabilidades, ciclos de vida), más tres canales directos de obtención de contenido
+- **Una tanda de correcciones**: enrutamiento multi-motor, fallback de resultados vacíos, redirecciones con chino, degradación de búsqueda local, etc.; ver [notas de la versión](docs/RELEASE_NOTES_v2.8.7.md)
+
+### v2.8.6: búsqueda más rápida + reparto multi-fuente
+
+- Carrera de motores, reparto en tres vías de Zhihu, distribución idiomática/académica ampliada, puerta de fuentes muertas
+
 ### v2.8.5: herramientas nativas del plugin DSH + MCP apagado por defecto + compatibilidad con Windows
 
 - **Herramientas nativas del plugin**: `argo_search` / `argo_fetch` se registran como herramientas nativas de primera clase, disponibles por defecto sin conexión MCP; los esquemas se generan desde la única fuente de verdad (`mcp_tools.py`), sin deriva; las 13 herramientas (salvo `argo_research`) se activan a demanda vía `nativeTools`
