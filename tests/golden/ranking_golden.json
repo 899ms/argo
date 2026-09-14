@@ -594,6 +594,7 @@
   ],
   "_aggregate_floor": {
     "mean_mrr": 1.0,
-    "mean_ndcg": 0.988
+    "mean_ndcg": 0.988,
+    "fused_edge_ndcg_min": 0.09
   }
 }

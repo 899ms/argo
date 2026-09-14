@@ -1228,11 +1228,59 @@ def _parse_semantic_scholar(data: dict[str, Any]) -> list[dict[str, Any]]:
     return results[:10]
 
 
+def _parse_doi(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """解析 doi.org 内容协商响应（CSL JSON，单对象根）。
+
+    doi.org 配 Accept: application/vnd.citationstyles.csl+json 返回的是
+    **一个** CSL JSON 对象而非数组——声明式 output_map 只支持数组根，
+    由本解析器包裹成单元素结果。CSL 字段多为嵌套（container-title 是
+    list、issued.date-parts 是二维数组），在此展平。
+    """
+    if not isinstance(data, dict):
+        return []
+    title = data.get("title") or ""
+    if isinstance(title, list):
+        title = " ".join(str(t) for t in title)
+    title = str(title).strip()
+    container = data.get("container-title") or ""
+    if isinstance(container, list):
+        container = " ".join(str(c) for c in container)
+    doi = str(data.get("DOI") or "").strip()
+    url = str(data.get("URL") or "").strip() or (f"https://doi.org/{doi}" if doi else "")
+    if not title or not url:
+        return []
+    snippet_parts = [str(p) for p in (container, data.get("publisher") or "") if p]
+    out: dict[str, Any] = {
+        "title": title[:500],
+        "url": url,
+        "source": "doi",
+    }
+    if snippet_parts:
+        out["snippet"] = " · ".join(snippet_parts)[:300]
+    # CSL issued.date-parts: [[2021, 3, 1]] → "2021-3-1"
+    issued = data.get("issued") or {}
+    dp = issued.get("date-parts") or [] if isinstance(issued, dict) else []
+    if dp and dp[0]:
+        out["published_at"] = "-".join(str(p) for p in dp[0] if p)
+    authors = data.get("author") or []
+    if isinstance(authors, list):
+        names = []
+        for a in authors[:3]:
+            if isinstance(a, dict):
+                name = f"{a.get('given', '')} {a.get('family', '')}".strip()
+                if name:
+                    names.append(name)
+        if names:
+            out["authors"] = "; ".join(names)
+    return [out]
+
+
 # 引擎名 → 专用 JSON 解析器（无 output_map 时的精确格式）
 _CUSTOM_JSON_PARSERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "duckduckgo": _parse_duckduckgo,
     "uapi": _parse_uapi,
     "semantic_scholar": _parse_semantic_scholar,
+    "doi": _parse_doi,
 }
 
 

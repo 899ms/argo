@@ -45,6 +45,7 @@ domains:
 - desc: Stack Overflow 搜索
   engines_combo:
   - stackoverflow
+  - stackexchange
   - anysearch
   fallback: anysearch
   name: stackoverflow_search
@@ -1674,7 +1675,7 @@ engines:
     - general
     - english
     - chinese
-    desc: Exa 语义搜索（embedding 匹配 + 内容摘要，1000次/月免费）
+    desc: Exa 语义搜索（embedding 匹配 + 内容摘要，新户 $20 赠金 + 每月 $10 赠金）
     timeout: 15
     type: exa
   parallel:

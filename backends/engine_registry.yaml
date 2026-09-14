@@ -1,6 +1,6 @@
 _generated: 由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。
 version: 2
-last_updated: '2026-09-13'
+last_updated: '2026-09-14'
 engines:
 - name: anysearch
   tier: T1
@@ -444,6 +444,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: Docker Hub 镜像搜索（免认证）
+- name: doi
+  tier: T1
+  type: http
+  coverage:
+  - academic
+  - metadata
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: true
+  desc: DOI 内容协商（doi.org 官方解析器，Accept 头直出 CSL JSON 结构化元数据，keyless 免 key 免限次，查询词传裸
+    DOI）
 - name: douban_book
   tier: T1
   type: douban_book
@@ -641,7 +654,7 @@ engines:
   status: ok
   recommended: true
   explicit_only: false
-  desc: Exa 语义搜索（embedding 匹配 + 内容摘要，1000次/月免费）
+  desc: Exa 语义搜索（embedding 匹配 + 内容摘要，新户 $20 赠金 + 每月 $10 赠金）
 - name: felo
   tier: T1
   type: http
@@ -2070,6 +2083,18 @@ engines:
   recommended: false
   explicit_only: false
   desc: 少数派搜索（中文效率/数码/软件文章，免认证）
+- name: stackexchange
+  tier: T1
+  type: http
+  coverage:
+  - english
+  - tech
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: StackExchange API 族（StackOverflow 等 180+ 问答站结构化检索，匿名 300/天/IP，免费 key 可提额 10000/天）
 - name: stackoverflow
   tier: T1
   type: stackoverflow

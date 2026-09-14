@@ -1,0 +1,39 @@
+# DOI 内容协商引擎（doi.org 官方解析器，keyless 直出结构化元数据）
+# 机制: https://doi.org/<DOI> 配 Accept 头做内容协商——
+#       application/vnd.citationstyles.csl+json → CSL JSON（标题/作者/期刊/年份）
+#       text/x-bibtex → BibTeX 引用（本引擎走 CSL JSON）
+# 用法: 显式专用（explicit_only）——查询词传裸 DOI（如 10.1145/3442188.3445922），
+#       不要带 https://doi.org/ 前缀（{query} 原样进路径）
+# 特点: 免 key、不限次；单对象 CSL JSON 响应走 _CUSTOM_JSON_PARSERS["doi"]
+#       （声明式 output_map 只支持数组根，单对象根由专用解析器包裹）
+# 验证:
+#   python3 scripts/engine_validate.py --engine doi --stage health --admit
+#   python3 scripts/search.py "10.1145/3442188.3445922" --engine doi --json
+
+engine_id: doi
+type: http
+enabled: true
+# 按 DOI 精查而非关键词检索，不参与自动路由
+explicit_only: true
+cost_tier: free
+label: DOI 元数据直出
+family: academic
+priority: 50
+qps: 2
+period: second
+limit: null
+cost_per_call: 0.0
+cost_unit: free
+method: GET
+url: https://doi.org/{query}
+timeout: 12
+canary_query: "10.1145/3442188.3445922"
+coverage:
+- academic
+- metadata
+desc: "DOI 内容协商（doi.org 官方解析器，Accept 头直出 CSL JSON 结构化元数据，keyless 免 key 免限次，查询词传裸 DOI）"
+format: json
+# 空字符串 = 该 API 不用查询参数名（DOI 走 URL 路径，由 {query} 注入）
+query_param: ""
+headers:
+  Accept: "application/vnd.citationstyles.csl+json"

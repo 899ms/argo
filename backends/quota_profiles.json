@@ -350,6 +350,16 @@
     "cost_tier": "free",
     "priority": 51
   },
+  "doi": {
+    "label": "DOI 元数据直出",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "douban_book": {
     "label": "豆瓣读书",
     "qps": 3,
@@ -1659,6 +1669,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 50
+  },
+  "stackexchange": {
+    "label": "StackExchange 问答族",
+    "qps": 1,
+    "limit": 300,
+    "period": "day",
+    "cost_per_call": 1.0,
+    "cost_unit": "request",
+    "cost_tier": "free",
+    "priority": 45
   },
   "stackoverflow": {
     "label": "StackOverflow",

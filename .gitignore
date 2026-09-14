@@ -15,3 +15,5 @@ scripts/data/
 .trash/
 *.tgz
 data/jobs/
+# 本地内部文档（调研/审查报告，不入公开仓）
+docs-local/

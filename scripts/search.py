@@ -1278,6 +1278,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 "cache_level": hit.get("_cache_level", "L?"),
                 "domain": domain, "elapsed_ms": cache_elapsed,
                 "tfidf_scores": tfidf_scores,
+                "route_reason": decision.get("reason"),
                 "login_hint": decision.get("login_hint"),
                 "results": hit_results,
                 "count": len(hit_results),
@@ -1946,6 +1947,15 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             from recovery import run_recovery
             tried = list(raw_results.keys()) or list(engines)
             fallback_engines = decision.get("engines_fallback") or []
+            # 域路由零结果：恢复链放行 L3 换引擎。复杂度门此前把简单查询
+            # 压到 L2——L3 被禁 + 全域零结果 = 域命中查询无解（实测
+            # macro_data「中国GDP」零结果、恢复链空转）。engines_fallback
+            # 里是路由的定向兜底声明（域未试成员优先），代价可控。
+            rec_level = _max_rec_level
+            if fallback_engines and decision.get("domain") not in (
+                    None, "", "general", "general_search") \
+                    and (rec_level is None or rec_level < "L3"):
+                rec_level = "L3"
             try:
                 enabled_set = set(available_engines())
             except Exception:
@@ -1975,7 +1985,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             rec_results, rec_result = run_recovery(
                 query, tried, _recovery_executor,
                 engines_fallback=fallback_engines, enabled=enabled_set, mode=mode,
-                max_level=_max_rec_level)
+                max_level=rec_level)
             recovery_info = rec_result.to_dict()
             # P2-6：恢复遥测——query 截断脱敏，只记概览不记明细
             if _emit_telemetry is not None:
@@ -1994,10 +2004,17 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                     pass
             if rec_results:
                 merged = deduplicate_by_url(rec_results)[:max_results]
+                # 恢复引擎按引擎分组记回 raw_results：engines_used 此前不含
+                # 救援引擎（provenance 断链，实测恢复成功后 engines_used 仍
+                # 只列原 combo），自适应学习也看不到恢复成功信号。
+                _rec_by_eng: dict[str, list] = {}
                 for r in merged:
                     eng = r.get("_engine") or r.get("source") or ""
                     if eng:
                         r.setdefault("consensus_engines", [eng])
+                        _rec_by_eng.setdefault(eng, []).append(r)
+                for _eng, _lst in _rec_by_eng.items():
+                    raw_results.setdefault(_eng, _lst)
         except ImportError:
             pass  # recovery 模块不可用
         except Exception as e:
@@ -2132,7 +2149,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         "query": query, "engine": engine_label, "engines": engines,
         "engines_combo": engines_combo, "cached": False,
         "domain": domain, "elapsed_ms": elapsed,
-        "tfidf_scores": tfidf_scores, "results": out_results,
+        "tfidf_scores": tfidf_scores,
+        "route_reason": decision.get("reason"),
+        "results": out_results,
         "count": len(out_results), "engines_used": list(raw_results.keys()),
         "errors": _collect_errors(raw_results),
         "engine_outcomes": engine_outcomes,

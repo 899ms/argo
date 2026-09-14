@@ -24,8 +24,8 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
-  <img alt="engines" src="https://img.shields.io/badge/engines-216-orange">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.7-informational">
+  <img alt="engines" src="https://img.shields.io/badge/engines-218-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
 

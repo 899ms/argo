@@ -136,12 +136,32 @@ class TestMacroDataWorldbankPriority(unittest.TestCase):
 
     def test_foreign_macro_query_prefers_worldbank(self):
         from route import route_query
-        for q in ("中国GDP", "日本通胀", "欧元区失业率"):
+        # 非美国且非中国：worldbank 前置（FRED 无该国数据）不变
+        for q in ("日本通胀", "欧元区失业率"):
             d = route_query(q)
             self.assertEqual(d["domain"], "macro_data")
             self.assertEqual(
                 d["engines_combo"][0], "worldbank",
                 f"{q} 应 worldbank 优先（FRED 无该国数据）",
+            )
+
+    def test_china_macro_query_prefers_nbs_stats(self):
+        """2026-09-14 口径演化：中国宏观查询 nbs_stats（国家统计局）前置——
+        本国权威源且最新年份比 worldbank 全（worldbank 有 1-2 年滞后，
+        「2025 年 GDP」类查询实测空手）；worldbank 前置逻辑保留、退居次位。
+        实测回放：「中国 2025 年 GDP 总量」修复前 0 结果，修复后国家统计局
+        官方核算结果居首。"""
+        from route import route_query
+        for q in ("中国GDP", "中国 2025 年 GDP 总量"):
+            d = route_query(q)
+            self.assertEqual(d["domain"], "macro_data")
+            self.assertEqual(
+                d["engines_combo"][0], "nbs_stats",
+                f"{q} 应 nbs_stats（国家统计局）优先",
+            )
+            self.assertIn(
+                "worldbank", d["engines_combo"][:2],
+                f"{q} 的 worldbank 前置逻辑应保留（次位）",
             )
 
     def test_us_macro_query_keeps_fred_primary(self):

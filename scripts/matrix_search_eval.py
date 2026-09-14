@@ -322,6 +322,65 @@ ROUTE_MATRIX: list[dict[str, Any]] = [
     {"id": "R_zh_food", "q": "附近好吃的本帮菜馆", "lang": "zh",
      "domain": "chinese_general", "primary_any": ["bocha", "anysearch", "local_bing"],
      "scenario": "general"},
+
+    # ── 2026-09-14 负向控制增补（OpenAI eval 视角 test-04）─────────────────
+    # 泛查询不得误触发垂直域/垂直引擎——正像「给现有应用加 Tailwind」不该
+    # 触发「新建 demo」skill：以下查询均不含垂直意图词，命中任何行情/漏洞/
+    # 影视/宏观/论文/生命周期/包情报专用源即判失败（结构化垂直源对泛查询
+    # 返回的全是不相关结果）。domain_not 防域误抢，forbid 防引擎漏入。
+    {"id": "N_en_cooking", "q": "how to cook pasta carbonara", "lang": "en",
+     "domain_not": ["stock_query", "us_stock", "macro_data", "trade_stats",
+                    "security_search", "lifecycle_search", "package_intel",
+                    "film_search"],
+     "forbid": ["sina_quote", "finviz", "eastmoney", "nvd", "imdb", "fred",
+                "worldbank", "nbs_stats", "un_comtrade", "endoflife",
+                "deps_dev", "openalex", "europepmc"],
+     "forbid_cn": True, "scenario": "negative"},
+    {"id": "N_zh_cooking", "q": "怎么把排骨炖得软烂", "lang": "zh",
+     "domain_not": ["stock_query", "us_stock", "macro_data", "trade_stats",
+                    "security_search", "lifecycle_search", "package_intel",
+                    "film_search"],
+     "forbid": ["sina_quote", "finviz", "eastmoney", "nvd", "imdb", "fred",
+                "worldbank", "nbs_stats", "un_comtrade", "endoflife",
+                "deps_dev", "openalex", "europepmc"],
+     "scenario": "negative"},
+    {"id": "N_en_history", "q": "who invented the printing press", "lang": "en",
+     "domain_not": ["stock_query", "us_stock", "macro_data", "trade_stats",
+                    "security_search", "lifecycle_search", "package_intel",
+                    "film_search"],
+     "forbid": ["sina_quote", "finviz", "eastmoney", "nvd", "imdb", "fred",
+                "worldbank", "nbs_stats", "un_comtrade", "endoflife",
+                "deps_dev", "openalex", "europepmc"],
+     # 不带 forbid_cn：实体问句合理路由到 org_entity（wikidata/wikipedia 族），
+     # 其中 zh_wikipedia 是有实测依据的语言中立成员（lang_capability：
+     # 「擅长 zh/en/fr/es…」，MediaWiki 跨语检索），对 en 查询不算误入。
+     # 负向门只钉「泛查询不进垂直域/垂直引擎」这条真不变量。
+     "scenario": "negative"},
+    {"id": "N_en_garden", "q": "how often should I water tomato plants",
+     "lang": "en",
+     "domain_not": ["stock_query", "us_stock", "macro_data", "trade_stats",
+                    "security_search", "lifecycle_search", "package_intel",
+                    "film_search"],
+     "forbid": ["sina_quote", "finviz", "eastmoney", "nvd", "imdb", "fred",
+                "worldbank", "nbs_stats", "un_comtrade", "endoflife",
+                "deps_dev", "openalex", "europepmc"],
+     "forbid_cn": True, "scenario": "negative"},
+    {"id": "N_zh_health", "q": "深蹲膝盖疼怎么恢复", "lang": "zh",
+     "domain_not": ["stock_query", "us_stock", "macro_data", "trade_stats",
+                    "security_search", "lifecycle_search", "package_intel",
+                    "film_search"],
+     "forbid": ["sina_quote", "finviz", "eastmoney", "nvd", "imdb", "fred",
+                "worldbank", "nbs_stats", "un_comtrade", "endoflife",
+                "deps_dev", "openalex", "europepmc"],
+     "scenario": "negative"},
+    {"id": "N_en_hobby", "q": "best wood for beginner woodworking", "lang": "en",
+     "domain_not": ["stock_query", "us_stock", "macro_data", "trade_stats",
+                    "security_search", "lifecycle_search", "package_intel",
+                    "film_search"],
+     "forbid": ["sina_quote", "finviz", "eastmoney", "nvd", "imdb", "fred",
+                "worldbank", "nbs_stats", "un_comtrade", "endoflife",
+                "deps_dev", "openalex", "europepmc"],
+     "forbid_cn": True, "scenario": "negative"},
 ]
 
 
@@ -339,6 +398,11 @@ def _route_ok(case: dict[str, Any], d: dict[str, Any]) -> tuple[bool, str]:
 
     if case.get("domain") is not None and got_d != case["domain"]:
         problems.append(f"domain={got_d}!={case['domain']}")
+
+    # 负向控制（test-04 视角）：泛查询不得命中列出的垂直域
+    domain_not = case.get("domain_not")
+    if domain_not and got_d in domain_not:
+        problems.append(f"domain 误命中: {got_d} in {domain_not}")
 
     primary = case.get("primary")
     if primary and not (got_e == primary or primary in combo[:2]):

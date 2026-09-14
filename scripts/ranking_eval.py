@@ -110,10 +110,34 @@ def evaluate_case(case: dict) -> dict:
     ideal = sorted(relevant.values(), reverse=True)[:10]
     idcg = _dcg([float(g) for g in ideal])
     ndcg = (_dcg(grades) / idcg) if idcg > 0 else 0.0
+
+    # RED 基线（SkillForge 视角）：最强单引擎裸跑序。融合管线的存在价值
+    # 必须可证明——若「多引擎编排+融合」不赢过「只用最好的那个源」，
+    # 编排层就是纯开销。逐引擎按其原始返回序打分，取各指标的最强者。
+    best_single_mrr = 0.0
+    best_single_ndcg = 0.0
+    for eng_rows in _build_lists(case):
+        e_grades = [float(relevant.get(r.get("url", ""), 0))
+                    for r in eng_rows[:10]]
+        e_mrr = 0.0
+        for i, g in enumerate(e_grades):
+            if g >= 2:
+                e_mrr = 1.0 / (i + 1)
+                break
+        e_ndcg = (_dcg(e_grades) / idcg) if idcg > 0 else 0.0
+        if e_mrr > best_single_mrr:
+            best_single_mrr = e_mrr
+        if e_ndcg > best_single_ndcg:
+            best_single_ndcg = e_ndcg
+
     out = {
         "id": case["id"],
         "mrr": round(mrr, 4),
         "ndcg": round(ndcg, 4),
+        "best_single_mrr": round(best_single_mrr, 4),
+        "best_single_ndcg": round(best_single_ndcg, 4),
+        "edge_mrr": round(mrr - best_single_mrr, 4),
+        "edge_ndcg": round(ndcg - best_single_ndcg, 4),
         "order": [r.get("url", "") for r in ranked[:10]],
     }
     c_url = case.get("consensus_url")
@@ -168,16 +192,21 @@ def evaluate_all() -> dict:
     results = [evaluate_case(c) for c in cases]
     mean_mrr = sum(r["mrr"] for r in results) / len(results)
     mean_ndcg = sum(r["ndcg"] for r in results) / len(results)
+    mean_edge_mrr = sum(r.get("edge_mrr", 0.0) for r in results) / len(results)
+    mean_edge_ndcg = sum(r.get("edge_ndcg", 0.0) for r in results) / len(results)
     return {
         "n_cases": len(cases),
         "mean_mrr": round(mean_mrr, 4),
         "mean_ndcg": round(mean_ndcg, 4),
+        "mean_edge_mrr": round(mean_edge_mrr, 4),
+        "mean_edge_ndcg": round(mean_edge_ndcg, 4),
         "cases": results,
     }
 
 
 def _fmt_row(r: dict, case: dict) -> str:
-    line = (f"  {r['id']:<28} MRR={r['mrr']:.3f}  nDCG={r['ndcg']:.3f}")
+    line = (f"  {r['id']:<28} MRR={r['mrr']:.3f}  nDCG={r['ndcg']:.3f}"
+            f"  增益nDCG={r.get('edge_ndcg', 0.0):+.3f}")
     if "consensus_rank" in r:
         line += f"  共识位次={r['consensus_rank']}"
     if "max_consensus" in r:
@@ -223,6 +252,13 @@ def check_floors(report: dict, golden_doc: dict) -> list[str]:
             bad.append(f"mean MRR {report['mean_mrr']} < {agg['mean_mrr']}")
         if report["mean_ndcg"] + 1e-9 < agg.get("mean_ndcg", 0):
             bad.append(f"mean nDCG {report['mean_ndcg']} < {agg['mean_ndcg']}")
+        # RED/GREEN 消融地板：融合管线相对最强单引擎的聚合增益不得转负——
+        # 排序/融合层的任何改动若把增益改没了，绝对地板可能仍达标（合成
+        # 数据上限高），只有这条能抓到「编排层退化为摆设」的回归。
+        f_edge = agg.get("fused_edge_ndcg_min")
+        if f_edge is not None and report["mean_edge_ndcg"] + 1e-9 < f_edge:
+            bad.append(f"mean 融合增益nDCG {report['mean_edge_ndcg']} "
+                       f"< floor {f_edge}")
     return bad
 
 

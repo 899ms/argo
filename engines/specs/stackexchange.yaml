@@ -1,0 +1,46 @@
+# StackExchange API 族引擎（180+ 问答站官方 API，keyless 匿名直连）
+# 文档: https://api.stackexchange.com/docs/search
+# 额度: 匿名 300/天/IP（全站共享配额，实测 quota_remaining 299/300）；
+#       免费注册 key 后 10,000/天——需要提额时在 extra_params 加
+#       key: "{ARGO_STACKEXCHANGE_API_KEY}" 并配置该环境变量
+# 特点: search/advanced 端点 q 自由文本检索，items 自带 link（无需拼 URL）、
+#       score/IsAnswered 质量信号；--compressed（gzip）由 http_client 统一解压
+# 定位: T2 补充引擎 —— 免费池可路由（daily_support），匿名额度小，
+#       日常 combo 排后排保配额（engine_policy.get_engine_tier 读 spec.tier）
+# 验证:
+#   python3 scripts/engine_validate.py --engine stackexchange --stage all --admit
+#   python3 scripts/search.py "python asyncio" --engine stackexchange --json
+
+engine_id: stackexchange
+type: http
+enabled: true
+cost_tier: free
+# 匿名额度小（300/天/IP 与全站共享），日常只当补位，budget 截断优先命中
+tier: daily_support
+label: StackExchange 问答族
+family: knowledge
+priority: 45
+qps: 1
+period: day
+limit: 300
+cost_per_call: 1.0
+cost_unit: request
+method: GET
+url: https://api.stackexchange.com/2.3/search/advanced
+timeout: 12
+canary_query: "python asyncio"
+coverage:
+- english
+- tech
+desc: "StackExchange API 族（StackOverflow 等 180+ 问答站结构化检索，匿名 300/天/IP，免费 key 可提额 10000/天）"
+format: json
+query_param: q
+extra_params:
+  site: stackoverflow
+  order: desc
+  sort: relevance
+  pagesize: "{n}"
+output_map:
+  items: items
+  item_title: title
+  item_url: link

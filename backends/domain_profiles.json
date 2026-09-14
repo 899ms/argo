@@ -2303,5 +2303,17 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "doi": {
+    "label": "DOI 元数据直出",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "stackexchange": {
+    "label": "StackExchange 问答族",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

@@ -1344,12 +1344,18 @@ def route_query(query: str, engine_override: str = "auto",
         return base
 
     if engine_override and engine_override != "auto":
+        # 逗号多引擎与 --list-engines 路径（search.py --engine split(',')）
+        # 同一口径；此分支曾整串直通——整串被当成一个引擎名进 combo，
+        # registry 查无 → 「未知引擎」空跑，用户显式指定的引擎全部失效。
+        engines = [e.strip() for e in engine_override.split(",") if e.strip()]
+        if not engines:
+            engines = ["anysearch"]
         # 空串等同 auto：防止空引擎名混入 combo（registry 查无 → 空结果
         # → 熔断器空键 ''），MCP/外部调用可能传入空 engine 参数
         return _done(
-            engine=engine_override, engines=[engine_override],
-            engines_combo=[engine_override],
-            reason=f"用户指定: {engine_override}", confidence=1.0,
+            engine=engines[0], engines=engines,
+            engines_combo=engines,
+            reason=f"用户指定: {', '.join(engines)}", confidence=1.0,
             features={}, domain=None, parallel=False, mode=mode,
             depth=depth, context=context,
             login_hint=_detect_login_intent(query, None),
@@ -1461,6 +1467,14 @@ def route_query(query: str, engine_override: str = "auto",
                 and is_foreign_macro_query(query)
                 and "worldbank" in engines_combo):
             engines_combo = ["worldbank"] + [e for e in engines_combo if e != "worldbank"]
+        # 🔑 macro_data 域 + 中国宏观词 → nbs_stats（国家统计局）前置：
+        # 本国宏观数据权威源，最新年份比 worldbank 全（worldbank 有 1-2 年
+        # 数据滞后，「2025 年 GDP」类查询会空手）。与上方 worldbank 前置
+        # 配合，中国查询最终位次 [nbs_stats, worldbank, ...]
+        if (domain.get("name") == "macro_data"
+                and "nbs_stats" in engines_combo
+                and ("中国" in query or "china" in query.lower())):
+            engines_combo = ["nbs_stats"] + [e for e in engines_combo if e != "nbs_stats"]
         # 🔑 为中文/学术查询追加本地引擎
         # modal_card 保持纯结构化路径：只走 bocha_ai → bocha，不混 web/geo 补充源
         _pure_combo = domain.get("name") == "modal_card"
@@ -1644,7 +1658,14 @@ def route_query(query: str, engine_override: str = "auto",
             engine=engines_combo[0],
             engines=engines_combo,
             engines_combo=engines_combo,
-            engines_fallback=[e for e in enabled if e not in engines_combo],
+            # 恢复链 L3 候选：域声明但被预算截掉的成员优先（域最清楚自己
+            # 的兜底次序，实测 macro_data 六成员被截成两个、恰好截掉国家
+            # 统计局），其余 enabled 引擎殿后
+            engines_fallback=(
+                [e for e in (domain.get("engines_combo") or [])
+                 if e not in set(engines_combo)]
+                + [e for e in enabled if e not in engines_combo
+                   and e not in set(domain.get("engines_combo") or [])]),
             reason=(
                 f"{_feature_labels(features)} → 命中域 [{domain.get('name', '?')}]"
                 + (f" [TF-IDF→{tfidf_best}]" if tfidf_best else "")
@@ -1656,7 +1677,12 @@ def route_query(query: str, engine_override: str = "auto",
             domain=domain.get("name"), parallel=parallel,
             no_early_stop=bool(domain.get("no_early_stop", False)),
             early_stop_min_results=domain.get("early_stop_min_results"),
-            tfidf_scores=[{"engine": n, "score": s} for n, s, _ in tfidf_scores],
+            # 域命中时 combo 来自域配置，TF-IDF 候选只有真正进入 combo 才
+            # 算参与了决策；tfidf_best 落选仍照搬原始得分会误导消费方
+            # （实测「asyncio tutorial」报 qiita 前三、实际执行 octen/exa）。
+            # 落选的近失信号由 reason 的 [TF-IDF→x] 标注承载。
+            tfidf_scores=([{"engine": n, "score": s} for n, s, _ in tfidf_scores]
+                          if tfidf_best and tfidf_best in engines_combo else []),
             mode=mode, depth=depth, context=context,
             login_hint=_detect_login_intent(query, domain.get("name")),
         )
@@ -1771,7 +1797,10 @@ def route_query(query: str, engine_override: str = "auto",
         confidence=0.35 if low else 0.3,
         features=features, domain="general_search",
         parallel=False if mode == "fast" else len(fallback_combo) > 1,
-        tfidf_scores=[{"engine": n, "score": s} for n, s, _ in tfidf_scores],
+        # 兜底路径 tfidf_best 必为空（否则已走 TF-IDF 分支）：低于阈值的
+        # 候选分不是路由依据，输出只会误导，一律空表。
+        tfidf_scores=[{"engine": n, "score": s} for n, s, _ in tfidf_scores]
+        if tfidf_best else [],
         mode=mode, depth=depth, context=context,
         login_hint=_detect_login_intent(query, None),
     )

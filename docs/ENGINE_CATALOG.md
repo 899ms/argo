@@ -6,12 +6,12 @@
 
 ## 一、总量与口径
 
-- **收录 216 个源**（config.yaml + `engines/specs/*.yaml` 声明合并后的总数）
-- **开箱可用 182 个**：不需要你配任何密钥或装额外工具，自动路由就会用上
+- **收录 218 个源**（config.yaml + `engines/specs/*.yaml` 声明合并后的总数）
+- **开箱可用 184 个**：不需要你配任何密钥或装额外工具，自动路由就会用上
 - **需自备密钥 19 个**：`bocha`、`bocha_ai`、`byted`、`em_miaoxiang`、`exa`、`keenable`、`octen`、`parallel`、`qweather`、`tavily`、`tinyfish`、`tinyfish_news`、`tinyfish_paper`、`weread`、`you`、`zhihu`、`zhihu_global`、`zhihu_hot`、`zhihu_user`（没配也不影响搜索，路由会跳过）
 - **需装后端工具 3 个**：`reddit`、`twitter`、`xiaohongshu`（装好并登录后即可用）
 - **已停用 12 个**：`brave`、`europeana`、`felo`、`jikan`、`local_goodreads`、`local_google`、`local_yandex`、`metaso`、`realtime_index`、`searxng`、`soilgrids`、`wolframalpha`
-- **显式专用 4 个**：`tinyfish`、`tinyfish_news`、`tinyfish_paper`、`twitter_syndication`（设计上不进自动路由，按 `--engine` 或交接提示调用）
+- **显式专用 5 个**：`doi`、`tinyfish`、`tinyfish_news`、`tinyfish_paper`、`twitter_syndication`（设计上不进自动路由，按 `--engine` 或交接提示调用）
 
 自己核一遍（口径不同，别混用）：
 
@@ -26,7 +26,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 
 ## 二、费用与密钥：哪些白用、哪些要钱
 
-- **免费档 204 个**（含已停用）：无需密钥，或只需免费注册的密钥；其中 11 个要自备密钥（免费额度）：em_miaoxiang、keenable、qweather、tinyfish、tinyfish_news、tinyfish_paper、weread、wolframalpha、zhihu、zhihu_hot、zhihu_user
+- **免费档 206 个**（含已停用）：无需密钥，或只需免费注册的密钥；其中 11 个要自备密钥（免费额度）：em_miaoxiang、keenable、qweather、tinyfish、tinyfish_news、tinyfish_paper、weread、wolframalpha、zhihu、zhihu_hot、zhihu_user
 - **计费档 12 个**（下表逐个列出，档位取自各源自己的 `cost_tier` 声明）
 
 | 引擎 | 档位 | 是否进自动路由 | 需自备密钥 |
@@ -147,7 +147,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `bocha` | 需自备密钥 | 低价计费 | 10000/月 | ARGO_BOCHA_API_KEY | 域 chinese_general、域 local_chinese、域 modal_card、语义画像命中 | 博查搜索 API（中文，freshness 按查询时效动态化） |
 | `brave` | 已停用 | 低价计费 | 不限 | ARGO_BRAVE_API_KEY | 已停用 | Brave Search API |
 | `byted` | 需自备密钥 | 低价计费 | 不限 | ARGO_BYTED_API_KEY | 域 chinese_general、域 chinese_tech_deep、域 fact_check、域 financial_news、域 legal、域 local_news、域 news_realtime、域 weather_query、语义画像命中 | 字节搜索 API，中文通用/news |
-| `exa` | 需自备密钥 | 按调用计费 | 1000/月 | ARGO_EXA_API_KEY | 域 english_tech、域 semantic_discovery、域 us_stock、深度研究 boost | Exa 语义搜索（embedding 匹配 + 内容摘要，1000次/月免费） |
+| `exa` | 需自备密钥 | 按调用计费 | 1000/月 | ARGO_EXA_API_KEY | 域 english_tech、域 semantic_discovery、域 us_stock、深度研究 boost | Exa 语义搜索（embedding 匹配 + 内容摘要，新户 $20 赠金 + 每月 $10 赠金） |
 | `felo` | 已停用 | 付费 | 不限 | ARGO_FELO_API_KEY | 语义画像命中 | Felo AI 搜索 API |
 | `jikan` | 已停用 | 免费 | 不限 | — | 域 anime_encyclopedia | 动漫元数据（Jikan/MyAnimeList，免认证，含评分与集数） |
 | `keenable` | 需自备密钥 | 免费 | 不限 | ARGO_KEENABLE_API_KEY | 域 english_tech | Keenable 通用网页搜索（ranked results，含 published_at，按 credits 计费） |
@@ -169,6 +169,27 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `you` | 需自备密钥 | 按调用计费 | 不限 | YDC_API_KEY | 域 news_realtime | You.com 网页+新闻搜索（时效性强，官方一手源，web/news 合并） |
 | `zhihu_global` | 需自备密钥 | 按调用计费 | 5000/天 | ARGO_ZHIHU_ACCESS_SECRET | 域 chinese_general、域 news_realtime、域 zhihu_content | 知乎开放平台全网搜索（SearchDB=all 全网索引 + Filter host== 站点限定；需 ZHIHU_ACCESS_SECRET） |
 
+### 学术文献（16）
+
+| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
+|---|---|---|---|---|---|---|
+| `arxiv` | 可直接用 | 免费 | 不限 | — | 域 academic、域 local_academic、域 scholar_search、域 tech_deep、深度研究 boost、语义画像命中 | arXiv 论文搜索 |
+| `cnii` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 日本国立情报学研究所学术总库（论文/博士论文/科研项目，JSON-LD） |
+| `crossref` | 可直接用 | 免费 | 不限 | — | 域 academic、深度研究 boost | Crossref DOI 元数据 API（免认证，礼貌池 mailto） |
+| `dblp` | 可直接用 | 免费 | 不限 | — | 域 academic | DBLP 计算机科学文献（免认证，偶发 SSL 抖动） |
+| `doaj` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 开放获取期刊全球总库（80+ 语种，元数据统一英文） |
+| `europepmc` | 可直接用 | 免费 | 不限 | — | 域 academic、域 tech_deep | Europe PMC 生物医学文献（免认证，SS 429 后备） |
+| `figshare` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 科研数据集检索（论文/数据/图表） |
+| `google_scholar` | 可直接用 | 免费 | 不限 | — | 域 scholar_search、深度研究 boost | Google Scholar（学术论文搜索，HTTP 页面解析） |
+| `hal` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 法国全国科研机构开放仓储（Solr JSON） |
+| `local_arxiv` | 可直接用 | 免费 | 不限 | — | 域 patent_search、语义画像命中 | arXiv本地 |
+| `local_crossref` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Crossref本地 |
+| `local_pubmed` | 可直接用 | 免费 | 不限 | — | 域 medical | PubMed本地 |
+| `local_semantic_scholar` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Semantic Scholar本地 |
+| `openalex` | 可直接用 | 免费 | 不限 | — | 域 academic、域 chem_search、域 tech_deep、深度研究 boost | OpenAlex 2.5亿+论文索引（免认证，礼貌池 mailto） |
+| `semantic_scholar` | 可直接用 | 免费 | 不限 | — | 域 academic、域 local_academic、域 patent_search、域 tech_deep、深度研究 boost、语义画像命中 | Semantic Scholar API（备选） |
+| `doi` | 显式专用 | 免费 | 不限 | — | 显式调用（--engine） | DOI 内容协商（doi.org 官方解析器，Accept 头直出 CSL JSON 结构化元数据，keyless 免 key 免限次，查询词传裸 DOI） |
+
 ### 其他垂直（15）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
@@ -189,25 +210,24 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `weather` | 可直接用 | 免费 | 不限 | — | 域 weather_query | 天气查询（免 Key：wttr.in 主用 + Open-Meteo 兜底，当前+未来预报） |
 | `qweather` | 需自备密钥 | 免费 | 不限 | ARGO_QWEATHER_KEY | 域 weather_query | 和风天气实时天气（需 QWEATHER_KEY） |
 
-### 学术文献（15）
+### 百科 / 实体（14）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
 |---|---|---|---|---|---|---|
-| `arxiv` | 可直接用 | 免费 | 不限 | — | 域 academic、域 local_academic、域 scholar_search、域 tech_deep、深度研究 boost、语义画像命中 | arXiv 论文搜索 |
-| `cnii` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 日本国立情报学研究所学术总库（论文/博士论文/科研项目，JSON-LD） |
-| `crossref` | 可直接用 | 免费 | 不限 | — | 域 academic、深度研究 boost | Crossref DOI 元数据 API（免认证，礼貌池 mailto） |
-| `dblp` | 可直接用 | 免费 | 不限 | — | 域 academic | DBLP 计算机科学文献（免认证，偶发 SSL 抖动） |
-| `doaj` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 开放获取期刊全球总库（80+ 语种，元数据统一英文） |
-| `europepmc` | 可直接用 | 免费 | 不限 | — | 域 academic、域 tech_deep | Europe PMC 生物医学文献（免认证，SS 429 后备） |
-| `figshare` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 科研数据集检索（论文/数据/图表） |
-| `google_scholar` | 可直接用 | 免费 | 不限 | — | 域 scholar_search、深度研究 boost | Google Scholar（学术论文搜索，HTTP 页面解析） |
-| `hal` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 法国全国科研机构开放仓储（Solr JSON） |
-| `local_arxiv` | 可直接用 | 免费 | 不限 | — | 域 patent_search、语义画像命中 | arXiv本地 |
-| `local_crossref` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Crossref本地 |
-| `local_pubmed` | 可直接用 | 免费 | 不限 | — | 域 medical | PubMed本地 |
-| `local_semantic_scholar` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Semantic Scholar本地 |
-| `openalex` | 可直接用 | 免费 | 不限 | — | 域 academic、域 chem_search、域 tech_deep、深度研究 boost | OpenAlex 2.5亿+论文索引（免认证，礼貌池 mailto） |
-| `semantic_scholar` | 可直接用 | 免费 | 不限 | — | 域 academic、域 local_academic、域 patent_search、域 tech_deep、深度研究 boost、语义画像命中 | Semantic Scholar API（备选） |
+| `baidu_baike` | 可直接用 | 免费 | 不限 | — | 域 cn_encyclopedia、域 company_search、域 entity_search、域 org_entity | 百度百科词条（suggest + OpenAPI 卡片，免认证） |
+| `dnb` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 德语出版物最全书目（SRU/RDF XML） |
+| `free_dictionary` | 可直接用 | 免费 | 不限 | — | 域 dictionary_search、语义画像命中 | dictionaryapi.dev 英英词典（免认证，响应为数组） |
+| `local_wikipedia` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Wikipedia本地 |
+| `local_wikiquote` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Wikiquote本地 |
+| `local_wiktionary` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Wiktionary本地 |
+| `moegirl` | 可直接用 | 免费 | 不限 | — | 域 anime_encyclopedia、语义画像命中 | 萌娘百科（zh.moegirl.org.cn 搜索页 HTML 解析，免认证） |
+| `ndl` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 全日本出版物书目总汇（OpenSearch RSS） |
+| `stackexchange` | 可直接用 | 免费 | 300/天 | — | 域 stackoverflow_search | StackExchange API 族（StackOverflow 等 180+ 问答站结构化检索，匿名 300/天/IP，免费 key 可提额 10000/天） |
+| `tatoeba` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 400+ 语言对真实句子语料（翻译/语言学习） |
+| `wikidata` | 可直接用 | 免费 | 不限 | — | 域 cn_encyclopedia、域 entity_search、域 film_search、域 geo_places、域 org_entity、域 sports_search、语义画像命中 | Wikidata 实体搜索（wbsearchentities，免认证，限流较严） |
+| `wikipedia` | 可直接用 | 免费 | 不限 | — | 域 art_museum、域 astro_space、域 dictionary_search、域 entity_search、域 fact_check、域 film_search、域 geo_places、域 local_reference、域 medical、域 org_entity、域 species_search、域 sports_search、域 web_archive、语义画像命中、通用兜底链 | Wikipedia API（T2 替代） |
+| `zh_wikipedia` | 可直接用 | 免费 | 不限 | — | 域 anime_encyclopedia、域 cn_encyclopedia、域 entity_search、域 geo_places、域 org_entity、域 sports_search | 中文维基百科（MediaWiki API，与 en.wikipedia 同构） |
+| `europeana` | 已停用 | 免费 | 不限 | — | 语义画像命中 | 欧洲 27 国文化遗产聚合（官方公开 demo key） |
 
 ### 代码 / 包 / 文档（13）
 
@@ -226,24 +246,6 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `npm` | 可直接用 | 免费 | 不限 | — | 域 package_search | npm 包搜索（registry.npmjs.org，免认证） |
 | `pypi` | 可直接用 | 免费 | 不限 | — | 域 package_search | PyPI 包查询（/pypi/{name}/json 精确解析，免认证） |
 | `stackoverflow` | 可直接用 | 免费 | 300/天 | — | 域 stackoverflow_search、域 web_docs | Stack Overflow（Stack Exchange API，编程问答） |
-
-### 百科 / 实体（13）
-
-| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
-|---|---|---|---|---|---|---|
-| `baidu_baike` | 可直接用 | 免费 | 不限 | — | 域 cn_encyclopedia、域 company_search、域 entity_search、域 org_entity | 百度百科词条（suggest + OpenAPI 卡片，免认证） |
-| `dnb` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 德语出版物最全书目（SRU/RDF XML） |
-| `free_dictionary` | 可直接用 | 免费 | 不限 | — | 域 dictionary_search、语义画像命中 | dictionaryapi.dev 英英词典（免认证，响应为数组） |
-| `local_wikipedia` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Wikipedia本地 |
-| `local_wikiquote` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Wikiquote本地 |
-| `local_wiktionary` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Wiktionary本地 |
-| `moegirl` | 可直接用 | 免费 | 不限 | — | 域 anime_encyclopedia、语义画像命中 | 萌娘百科（zh.moegirl.org.cn 搜索页 HTML 解析，免认证） |
-| `ndl` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 全日本出版物书目总汇（OpenSearch RSS） |
-| `tatoeba` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 400+ 语言对真实句子语料（翻译/语言学习） |
-| `wikidata` | 可直接用 | 免费 | 不限 | — | 域 cn_encyclopedia、域 entity_search、域 film_search、域 geo_places、域 org_entity、域 sports_search、语义画像命中 | Wikidata 实体搜索（wbsearchentities，免认证，限流较严） |
-| `wikipedia` | 可直接用 | 免费 | 不限 | — | 域 art_museum、域 astro_space、域 dictionary_search、域 entity_search、域 fact_check、域 film_search、域 geo_places、域 local_reference、域 medical、域 org_entity、域 species_search、域 sports_search、域 web_archive、语义画像命中、通用兜底链 | Wikipedia API（T2 替代） |
-| `zh_wikipedia` | 可直接用 | 免费 | 不限 | — | 域 anime_encyclopedia、域 cn_encyclopedia、域 entity_search、域 geo_places、域 org_entity、域 sports_search | 中文维基百科（MediaWiki API，与 en.wikipedia 同构） |
-| `europeana` | 已停用 | 免费 | 不限 | — | 语义画像命中 | 欧洲 27 国文化遗产聚合（官方公开 demo key） |
 
 ### 社区 UGC（12）
 
@@ -395,7 +397,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `redskill_search` | `redskill` | `redskill`、`anysearch` |
 | `wechat_search` | `wechat_sogou` | `wechat_sogou`、`anysearch` |
 | `hackernews_search` | `hackernews` | `hackernews`、`anysearch` |
-| `stackoverflow_search` | `stackoverflow` | `stackoverflow`、`anysearch` |
+| `stackoverflow_search` | `stackoverflow` | `stackoverflow`、`stackexchange`、`anysearch` |
 | `scholar_search` | `google_scholar` | `google_scholar`、`arxiv` |
 | `v2ex_search` | `v2ex` | `v2ex`、`anysearch` |
 | `ths_hot_search` | `ths_hot` | `ths_hot`、`anysearch` |
@@ -485,7 +487,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 ## 七、怎么自己查当前状态
 
 ```bash
-argo search --list-engines --detail | python3 -m json.tool | less   # 全部 216 个源的详情
+argo search --list-engines --detail | python3 -m json.tool | less   # 全部 218 个源的详情
 argo search --list-engines --detail --routable-only              # 只看现在能用的
 python3 scripts/matrix_search_eval.py --offline                   # 可达性门：有没有死源
 python3 scripts/engine_validate.py --engine <名> --stage all       # 单个源的健康+质量双阶段体检

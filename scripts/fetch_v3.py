@@ -3,11 +3,14 @@
 fetch_v3.py — 抓取降级链（零外部依赖，纯 stdlib + 系统 Chrome）
 
 吸收 Hound 的页面交互能力，但不引入 Playwright/Patchright 依赖：
-  第零级：AI 友好变体探测（{url}.md 直出，诚实身份；ARGO_FETCH_MD_VARIANT=0 关闭）
+  第零级：AI 友好变体探测（{url}.md 直出 + 站点根 /llms.txt，诚实身份；
+          ARGO_FETCH_MD_VARIANT=0 关闭）
   第一级：增强 HTTP（UA 轮换 + Cookie 积累 + 重试弹性）
   第一级A2：移动端 UA 分支（客户端形态分流型反爬；门控站单次直连 +
             per-host 身份记忆；ARGO_FETCH_MOBILE=0 关闭）
   第一级B：TLS 指纹伪造（curl_cffi impersonate，多指纹轮换，免起浏览器）
+  第一级C：r.jina.ai 阅读器（keyless 免费层，远端 JS 渲染转 markdown；
+            仅公网 URL，ARGO_FETCH_JINA=0 关闭）
   第二级：Chrome CDP 驱动（页面交互/JS 渲染/CF 绕过）
   第三级：内容质量评估（content_ok/page_type/quality_score）
 
@@ -199,8 +202,9 @@ def _tinyfish_enabled() -> bool:
 def _md_variant_url(url: str) -> str | None:
     """返回可探测的 .md 变体 URL；不适合探测时返回 None。
 
-    只对无扩展名路径（文档站页面形态）追加 .md；已带扩展名或带查询串的
-    动态地址跳过，避免无意义请求。
+    只对无扩展名路径（文档站页面形态）追加 .md；站点根（/）不放 .md 探测
+    （根级 AI 友好文件是 llms.txt，由 _llms_txt_url 负责），已带扩展名或
+    带查询串的动态地址跳过，避免无意义请求。
     """
     try:
         parsed = urlparse(url)
@@ -210,9 +214,39 @@ def _md_variant_url(url: str) -> str | None:
         return None
     path = parsed.path or "/"
     ext = os.path.splitext(path)[1].lower()
-    if ext or parsed.query:
+    if ext or parsed.query or path in ("", "/"):
         return None
     return url.rstrip("/") + ".md"
+
+
+def _llms_txt_url(url: str) -> str | None:
+    """返回站点根 /llms.txt 候选；仅对站点根路径（文档站门户形态）探测。
+
+    llms.txt（2024 起、规范 v1.8.0）是站点自述的 markdown 索引：H1 站名 +
+    分节资源清单，头部开发者文档站采用中。非根路径不探测——该文件只存在于
+    站点根，对深层页面探测是无意义请求。
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+    if parsed.scheme not in ("http", "https"):
+        return None
+    if parsed.path not in ("", "/") or parsed.query:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}/llms.txt"
+
+
+def _ai_variant_candidates(url: str) -> list[tuple[str, str]]:
+    """第零级探测候选清单（按优先序）：页面 .md 直出 → 站点根 llms.txt。"""
+    out: list[tuple[str, str]] = []
+    md = _md_variant_url(url)
+    if md:
+        out.append((md, "md_variant"))
+    llms = _llms_txt_url(url)
+    if llms:
+        out.append((llms, "llms_txt"))
+    return out
 
 
 def _looks_like_markdown(text: str) -> bool:
@@ -226,45 +260,49 @@ def _looks_like_markdown(text: str) -> bool:
 
 def _md_variant_fetch(url: str, max_chars: int = 8000,
                       timeout: float = 8.0) -> dict | None:
-    """探测 AI 友好 Markdown 变体（{url}.md）。命中返回结果，未命中返回 None。
+    """探测 AI 友好变体（{url}.md 直出 / 站点根 llms.txt）。命中返回结果，未命中 None。
 
     背景：头部开发者文档站自发提供 .md 直出与 llms.txt，对 Agent 返回干净
-    正文（诚实身份即可获取）。探测只多一个 GET，命中即跳过整个反爬降级链；
-    未命中静默放弃，走原有链路。
+    正文（诚实身份即可获取）。探测只多一两个 GET，命中即跳过整个反爬降级链；
+    未命中静默放弃，走原有链路。返回的 result.url 保持为原始请求 URL
+    （llms.txt 描述的是站点，不是探测端点自身）。
     """
-    md_url = _md_variant_url(url)
-    if not md_url:
+    candidates = _ai_variant_candidates(url)
+    if not candidates:
         return None
-    try:
-        from http_client import HttpClient
-        client = HttpClient(timeout=min(timeout, 5.0), max_retries=0,
-                            jitter=False)
-        resp = client.get(md_url, extra_headers={
-            "User-Agent": "argo-fetch-v3/1.0 (+local-research; md-variant)",
-            "Accept": "text/markdown, text/plain;q=0.9, */*;q=0.8",
-        })
-    except Exception:
-        return None
-    if resp.get("status", 0) != 200 or not resp.get("text"):
-        return None
-    headers = resp.get("headers") or {}
-    ctype = ""
-    for k, v in headers.items():
-        if str(k).lower() == "content-type":
-            ctype = str(v).lower()
-            break
-    if "html" in ctype:
-        return None
-    if not _looks_like_markdown(resp["text"]):
-        return None
-    result = _make_result(url, "", max_chars, "md_variant")
-    result["content"] = resp["text"][:max_chars]
-    result["length"] = len(result["content"])
-    result["title"] = ""
-    m = re.match(r"^#\s+(.+)$", result["content"].lstrip(), re.MULTILINE)
-    if m:
-        result["title"] = m.group(1).strip()[:200]
-    return result
+    for probe_url, kind in candidates:
+        try:
+            from http_client import HttpClient
+            client = HttpClient(timeout=min(timeout, 5.0), max_retries=0,
+                                jitter=False)
+            resp = client.get(probe_url, extra_headers={
+                "User-Agent": "argo-fetch-v3/1.0 (+local-research; md-variant)",
+                "Accept": "text/markdown, text/plain;q=0.9, */*;q=0.8",
+            })
+        except Exception:
+            continue
+        if resp.get("status", 0) != 200 or not resp.get("text"):
+            continue
+        headers = resp.get("headers") or {}
+        ctype = ""
+        for k, v in headers.items():
+            if str(k).lower() == "content-type":
+                ctype = str(v).lower()
+                break
+        if "html" in ctype:
+            continue
+        text = resp["text"]
+        if not _looks_like_markdown(text):
+            continue
+        result = _make_result(url, "", max_chars, kind)
+        result["content"] = text[:max_chars]
+        result["length"] = len(result["content"])
+        result["title"] = ""
+        m = re.match(r"^#\s+(.+)$", result["content"].lstrip(), re.MULTILINE)
+        if m:
+            result["title"] = m.group(1).strip()[:200]
+        return result
+    return None
 
 
 # ─── 第一级A2：移动端 UA 分支（客户端形态分流）──────────────────────────────
@@ -548,6 +586,71 @@ def _make_result(url: str, html: str, max_chars: int,
     }
 
 
+# ─── 第一级C：r.jina.ai 阅读器（keyless 免费层，远端 JS 渲染转 markdown）─────
+
+_JINA_PRIVATE_HOST = re.compile(
+    r"^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.)")
+
+
+def _jina_enabled() -> bool:
+    """r.jina.ai 阅读器级开关：ARGO_FETCH_JINA=0 关闭，默认开启。"""
+    return os.environ.get("ARGO_FETCH_JINA", "1").strip() not in (
+        "0", "false", "False", "no")
+
+
+def _is_public_host(host: str) -> bool:
+    """r.jina.ai 是第三方代理：只把公网 URL 交给它。
+
+    内网/本机/裸 IP 一律跳过——把内部地址送出第三方 = 拓扑泄露；
+    域名形 IP（全数字）与含冒号的 IPv6 字面量同判为裸地址。
+    """
+    if not host:
+        return False
+    if host == "localhost" or host.endswith((".local", ".internal", ".lan")):
+        return False
+    if _JINA_PRIVATE_HOST.match(host):
+        return False
+    if host.replace(".", "").isdigit() or ":" in host:
+        return False
+    return "." in host
+
+
+def _jina_reader_fetch(url: str, max_chars: int = 8000,
+                       timeout: float = 8.0) -> dict | None:
+    """r.jina.ai 阅读器（keyless 免费层）。
+
+    定位：HTTP/TLS 直连全败后的免浏览器快速路径——jina 在远端渲染并返回
+    markdown，命中则免去 CDP 冷启动。免费层有速率限制，失败/429 返回 None
+    静默放行走 Wayback/浏览器。调用方须先过 _is_public_host（第三方代理边界）。
+    """
+    try:
+        from http_client import HttpClient
+        client = HttpClient(timeout=min(timeout, 10.0), max_retries=0,
+                            jitter=False)
+        resp = client.get(f"https://r.jina.ai/{url}", extra_headers={
+            "User-Agent": "argo-fetch-v3/1.0 (+local-research; jina-reader)",
+            "Accept": "text/plain",
+        })
+    except Exception:
+        return None
+    if resp.get("status", 0) != 200 or not resp.get("text"):
+        return None
+    raw = resp["text"]
+    title = ""
+    m = re.search(r"^Title:\s*(.+)$", raw[:2000], re.MULTILINE)
+    if m:
+        title = m.group(1).strip()[:200]
+    if "Markdown Content:" in raw:
+        raw = raw.split("Markdown Content:", 1)[1].lstrip()
+    if not _looks_like_markdown(raw):
+        return None
+    result = _make_result(url, "", max_chars, "jina_reader")
+    result["content"] = raw[:max_chars]
+    result["length"] = len(result["content"])
+    result["title"] = title
+    return result
+
+
 # ─── 第二级A：tinyfish 直连渲染（Markdown 直出，含 JS 执行）─────────────
 # 实现见 fetch_render_tinyfish（独立模块）：markdown-only 渲染，
 # 不产 raw html，故 need_html 场景由主链跳过本层。
@@ -661,9 +764,10 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
     """多级抓取降级链主函数（逐级升级，受全局 deadline 约束）。
 
     执行顺序：
-      第零级：{url}.md 变体探测（AI 友好直出，命中即跳过整条反爬链）
+      第零级：{url}.md 变体 + 站点根 /llms.txt 探测（AI 友好直出，命中即跳过整条反爬链）
       第一级：增强 HTTP（UA 轮换 + Cookie 积累）；客户端形态分流型站点移动 UA 首发
       第一级B：TLS 指纹伪造（curl_cffi impersonate，指纹检测型反爬）
+      第一级C：r.jina.ai 阅读器（keyless 免费层，仅公网 URL，markdown-only）
       第二级A：tinyfish 直连渲染（markdown-only，需 TINYFISH_API_KEY；need_html 或开关关闭时跳过）
       第二级B：Wayback 快照 + Chrome CDP 浏览器（自动降级或 actions 触发）
       第三级：质量评估（content_ok/page_type/quality_score）
@@ -807,6 +911,22 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                     elif spoof.get("success"):
                         spoof["http_fallback"] = True
                         result = spoof
+
+            if not result.get("stop_signal") and _budget_left() > 0:
+                # 第一级C：r.jina.ai 阅读器（keyless 免费层，远端 JS 渲染）。
+                # HTTP/TLS 直连全败时的免浏览器快速路径；markdown-only 同
+                # tinyfish，need_html 场景跳过；第三方代理只接公网 URL。
+                if (not gated and not need_html and _jina_enabled()
+                        and _is_public_host(host)
+                        and (not result.get("success")
+                             or _needs_browser(result))):
+                    # 超时受剩余预算约束：deadline 场景本级不得击穿总预算
+                    jina = _jina_reader_fetch(
+                        url, max_chars,
+                        timeout=min(timeout, max(_budget_left(), 1.0)))
+                    if jina is not None and jina.get("success"):
+                        jina["http_fallback"] = True
+                        result = jina
 
             if not result.get("stop_signal") and _budget_left() > 0:
                 # 第二级：Wayback 快照回退（HTTP 失败 / 内容空 / 疑似被删页面）

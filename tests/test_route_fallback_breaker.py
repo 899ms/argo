@@ -264,8 +264,12 @@ class TestConfigCandidates(unittest.TestCase):
         for name, (primary, fb) in _FALLBACK_MAP.items():
             d = doms.get(name)
             self.assertIsNotNone(d, f"域缺失: {name}")
-            self.assertEqual((d.get("engines_combo") or [])[:2], [primary, fb],
-                             f"{name}: combo 应为 [{primary}, {fb}]")
+            combo = d.get("engines_combo") or []
+            # 2026-09-14 口径演化：域可合法增员（如 stackexchange 进
+            # stackoverflow_search），钉死 combo[:2] 会挡住正确加源；
+            # 保留本测试的原意——primary 居首 + fallback 声明在列
+            self.assertEqual(combo[0], primary, f"{name}: primary 应居首")
+            self.assertIn(fb, combo, f"{name}: fallback {fb} 应在 combo 中")
             self.assertEqual(d.get("fallback"), fb, f"{name}: fallback 应为 {fb}")
 
 
