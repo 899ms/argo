@@ -58,8 +58,14 @@ def _network_cfg() -> dict[str, Any]:
         return {"url": "", "rules": {}}
 
 
-def resolve_proxy(url: str, override: str | None = None) -> str | None:
-    """返回该 URL 应使用的代理 URL；None=直连。优先级见模块 docstring。"""
+def resolve_proxy(url: str, override: str | None = None,
+                  include_standard_env: bool = True) -> str | None:
+    """返回该 URL 应使用的代理 URL；None=直连。优先级见模块 docstring。
+
+    include_standard_env=False 供 urllib 类传输层使用——urlopen 原生认标准
+    环境变量，调用方只需 argo 级增量配置；重复接管反而改变 mock 契约与
+    失败路径。http.client 类传输层（HttpClient）必须 True（它自己不认 env）。
+    """
     if override is not None:
         return None if str(override).strip().lower() == "direct" else override
 
@@ -85,6 +91,8 @@ def resolve_proxy(url: str, override: str | None = None) -> str | None:
         return None if cu.lower() == "direct" else cu
 
     # 5) 标准环境变量（含 NO_PROXY 尊重；getproxies 已处理大小写变体）
+    if not include_standard_env:
+        return None
     try:
         scheme = urllib.parse.urlparse(
             url if "//" in url else "https://" + url).scheme or "https"

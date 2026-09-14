@@ -635,6 +635,12 @@ class TestHttpClientEngineIntegration(unittest.TestCase):
         """follow_redirects 死参数修复：301/302 跟随到最终页。"""
         from http_client import HttpClient
         import http.client as hc
+        # 出口调度隔离（issue #13 配套）：真实代理环境会让连接落在
+        # 代理主机上，观察不到目标 host 的跟随路径。强制直连。
+        from unittest.mock import patch as _patch
+        _px = _patch("net_proxy.resolve_proxy", return_value=None)
+        _px.start()
+        self.addCleanup(_px.stop)
         seen = []
 
         class _FakeResp:

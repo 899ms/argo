@@ -537,6 +537,11 @@ class TestHttpClientLocationFix:
         import http.client as hc
         import urllib.parse as _up
 
+        # 出口调度隔离（issue #13 配套）：本测试在连接类层面 mock，而
+        # net_proxy 的标准环境变量层会让真实代理环境（本机 shell 预置
+        # http_proxy 等）走隧道分支，绕开 FakeConn。测试环境强制直连。
+        monkeypatch.setattr("net_proxy.resolve_proxy", lambda *a, **k: None)
+
         seen_paths = []
 
         class FakeConn:

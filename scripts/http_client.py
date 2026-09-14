@@ -619,6 +619,15 @@ class HttpClient:
         cmd = ["curl", "-s", "--max-redirs", "0", "--max-time",
                str(int(self.timeout)),
                "-w", "\\n%{http_code}\\n%{url_effective}"]
+        # 出口调度（issue #13）：curl 原生只认标准小写 env，argo 级配置
+        # （ARGO_PROXY/rules）须显式 -x 下发
+        try:
+            from net_proxy import resolve_proxy
+            _px = resolve_proxy(final_url)
+            if _px:
+                cmd.extend(["-x", _px])
+        except Exception:
+            pass
         for k, v in headers.items():
             cmd.extend(["-H", f"{k}: {v}"])
         cmd.append(final_url)
@@ -703,7 +712,7 @@ class HttpClient:
                 try:
                     resp = cr.get(current, impersonate=fp, headers=headers,
                                   timeout=_timeout, allow_redirects=False,
-                                  proxies=_curl_proxies(current))
+                                  proxies=self._curl_proxies(current))
                     status = resp.status_code
                     if status in (301, 302, 303, 307, 308):
                         location = resp.headers.get("Location", "")

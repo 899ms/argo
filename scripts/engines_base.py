@@ -562,7 +562,8 @@ def http_open(req: Any, timeout: float = 10.0, engine: str = ""):
     # urllib 原生支持，行为与旧版完全一致
     try:
         from net_proxy import resolve_proxy
-        _px = resolve_proxy(getattr(req, "full_url", ""))
+        _px = resolve_proxy(getattr(req, "full_url", ""),
+                            include_standard_env=False)
     except Exception:
         _px = None
     try:
