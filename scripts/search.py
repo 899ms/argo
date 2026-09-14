@@ -836,8 +836,11 @@ def _consensus_prior(results: list[dict[str, Any]]) -> list[float]:
     `score` 字段竞争（`score` 已被本函数覆写，拿它当输入是循环依赖）。
 
     归一化口径：RRF 分取最大值归一到 1（保序，不放大）；共识数按
-    `min(n-1, 3)/3` 计（与 `apply_consensus_boost` 的封顶口径一致，
-    避免 5 源共识把量纲压过其他维度）。
+    `min(n-1, 3)/3` 计（封顶 3，避免 5 源共识把量纲压过其他维度）。
+    共识在排序路径**只有这一个入口**：旧版此处之外还有一次乘法共识
+    boost（×(1+0.05·min(n-1,3))，2026-09-13 移除）——同一信号被重复
+    计分，3 引擎共识合计被放大约 19%。evidence selection 阶段的
+    `selection` 乘法是「先核验哪条」的独立信号，不影响本排序。
     """
     priors: list[float] = []
     raw = [float(r.get("_rrf_score", 0.0) or 0.0) for r in results]
@@ -849,6 +852,42 @@ def _consensus_prior(results: list[dict[str, Any]]) -> list[float]:
         # 两个子信号取均值：单纯多引擎重复 != 更可信，RRF 分还含引擎权重
         priors.append(0.5 * rrf_norm + 0.5 * cons_norm)
     return priors
+
+
+_SCORE_FLOORS_CACHE: dict[str, dict[str, dict[str, float]]] | None = None
+
+
+def _domain_score_floors() -> dict[str, dict[str, dict[str, float]]]:
+    """域级源保底分（config.yaml 各域的 score_floors），进程内缓存。
+
+    这些分值是「域对源的先验信任」，属于引擎/域声明而非排序算法——
+    此前硬编码在 local_five_dim_rerank 里，每接一个新源都可能要改排序
+    代码（2026-09-13 审查 P1-2）。声明形态：
+
+      score_floors:
+        sina_quote: {relevance: 1.0, authority: 0.85, freshness: 0.85}
+
+    生效时机：relevance 在相关性评分后立即生效；authority/freshness 仅在
+    evidence 评分可用时生效（无 evidence 时两维本就恒 0.5，保底无意义，
+    与旧实现逐位一致）。源匹配按「/」切分成员判断（rrf 合并源
+    "local_bing/sina_quote" 也要吃到保底）。
+    """
+    global _SCORE_FLOORS_CACHE
+    if _SCORE_FLOORS_CACHE is None:
+        try:
+            from config import load_config
+            floors: dict[str, dict[str, dict[str, float]]] = {}
+            for d in (load_config().get("domains") or []):
+                if isinstance(d, dict) and d.get("score_floors"):
+                    floors[d["name"]] = {
+                        str(src): dict(fl)
+                        for src, fl in d["score_floors"].items()
+                        if isinstance(fl, dict)
+                    }
+            _SCORE_FLOORS_CACHE = floors
+        except Exception:
+            _SCORE_FLOORS_CACHE = {}
+    return _SCORE_FLOORS_CACHE
 
 
 def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
@@ -903,6 +942,7 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
         _has_evidence = False
 
     query_tokens = set(_tokens(query))
+    floors = _domain_score_floors().get(domain, {})
 
     # 先计算前四维静态分
     enriched = []
@@ -912,26 +952,11 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
         url = r.get("url", "") or ""
         source = r.get("source", "") or ""
         relevance = _score_relevance(query_tokens, title, snippet)
-        # book_search 域：微信读书/豆瓣/Open Library 的书目结果是「答案型」，
-        # 书名对查询词的 token 覆盖率天然低（「三体全集」vs「科幻小说推荐」），
-        # 直接按网页标准评 relevance 会被列表页碾压。给书目源保底相关分。
-        if domain == "book_search" and source in ("weread", "douban_book", "open_library"):
-            relevance = max(relevance, 0.6)
-        # 金融答案型源保底：行情快照/汇率/官方公告的标题是「答案」而非「网页」，
-        # token 覆盖率天然低（「茅台股价」vs「贵州茅台 1350.600 ↓-0.82%」）。
-        # 这些源命中即答案，且 cninfo 是官方公告源，权威分也保底。
-        if domain == "stock_query" and _src_has(source, "sina_quote"):
-            relevance = max(relevance, 1.0)
-        if domain == "stock_query" and _src_has(source, "tencent_quote"):
-            relevance = max(relevance, 1.0)
-        if domain == "stock_query" and _src_has(source, "em_flow"):
-            relevance = max(relevance, 0.9)
-        if domain == "macro_data" and _src_has(source, "fx_rate"):
-            relevance = max(relevance, 0.9)
-        if domain == "macro_data" and _src_has(source, "worldbank"):
-            relevance = max(relevance, 0.85)
-        if domain == "financial_news" and _src_has(source, "cninfo"):
-            relevance = max(relevance, 0.85)
+        # 域级源保底分（答案型源：书目/行情/汇率/官方公告），声明在
+        # config.yaml 各域 score_floors——排序代码对源类型无知
+        for _src, fl in floors.items():
+            if "relevance" in fl and _src_has(source, _src):
+                relevance = max(relevance, fl["relevance"])
         if _has_evidence:
             try:
                 authority = float(score_authority(url, source).get("score", 0.5))
@@ -941,16 +966,15 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
                 freshness = float(score_freshness(r).get("score", 0.5))
             except Exception:
                 freshness = 0.5
-            # cninfo/sina/fx 域名被 evidence 判为低权威（0.5-0.55），
-            # 实为官方公告/行情源，权威分保底避免被商业站碾压。
-            if (_src_has(source, "cninfo") or _src_has(source, "sina_quote")
-                    or _src_has(source, "fx_rate") or _src_has(source, "tencent_quote")
-                    or _src_has(source, "em_flow") or _src_has(source, "worldbank")):
-                authority = max(authority, 0.85)
-            # 行情/汇率/资金流快照是「实时答案」，时效分保底，避免被陈旧新闻页压制。
-            if (_src_has(source, "sina_quote") or _src_has(source, "fx_rate")
-                    or _src_has(source, "tencent_quote") or _src_has(source, "em_flow")):
-                freshness = max(freshness, 0.85)
+            # 权威/时效保底（行情快照/官方公告源在 evidence 域名表里
+            # 偏低，实为高可信答案源），声明同上
+            for _src, fl in floors.items():
+                if not _src_has(source, _src):
+                    continue
+                if "authority" in fl:
+                    authority = max(authority, fl["authority"])
+                if "freshness" in fl:
+                    freshness = max(freshness, fl["freshness"])
         else:
             authority, freshness = 0.5, 0.5
         completeness = _score_completeness(title, snippet)
@@ -996,6 +1020,92 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
         ranked.append(r)
 
     return ranked[:top_n]
+
+
+# ── 融合后段（execute_search 的可独立测试单元）────────────────────────────────
+
+def _apply_consensus_and_sort(merged: list[dict[str, Any]],
+                              max_results: int) -> list[dict[str, Any]]:
+    """融合层最终排序：按五维 rerank 的 score 降序并截断。
+
+    排序只认 rerank 写入的 score（含 ① 融合先验维度）。此处曾有第二道乘法
+    共识 boost（×(1+0.05·min(n-1,3))），与 ① 对同一信号重复计分：3 引擎
+    共识合计被放大 ~19%（1.08×1.10），2026-09-13 移除（金标 18 条对拍
+    无序位回归）。共识的排序影响由 ① 表达，可观测面由 `consensus_engines`
+    与 evidence selection 的 `selection` 字段表达。
+    """
+    merged.sort(key=lambda r: abs(r.get("score", 0) or 0), reverse=True)
+    return merged[:max_results]
+
+
+def _attach_selection_signals(merged: list[dict[str, Any]], mode: str,
+                              depth: str) -> None:
+    """两阶段 selection 信号（authority/freshness/selection/absorption/…）。
+
+    这是 evidence「先核验哪条」的依据，独立于排序 score——共识在此阶段
+    合法地参与（提高待核验优先级），不属于排序重复计分。
+    fast 模式跳过（MCP 默认紧凑也不返回这些字段）。失败静默：观测层
+    不得拖累搜索主路径。
+    """
+    if not merged or mode == "fast" or depth == "fast":
+        return
+    try:
+        from evidence import score_authority, score_freshness
+        from content_signals import score_evidence_density
+        for r in merged:
+            url = r.get("url", "")
+            source = r.get("source", "")
+            title = r.get("title", "") or ""
+            snippet = r.get("snippet", "") or ""
+            auth = score_authority(url, source)
+            fresh = score_freshness(r)
+            dens = score_evidence_density(snippet, title)
+            selection = auth["score"]
+            if auth.get("is_serp"):
+                selection = min(selection, 0.15)
+            cons = r.get("consensus_engines") or []
+            if len(cons) >= 2 and not auth.get("is_serp"):
+                selection = min(1.0, selection * (1.0 + 0.1 * min(len(cons) - 1, 2)))
+            absorption = dens["absorption_score"]
+            orig = float(r.get("score", 0.5) or 0.5)
+            r["authority"] = auth["score"]
+            r["authority_tier"] = auth["tier"]
+            r["freshness"] = fresh["score"]
+            r["selection"] = round(selection, 3)
+            r["absorption"] = round(absorption, 3)
+            r["evidence_flags"] = {
+                "has_numbers": dens["has_numbers"],
+                "has_comparison": dens["has_comparison"],
+                "has_definition": dens["has_definition"],
+                "is_serp": bool(auth.get("is_serp")),
+                "consensus": len(cons),
+            }
+            r["credibility_fast"] = round(
+                selection * 0.40 + absorption * 0.35 + fresh["score"] * 0.15 + orig * 0.10,
+                3,
+            )
+    except ImportError:
+        pass
+    except Exception as e:
+        import logging
+        logging.getLogger("unified_search").debug(f"可信度评分跳过: {type(e).__name__}")
+
+
+def _align_facts_safe(merged: list[dict[str, Any]], mode: str,
+                      depth: str) -> dict[str, Any] | None:
+    """关键事实交叉标记（P0-004）。仅 deep/auto 且结果 ≥3；fast 跳过。"""
+    if not merged:
+        return None
+    try:
+        from fact_align import align_facts
+        return align_facts(merged, min_results=3, mode=mode, depth=depth)
+    except ImportError:
+        return None  # fact_align 模块不可用
+    except Exception as e:
+        import logging
+        logging.getLogger("unified_search").debug(
+            f"事实交叉标记跳过: {type(e).__name__}")
+        return None
 
 
 # ── 执行层 ─────────────────────────────────────────────────────────────────────
@@ -1922,71 +2032,12 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         rank_method = "none"
 
     if merged:
-        # 共识加权后再按 score 排
-        for r in merged:
-            cons = r.get("consensus_engines") or []
-            if len(cons) >= 2:
-                base = float(r.get("score", 0) or 0)
-                r["score"] = round(base * (1.0 + 0.05 * min(len(cons) - 1, 3)), 4)
-                r["consensus_boost"] = True
-        merged.sort(key=lambda r: abs(r.get("score", 0) or 0), reverse=True)
-        merged = merged[:max_results]
+        merged = _apply_consensus_and_sort(merged, max_results)
 
-    # 内嵌两阶段信号：fast 模式跳过（MCP 默认紧凑也不返回这些字段）
-    if merged and mode != "fast" and depth != "fast":
-        try:
-            from evidence import score_authority, score_freshness
-            from content_signals import score_evidence_density
-            for r in merged:
-                url = r.get("url", "")
-                source = r.get("source", "")
-                title = r.get("title", "") or ""
-                snippet = r.get("snippet", "") or ""
-                auth = score_authority(url, source)
-                fresh = score_freshness(r)
-                dens = score_evidence_density(snippet, title)
-                selection = auth["score"]
-                if auth.get("is_serp"):
-                    selection = min(selection, 0.15)
-                cons = r.get("consensus_engines") or []
-                if len(cons) >= 2 and not auth.get("is_serp"):
-                    selection = min(1.0, selection * (1.0 + 0.1 * min(len(cons) - 1, 2)))
-                absorption = dens["absorption_score"]
-                orig = float(r.get("score", 0.5) or 0.5)
-                r["authority"] = auth["score"]
-                r["authority_tier"] = auth["tier"]
-                r["freshness"] = fresh["score"]
-                r["selection"] = round(selection, 3)
-                r["absorption"] = round(absorption, 3)
-                r["evidence_flags"] = {
-                    "has_numbers": dens["has_numbers"],
-                    "has_comparison": dens["has_comparison"],
-                    "has_definition": dens["has_definition"],
-                    "is_serp": bool(auth.get("is_serp")),
-                    "consensus": len(cons),
-                }
-                r["credibility_fast"] = round(
-                    selection * 0.40 + absorption * 0.35 + fresh["score"] * 0.15 + orig * 0.10,
-                    3,
-                )
-        except ImportError:
-            pass
-        except Exception as e:
-            import logging
-            logging.getLogger("unified_search").debug(f"可信度评分跳过: {type(e).__name__}")
+    _attach_selection_signals(merged, mode, depth)
 
     # ── P0-004：关键事实交叉标记（仅 deep/auto 且结果 ≥3；fast 跳过）──
-    fact_alignment: dict[str, Any] | None = None
-    if merged:
-        try:
-            from fact_align import align_facts
-            fact_alignment = align_facts(merged, min_results=3, mode=mode, depth=depth)
-        except ImportError:
-            pass  # fact_align 模块不可用
-        except Exception as e:
-            import logging
-            logging.getLogger("unified_search").debug(
-                f"事实交叉标记跳过: {type(e).__name__}")
+    fact_alignment: dict[str, Any] | None = _align_facts_safe(merged, mode, depth)
 
     if on_progress:
         on_progress(Stage.MERGING, {"count": len(merged)})
@@ -2412,8 +2463,12 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
             logging.getLogger("unified_search").debug(
                 f"[domain-filter] {type(e).__name__}: {e}")
 
-    # 相关信源标准化（日常搜索底部引用列表；与 results 顺序一致）
-    result["sources"] = build_sources(result.get("results") or [])
+    # 相关信源标准化（日常搜索底部引用列表；与 results 顺序一致）。
+    # sources 是 results 的降级投影（URL 100% 重叠，实测零信息增量），
+    # --no-envelope（Agent 默认输出）下不再生成：每次调用省 ~0.9KB，
+    # 要 provenance 时用 envelope 模式或 --archive（2026-09-13 审查 P2-1）。
+    if envelope:
+        result["sources"] = build_sources(result.get("results") or [])
 
     # 本地命中并入（默认关）：seek 结果尾部拼入，来源 local_files，
     # 不参与融合评分。仅显式开启（--include-local / MCP include_local）才触发。
@@ -2433,6 +2488,39 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
 
 
 # ── 信源标准化 ─────────────────────────────────────────────────────────────────
+
+# --fields agent：每条 result 保留的答案字段（P2-2）。
+_AGENT_RESULT_FIELDS = (
+    "title", "url", "snippet", "source", "score", "ref",
+    "published_at", "fetch_suggested", "full_text_url",
+    "image_url", "image_license",
+)
+
+
+def _strip_for_agent(payload: dict[str, Any]) -> dict[str, Any]:
+    """--fields agent：输出只留答案内容（P2-2，2026-09-13）。
+
+    在 --no-envelope 之上再剥遥测标量（tfidf_scores/lang_pref/engine_outcomes
+    等）与 null/空键。fetch_required 必须保留——SKILL.md 的高后果门控纪律
+    依赖它，不能被瘦身掉。
+    """
+    keep_top = (
+        "query", "engine", "engines", "engines_used", "domain", "count",
+        "mode", "depth", "status", "fetch_required", "evidence_loop",
+        "errors", "login_hint",
+    )
+    out: dict[str, Any] = {k: payload[k] for k in keep_top
+                           if payload.get(k) is not None}
+    slim_results = []
+    for r in payload.get("results") or []:
+        if not isinstance(r, dict):
+            continue
+        slim = {k: r[k] for k in _AGENT_RESULT_FIELDS if r.get(k) is not None}
+        slim_results.append(slim)
+    out["results"] = slim_results
+    out["count"] = len(slim_results)
+    return out
+
 
 def build_sources(results: list[Any] | None) -> list[dict[str, Any]]:
     """将 results 投影为编号信源列表（传统搜索引擎底部「相关链接」形态）。
@@ -2668,6 +2756,11 @@ def main():
     parser.add_argument("--no-envelope", action="store_true",
                         help="不附加 candidates/coverage/limitations")
     parser.add_argument(
+        "--fields", choices=("full", "agent"), default="full",
+        help="JSON 字段档位：full=全量（默认）；agent=只留答案内容（剥遥测标量"
+             "与 null 键，每条 result 留 title/url/snippet/source/score 等；"
+             "fetch_required 保留），配合 --no-envelope 供 Agent 消费",)
+    parser.add_argument(
         "--archive",
         action="store_true",
         help="将本次搜索 envelope 落盘到工作区归档（不抓正文/不下载）",
@@ -2694,7 +2787,7 @@ def main():
 
     if args.list_engines:
         # --engine 兼作清单过滤（`--engine auto` 是搜索默认值，不算过滤）。
-        # 全量详细行 216 × ~0.9 KB ≈ 186 KB，Agent 查单个引擎状态时不该付这个
+        # 全量详细行实测约 22 KB（2026-09-13 复测；此前误记 186 KB），Agent 查单个引擎状态时不该付这个
         # 代价——实测此前 `--list-engines --detail --engine egov_law` 忽略过滤、
         # 照样吐全量。
         _wanted = None
@@ -2821,6 +2914,8 @@ def main():
 
     if args.json_output:
         public = {k: v for k, v in results.items() if not k.startswith("_")}
+        if args.fields == "agent":
+            public = _strip_for_agent(public)
         print(json.dumps(public, ensure_ascii=False, indent=2))
     else:
         print(format_text_output(results))

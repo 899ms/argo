@@ -212,14 +212,16 @@ def rg_search(patterns, path, excludes, exts, context, count, max_results,
     if proc.returncode == 1:
         return [], None  # 无匹配，正常
     if count:
-        out = []
+        # 全量收集后按命中数降序取前 N：rg --count-matches 的输出顺序是
+        # 目录遍历序，直接截断会让「哪些文件命中最多」系统性答错——
+        # 命中最多的文件可能恰好排在遍历序后面。行数=文件数，全量收集有界。
+        counts = []
         for line in proc.stdout.splitlines():
             if ":" in line:
                 fp, _, n = line.rpartition(":")
-                out.append((fp, int(n) if n.isdigit() else 0, ""))
-            if len(out) >= max_results:
-                break
-        return out, None
+                counts.append((fp, int(n) if n.isdigit() else 0, ""))
+        counts.sort(key=lambda t: t[1], reverse=True)
+        return counts[:max_results], None
     out = []
     for line in proc.stdout.splitlines():
         m = re.match(r"^(.*?):(\d+):(.*)$", line)
@@ -736,6 +738,32 @@ def git_blame(path, line):
     return f"local-seek: {p.name} 第 {line} 行\n{proc.stdout.strip()}", 0
 
 
+def _run_grep_fallback(args, patterns, fixed, path, excludes, exts, max_results):
+    """rg 缺失时的 grep 兜底（目录内/全盘共用）。
+
+    返回 (results, err, mode)；rg 与 grep 都不可用时 results=None 且 err
+    说明缺什么——调用方必须把「工具缺失」与「未找到匹配」区分开。
+    """
+    grep_exe = resolve_grep()
+    if not grep_exe:
+        return None, "本机无 rg 与 grep 可用，请安装 ripgrep", ""
+    mode = "fast"
+    if not args.exact and len(patterns) > 1:
+        results, err = grep_search(grep_exe, [args.query], path, excludes, exts,
+                                   args.context, args.count, max_results,
+                                   is_literal(args.query))
+        if not results and not err:
+            results, err = grep_search(grep_exe, patterns, path, excludes, exts,
+                                       args.context, args.count, max_results,
+                                       fixed)
+            if results:
+                mode += "+扩展"
+    else:
+        results, err = grep_search(grep_exe, patterns, path, excludes, exts,
+                                   args.context, args.count, max_results, fixed)
+    return results, err, mode
+
+
 def main():
     ap = argparse.ArgumentParser(prog="seek", description="本地高效搜索统一入口")
     ap.add_argument("query", nargs="?", help="搜索查询词")
@@ -852,33 +880,29 @@ def main():
     results, err = [], None
     patterns, fixed = build_patterns(args.query, args.exact)
 
-    if scope == "all" or not tool_exists("rg"):
+    if scope == "all":
+        # 全盘搜索：mdfind 优先（rg/grep 扫全盘太慢），缺 mdfind 退 grep
         if tool_exists("mdfind"):
             engine, mode = "mdfind", "deep"
             results, err = mdfind_search(args.query, None if args.spotlight else path,
                                          max_results)
         else:
-            grep_exe = resolve_grep()
-            if grep_exe:
-                engine, mode = "grep", "fast"
-                if not args.exact and len(patterns) > 1:
-                    results, err = grep_search(grep_exe, [args.query], path,
-                                               excludes, exts, args.context,
-                                               args.count, max_results,
-                                               is_literal(args.query))
-                    if not results and not err:
-                        results, err = grep_search(grep_exe, patterns, path,
-                                                   excludes, exts, args.context,
-                                                   args.count, max_results, fixed)
-                        if results:
-                            mode += "+扩展"
-                else:
-                    results, err = grep_search(grep_exe, patterns, path,
-                                               excludes, exts, args.context,
-                                               args.count, max_results, fixed)
-            else:
+            results, err, gmode = _run_grep_fallback(
+                args, patterns, fixed, path, excludes, exts, max_results)
+            if results is None:
                 engine, mode = "none", "fast"
-                err = "本机无 rg/mdfind/grep 可用，请安装 ripgrep"
+            else:
+                engine, mode = "grep", gmode
+    elif not tool_exists("rg"):
+        # 目录内搜索缺 rg 必须落 grep，不能落 mdfind：Spotlight 不索引
+        # 源码内容，会把「工具缺失」伪装成「搜索结论」（实测搜 argo 自身
+        # 符号返回 24 条外部陈旧副本、漏掉正主，还报「未找到匹配」）。
+        results, err, gmode = _run_grep_fallback(
+            args, patterns, fixed, path, excludes, exts, max_results)
+        if results is None:
+            engine, mode = "none", "fast"
+        else:
+            engine, mode = "grep", gmode
     elif args.filename:
         engine, mode = "fd", "fast"
         if tool_exists("fd"):

@@ -47,18 +47,41 @@ def test_stamp_does_not_override_explicit():
 
 
 def test_serp_and_body_templates_are_single_source():
-    """SERP / BODY 提取逻辑各只定义一次，search/act 通过组合注入。"""
-    src = Path(ego_search.__file__).read_text(encoding="utf-8")
-    assert src.count("const configs = {") == 1
-    assert src.count("const candidates = ['article'") == 1
-    assert "SERP_EXTRACT_IIFE" in src
-    assert "BODY_EXTRACT_IIFE" in src
+    """SERP 提取选择器单一真源 = serp_spec（P2-5）。
+
+    ego_search 与 webbridge_adapter 曾各持一份逐字节相同的 SERP IIFE 与
+    SEARCH_URLS——修一处漏一处。现在真源唯一，两消费方零副本；BODY 提取
+    仍单源定义在 ego_search。
+    """
+    import serp_spec
+    import webbridge_adapter
+    spec_src = Path(serp_spec.__file__).read_text(encoding="utf-8")
+    assert spec_src.count("const configs = {") == 1
+    assert spec_src.count("const candidates = ['article'") == 0
+    for mod in (ego_search, webbridge_adapter):
+        src = Path(mod.__file__).read_text(encoding="utf-8")
+        assert src.count("const configs = {") == 0, f"{mod.__name__} 仍有 SERP 选择器副本"
+        assert "li.b_algo" not in src.replace("serp_spec", ""), f"{mod.__name__} 仍有选择器字面量"
+    ego_src = Path(ego_search.__file__).read_text(encoding="utf-8")
+    assert ego_src.count("const candidates = ['article'") == 1
+    assert "BODY_EXTRACT_IIFE" in ego_src
+
+
+def test_build_serp_js_placeholder_injection():
+    """占位符注入唯一入口：引擎名走 JSON 转义、条数为整数。"""
+    import serp_spec
+    js = serp_spec.build_serp_js("baidu", 5)
+    assert '"baidu"' in js
+    assert "%%" not in js
+    js2 = serp_spec.build_serp_js('eng"in e', 3)
+    assert '"eng\\"in e"' in js2  # JSON 转义防注入
 
 
 def test_serp_iife_injects_engine_and_n():
     js = ego_search._serp_iife("baidu", 3)
-    assert "configs['baidu']" in js or "baidu" in js
-    assert "3" in js
+    # 引擎名经 build_serp_js 注入为 JSON 字符串变量（configs[engine] 取键）
+    assert 'const engine = "baidu"' in js
+    assert "const n = 3" in js
     # 不得写死仅 bing
     built = ego_search.build_js(
         ego_search.JS_SEARCH,
@@ -66,8 +89,8 @@ def test_serp_iife_injects_engine_and_n():
         URL="https://www.baidu.com/s?wd=q",
         SERP_IIFE=ego_search._serp_iife("baidu", 5),
     )
-    assert "baidu" in built
-    assert "configs.bing" not in built or "configs['baidu']" in built
+    assert '"baidu"' in built
+    assert "const n = 5" in built
 
 
 def test_act_engine_in_js_and_url(monkeypatch, capsys):
@@ -87,6 +110,9 @@ def test_act_engine_in_js_and_url(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
+    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 缺失即 sys.exit（BUG-5，2026-09-13）
+    monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(
         query="测试",
         engine="baidu",
@@ -118,6 +144,9 @@ def test_search_schema_with_mock(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
+    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 缺失即 sys.exit（BUG-5，2026-09-13）
+    monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(
         query="x", engine="bing", n=8, task_space="t", timeout=30,
         runtime="ego", keep_space=False,
@@ -144,6 +173,9 @@ def test_fetch_schema_with_mock(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
+    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 缺失即 sys.exit（BUG-5，2026-09-13）
+    monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(
         url="https://example.com/a", focus=None, task_space="t", timeout=30,
         runtime="ego", keep_space=False,
@@ -169,6 +201,9 @@ def test_api_schema_with_mock(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
+    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 缺失即 sys.exit（BUG-5，2026-09-13）
+    monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(
         api_url="https://www.zhihu.com/api/v4/x",
         origin=None,

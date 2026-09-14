@@ -27,6 +27,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -1104,12 +1105,20 @@ def search_engines(
     since: str | None = None,
     until: str | None = None,
     sort: str = "relevance",
+    total_budget: float | None = None,
 ) -> dict[str, Any]:
     """local-search 主入口：批量调用本地引擎，返回 unified-search schema。
 
     since/until: 发布时间时间窗（如 7d / 2026-08-01），下推到支持时间参数的引擎
     （filter_args），并在解析后按 published_at 通用过滤。
     sort: 时间排序 relevance/oldest/newest，仅改变返回顺序，不进入缓存键。
+    total_budget: 整体聚合预算（秒），与 `timeout` 的单引擎 HTTP 超时是两个
+    语义（此前同一变量承担两职）。None = 沿用 timeout or 30 的历史默认。
+    注意它是**收集上限**而非进程退出承诺：预算到点后未完成的引擎被记为
+    timeout 并放弃等待（shutdown(wait=False)），慢引擎的硬上限是它自己的
+    HTTP 超时；CLI 短生命周期下进程至多再多等一个慢引擎的 HTTP 超时。
+    有意不做 daemon 线程——那要依赖 ThreadPoolExecutor 私有属性，换来的
+    只是让进程退出快几秒，却让 in-process 调用方丢结果。
     """
     reg = registry or get_registry()
     cfg = _load_config()
@@ -1124,10 +1133,14 @@ def search_engines(
     else:
         domain = None
 
-    # 健康过滤（fast/budget 模式下更严格，只检查实际要用的引擎）
+    # 健康过滤（fast/budget 模式下更严格，只检查实际要用的引擎）。
+    # 被过滤掉的引擎必须上报（engines_dropped）——静默替换会让「我要的三
+    # 个引擎」变成「你给的一个引擎」而无人知晓（2026-09-13 审查假设#7）。
+    engines_dropped: list[str] = []
     if mode in ("fast", "budget"):
         try:
             available = set(get_available_engines(registry=reg, engine_names=engines))
+            engines_dropped = [e for e in engines if e not in available]
             engines = [e for e in engines if e in available]
         except Exception as e:
             logger.warning(f"可用性检查失败: {e}")
@@ -1176,28 +1189,39 @@ def search_engines(
     all_results: list[dict[str, Any]] = []
     engines_used: list[str] = []
     errors: list[str] = []
+    # 按引擎分组留存，供 rrf_merge 按列表融合（见下方融合段）
+    by_engine: dict[str, list[dict[str, Any]]] = {}
+
+    def _collect(name: str, res) -> None:
+        if res:
+            all_results.extend(res)
+            by_engine.setdefault(name, []).extend(res)
+            engines_used.append(name)
 
     def _task(name: str) -> tuple[str, list[dict[str, Any]], str]:
         res, err = _search_one(name, query, n=n, timeout=timeout,
                                since=since, until=until)
         return name, res, err
 
-    with ThreadPoolExecutor(max_workers=min(len(engines), max_parallel)) as ex:
+    budget = total_budget if total_budget is not None else (timeout or 30)
+    ex = ThreadPoolExecutor(max_workers=min(len(engines), max_parallel))
+    try:
         futures = {ex.submit(_task, name): name for name in engines}
         try:
-            for fut in as_completed(futures, timeout=timeout or 30):
+            # Python 3.11 起 concurrent.futures.TimeoutError 才并入内置
+            # TimeoutError；3.9/3.10 是两个类，只写 except TimeoutError
+            # 会让整体预算在老解释器上永不生效（异常穿透聚合层）。
+            for fut in as_completed(futures, timeout=budget):
                 name = futures[fut]
                 try:
                     _, res, err = fut.result()
-                    if res:
-                        all_results.extend(res)
-                        engines_used.append(name)
+                    _collect(name, res)
                     if err:
                         errors.append(err)
                 except Exception as e:
                     errors.append(f"{name}: {e}")
-        except TimeoutError:
-            # 整体超时（如 ddgs 慢后端 > timeout）：保留已完成引擎的结果，
+        except (TimeoutError, FutureTimeoutError):
+            # 整体超时（如 ddgs 慢后端 > budget）：保留已完成引擎的结果，
             # 未完成的标记 timeout 记入 errors，不整链崩溃（与主技能同构）。
             for fut, name in futures.items():
                 if not fut.done():
@@ -1206,15 +1230,38 @@ def search_engines(
                     continue
                 try:
                     _, res, err = fut.result()
-                    if res:
-                        all_results.extend(res)
-                        engines_used.append(name)
+                    _collect(name, res)
                     if err:
                         errors.append(err)
                 except Exception as e:
                     errors.append(f"{name}: {e}")
+    finally:
+        # 不等慢引擎（wait=False）：已收结果立即返回；排队未启动的直接取消。
+        # 运行中的线程受各自 HTTP 超时约束自然结束，见 total_budget docstring。
+        ex.shutdown(wait=False, cancel_futures=True)
 
-    all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    # 融合：多引擎时接主仓单一真源 rrf_merge——WG-RRF 引擎加权 +
+    # canonical URL 跨引擎去重合并 + consensus_engines 标注。此前是
+    # 「位次自证」排序：score=0.9-i*0.05 只是单引擎内位次，同位次必然
+    # 同分，全局 sort 退化为提交顺序（稳定排序），且无跨引擎去重
+    # （2026-09-13 审查 BUG-4）。单引擎保留位次序（引擎自身的相关性序
+    # 比单列表 RRF 更有信息量）；主仓不可用时退回旧排序（子技能仍可
+    # 独立运行）。
+    if len(by_engine) > 1:
+        try:
+            _root_scripts = Path(__file__).resolve().parents[2] / "scripts"
+            if str(_root_scripts) not in sys.path:
+                sys.path.insert(0, str(_root_scripts))
+            from search import rrf_merge as _rrf_merge
+            fused = _rrf_merge(list(by_engine.values()))
+            fused.sort(key=lambda r: float(r.get("_rrf_score", 0) or 0),
+                       reverse=True)
+            all_results = fused
+        except Exception as e:
+            logger.warning(f"rrf_merge 融合不可用，退回位次排序: {e}")
+            all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    else:
+        all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
     elapsed = int((time.time() - t0_all) * 1000)
     final_results = all_results[: n * len(engines)] if engines else all_results[:n]
 
@@ -1236,6 +1283,7 @@ def search_engines(
         "engine": engines[0] if engines else "local_search",
         "engines": engines,
         "engines_combo": engines,
+        "engines_dropped": engines_dropped,
         "cached": False,
         "cache_level": None,
         "domain": cache_domain,

@@ -44,6 +44,37 @@ def test_merge_dual_sourced():
     assert any(c.get("canonical_url") for c in out["conflicts"]) or out["dual_sourced_count"] >= 1
 
 
+def test_merge_url_variant_convergence():
+    """归一化必须与主仓 url_canon 同源（BUG-3 防回归）。
+
+    merge.py 曾自带 7 参数追踪表 + 无 www/移动站折叠，6/9 URL 变体与
+    主仓发散 → www/utm/尾斜杠变体对不成 dual_sourced，融合报告恒空。
+    """
+    public = {
+        "query": "q", "engine": "local_bing", "source": "local_bing",
+        "results": [
+            {"title": "Public T", "url": "https://www.example.com/a?b=1&utm_source=x", "snippet": "p"},
+            {"title": "Plain", "url": "https://m.example.com/guide/", "snippet": "m"},
+        ],
+    }
+    login = {
+        "query": "q", "engine": "ego_browser_bing", "source": "ego-browser",
+        "runtime": "ego", "login_state_used": True, "cache_eligible": False,
+        "results": [
+            {"title": "Login T", "url": "https://example.com/a?b=1", "snippet": "l"},
+            {"title": "Mobile", "url": "https://example.com/guide", "snippet": "m"},
+        ],
+    }
+    out = merge_mod.merge_payloads(public, login, query="q")
+    assert out["dual_sourced_count"] >= 1, (
+        "www/utm 变体未对上——merge.py 偏离了 url_canon 单一真源")
+    # 移动站前缀 m. 必须折叠（旧实现不折叠，恒单源）
+    assert out["dual_sourced_count"] >= 2, "m./www 变体未折叠，归一化发散复发"
+    # 归一键不带追踪参数
+    urls = [m["canonical_url"] for m in out["merged"]]
+    assert all("utm_source" not in u for u in urls)
+
+
 def test_quality_auth_wall():
     p = quality.assess_body({
         "title": "登录",

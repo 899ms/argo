@@ -172,6 +172,13 @@ domains:
   primary: sina_quote
   quote: true
   early_stop_min_results: 1
+  # 源保底分（score_floors）：行情快照是「答案型」结果，标题是数字而非网页，
+  # token 覆盖率天然低；权威/时效保底避免被陈旧新闻页压制。
+  # 由 search.local_five_dim_rerank 统一消费，新源改这里不改排序代码。
+  score_floors:
+    sina_quote: {relevance: 1.0, authority: 0.85, freshness: 0.85}
+    tencent_quote: {relevance: 1.0, authority: 0.85, freshness: 0.85}
+    em_flow: {relevance: 0.9, authority: 0.85, freshness: 0.85}
 - desc: 宏观数据查询（FRED 时序数据 + 实时汇率）
   engines_combo:
   - fred
@@ -191,6 +198,10 @@ domains:
   - (GDP|通货膨胀|CPI|失业率|人口数据|经济增长率)
   primary: fred
   early_stop_min_results: 1
+  # 源保底分：汇率/官方宏观数据是「答案型」（见 stock_query 注）
+  score_floors:
+    fx_rate: {relevance: 0.9, authority: 0.85, freshness: 0.85}
+    worldbank: {relevance: 0.85, authority: 0.85}
 - desc: 化学/药学化合物检索
   engines_combo:
   - pubchem
@@ -499,6 +510,9 @@ domains:
   - (?i)(研报|财报|公告|财经|宏观|央行政策|降息|加息|CPI|GDP|PMI)
   - (?i)(financial|earnings|report|announcement)
   primary: em_miaoxiang
+  # 源保底分：cninfo 是官方公告源（标题是「年报」而非网页，token 覆盖低）
+  score_floors:
+    cninfo: {relevance: 0.85, authority: 0.85}
 - desc: 航空气象（METAR 机场实时天气，按 ICAO 代码查询）
   engines_combo:
   - aviation_weather
@@ -807,6 +821,12 @@ domains:
   - (?i)(小说|书籍|图书|书单|好书|荐书|书荒|名著|畅销书|电子书|看书|出版社|ISBN|小说推荐|科幻小说|推理小说)
   - (?i)\b(book|novel|isbn|ebook|bestseller)\b
   primary: weread
+  # 源保底分：书目结果是「答案型」，书名对查询词的 token 覆盖率天然低
+  # （「三体全集」vs「科幻小说推荐」），不保底会被列表页碾压
+  score_floors:
+    weread: {relevance: 0.6}
+    douban_book: {relevance: 0.6}
+    open_library: {relevance: 0.6}
 - desc: 影视/电影/剧集（IMDb 主 + 豆瓣中文视角，先于音乐媒体域，避免电影误走 iTunes 音乐）
   engines_combo:
   - imdb

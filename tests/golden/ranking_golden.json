@@ -1,0 +1,599 @@
+{
+  "_meta": {
+    "desc": "排序管线合成金标（rrf_merge + local_five_dim_rerank 离线确定性评测）",
+    "created": "2026-09-13",
+    "how_to_read": "engines=每引擎的结果列表（合成）；relevant={url: grade 0-3}；expect.dims 用 rerank_dims 锁机制（floor 类改动必须逐维对拍）；${YEAR}/${YEAR-7} 在评测时替换为真实年份",
+    "baseline_note": "floor_* 为 2026-09-13 在 P1-1/P1-2 改造**之前**冻结的行为基线；任何排序改动低于 floor 即门禁红"
+  },
+  "cases": [
+    {
+      "id": "consensus_vs_longtext",
+      "query": "深海热液喷口 生物",
+      "domain": "general",
+      "engines": {
+        "anysearch": [
+          {
+            "title": "深海热液喷口 生物 群落 揭秘",
+            "url": "https://www.nature-example.com/articles/deep-vent",
+            "snippet": "深海热液喷口 生物 群落 与 生态系统"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "深海热液喷口 生物 群落 揭秘",
+            "url": "https://www.nature-example.com/articles/deep-vent",
+            "snippet": "深海热液喷口 生物 群落 与 生态系统"
+          }
+        ],
+        "wikipedia": [
+          {
+            "title": "深海热液喷口 生物 群落 揭秘",
+            "url": "https://www.nature-example.com/articles/deep-vent",
+            "snippet": "深海热液喷口 生物 群落 与 生态系统"
+          }
+        ],
+        "blog": [
+          {
+            "title": "海洋科学漫谈：从潮汐到深渊的一次漫游",
+            "url": "https://blog.science-example.com/ocean",
+            "snippet": "一篇很长的海洋科普散文，从潮间带一路讲到深渊带，其中 提到 深海 热液 只用了一小段。海洋科学漫谈 海洋科学漫谈 海洋科学漫谈 海洋科学漫谈 海洋科学漫谈 海洋科学漫谈 海洋科学漫谈 海洋科学漫谈 海洋科学漫谈"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.nature-example.com/articles/deep-vent": 3,
+        "https://blog.science-example.com/ocean": 2
+      },
+      "consensus_url": "https://www.nature-example.com/articles/deep-vent",
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0,
+      "floor_consensus_rank": 1
+    },
+    {
+      "id": "authority_gov_beats_blog",
+      "query": "个人养老金 税收 优惠政策",
+      "domain": "general",
+      "engines": {
+        "eastmoney": [
+          {
+            "title": "个人养老金 税收 优惠政策 官方解读",
+            "url": "https://www.gov.cn/zhengce/content/pension.htm",
+            "snippet": "个人养老金 税收 优惠政策 政策 问答"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "个人养老金 税收 优惠政策 一文读懂",
+            "url": "https://blog.money-example.com/pension-tax",
+            "snippet": "个人养老金 税收 优惠政策 全面 梳理，含 计算 例子 与 常见 误区，作者 结合 自身 经验 详细 展开，希望 帮助 大家 理解 这一 与 退休 生活 息息相关 的 制度 安排，全文 较长。"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.gov.cn/zhengce/content/pension.htm": 3,
+        "https://blog.money-example.com/pension-tax": 2
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "freshness_recent_beats_old",
+      "query": "新能源汽车 销量 数据",
+      "domain": "general",
+      "engines": {
+        "local_bing": [
+          {
+            "title": "新能源汽车 销量 数据：${YEAR} 年 1 月 快报",
+            "url": "https://www.auto-data-example.org/sales",
+            "snippet": "新能源汽车 销量 数据 ${YEAR}-01-15 发布，同比 增长 明显"
+          },
+          {
+            "title": "新能源汽车 销量 数据 年度 回顾",
+            "url": "https://www.auto-old-example.com/news",
+            "snippet": "新能源汽车 销量 数据 ${YEAR-7}-06-30 统计"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.auto-data-example.org/sales": 3,
+        "https://www.auto-old-example.com/news": 1
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "completeness_decides",
+      "query": "黑胶唱片 保养 方法",
+      "domain": "general",
+      "engines": {
+        "local_bing": [
+          {
+            "title": "黑胶唱片 保养 方法 完全 指南",
+            "url": "https://www.vinyl-guide-example.com/care",
+            "snippet": "黑胶唱片 保养 方法 完全 指南：日常 清除 静电 用 碳纤维 刷，沿 纹路 顺 时针 轻扫；每 播放 五面 更换 内套；存放 竖立 放置 避免 受压 变形；温度 保持在 摄氏 十八 到 二十二 度，湿度 适中；唱针 压力 按 唱头 规格 定期 校准，避免 磨损 纹路；播放 前 用 洗 唱机 深度 清洁，去除 油渍 与 灰尘。"
+          },
+          {
+            "title": "黑胶唱片 保养 方法",
+            "url": "https://www.music-note-example.com/post",
+            "snippet": "黑胶唱片 保养 简介"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.vinyl-guide-example.com/care": 3,
+        "https://www.music-note-example.com/post": 1
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "serp_jump_suppressed",
+      "query": "青藏高原 形成成因",
+      "domain": "general",
+      "engines": {
+        "local_bing": [
+          {
+            "title": "青藏高原 形成成因：板块 碰撞 的 结果",
+            "url": "https://www.geo-science-example.org/plateau",
+            "snippet": "青藏高原 形成成因 印度 板块 与 欧亚 板块 碰撞 隆起"
+          },
+          {
+            "title": "青藏高原 形成成因 相关 搜索",
+            "url": "https://www.baidu.com/link?url=abc123",
+            "snippet": "青藏高原 形成成因 相关 链接 列表"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.geo-science-example.org/plateau": 3,
+        "https://www.baidu.com/link?url=abc123": 0
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "book_floor_weread",
+      "query": "科幻小说 推荐",
+      "domain": "book_search",
+      "engines": {
+        "weread": [
+          {
+            "title": "三体（全集）",
+            "url": "https://weread.qq.com/book-detail?bookId=santi",
+            "snippet": "刘慈欣 科幻 代表作 · 9.2 分 · 88.6 万 人 在 读",
+            "source": "weread"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "科幻小说 推荐 书单：十本 入门 必读",
+            "url": "https://www.booklist-example.com/scifi",
+            "snippet": "科幻小说 推荐 书单，含 三体 基地 银河 帝国 等 经典"
+          }
+        ]
+      },
+      "relevant": {
+        "https://weread.qq.com/book-detail?bookId=santi": 3,
+        "https://www.booklist-example.com/scifi": 2
+      },
+      "expect": {
+        "dims": {
+          "https://weread.qq.com/book-detail?bookId=santi": {
+            "relevance_min": 0.6
+          }
+        }
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 0.834
+    },
+    {
+      "id": "stock_floor_sina",
+      "query": "贵州茅台 股价",
+      "domain": "stock_query",
+      "engines": {
+        "sina_quote": [
+          {
+            "title": "贵州茅台 1350.600 ↓-0.82%",
+            "url": "https://finance.sina.com.cn/realstock/company/sh600519/nc.shtml",
+            "snippet": "贵州茅台 股价 快照 成交额 换手",
+            "source": "sina_quote"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "贵州茅台 股价 走势 分析 长文",
+            "url": "https://www.stocktalk-example.com/maotai",
+            "snippet": "贵州茅台 股价 走势 分析 催化剂 估值 与 风险 因素 全 解读"
+          }
+        ]
+      },
+      "relevant": {
+        "https://finance.sina.com.cn/realstock/company/sh600519/nc.shtml": 3,
+        "https://www.stocktalk-example.com/maotai": 2
+      },
+      "expect": {
+        "dims": {
+          "https://finance.sina.com.cn/realstock/company/sh600519/nc.shtml": {
+            "relevance_min": 1.0,
+            "authority_min": 0.85,
+            "freshness_min": 0.85
+          }
+        }
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "macro_floor_fx",
+      "query": "美元 人民币 汇率",
+      "domain": "macro_data",
+      "engines": {
+        "fx_rate": [
+          {
+            "title": "USDCNY 中间价 7.12",
+            "url": "https://fxrate-example.cn/usdcny",
+            "snippet": "美元 人民币 汇率 中间价 官方 牌价",
+            "source": "fx_rate"
+          }
+        ],
+        "worldbank": [
+          {
+            "title": "世界银行 宏观 经济 数据 指标",
+            "url": "https://www.worldbank-data-example.org/indicator",
+            "snippet": "美元 人民币 汇率 与 宏观 经济 数据 汇总",
+            "source": "worldbank"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "美元 人民币 汇率 市场 新闻",
+            "url": "https://www.fxnews-example.com/daily",
+            "snippet": "美元 人民币 汇率 当日 波动 与 市场快讯 汇编"
+          }
+        ]
+      },
+      "relevant": {
+        "https://fxrate-example.cn/usdcny": 3,
+        "https://www.worldbank-data-example.org/indicator": 2,
+        "https://www.fxnews-example.com/daily": 1
+      },
+      "expect": {
+        "dims": {
+          "https://fxrate-example.cn/usdcny": {
+            "relevance_min": 0.9,
+            "authority_min": 0.85,
+            "freshness_min": 0.85
+          },
+          "https://www.worldbank-data-example.org/indicator": {
+            "relevance_min": 0.85,
+            "authority_min": 0.85
+          }
+        }
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "cninfo_authority_floor",
+      "query": "上市公司 年报 披露",
+      "domain": "financial_news",
+      "engines": {
+        "cninfo": [
+          {
+            "title": "2026 年度报告 及 摘要 公告",
+            "url": "https://www.cninfo-example.com/announcement",
+            "snippet": "年度报告 披露 公告 全文",
+            "source": "cninfo"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "上市公司 年报 披露 季 深度 解读",
+            "url": "https://www.marketwire-example.com/report",
+            "snippet": "上市公司 年报 披露 季 深度 解读：看 什么 指标 怎么 读 附 注册 会计师 观点"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.cninfo-example.com/announcement": 3,
+        "https://www.marketwire-example.com/report": 2
+      },
+      "expect": {
+        "dims": {
+          "https://www.cninfo-example.com/announcement": {
+            "relevance_min": 0.85,
+            "authority_min": 0.85
+          }
+        }
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "novelty_beats_duplicate_stack",
+      "query": "量子计算 纠错 里程碑",
+      "domain": "general",
+      "engines": {
+        "anysearch": [
+          {
+            "title": "量子计算 纠错 里程碑：逻辑 量子 比特 突破",
+            "url": "https://quantum-lab-example.org/milestone",
+            "snippet": "量子计算 纠错 里程碑 实验 结果"
+          },
+          {
+            "title": "量子计算 纠错 里程碑：逻辑 量子 比特 突破",
+            "url": "https://quantum-lab-example.org/milestone-reprint",
+            "snippet": "量子计算 纠错 里程碑 实验 结果"
+          },
+          {
+            "title": "量子计算 纠错 里程碑：逻辑 量子 比特 突破",
+            "url": "https://quantum-lab-example.org/milestone-again",
+            "snippet": "量子计算 纠错 里程碑 实验 结果"
+          },
+          {
+            "title": "表面码 与 深度 链 上 的 量子计算 纠错 对比",
+            "url": "https://quantum2-lab-example.org/detail",
+            "snippet": "表面码 对比 数据 与 实验 设置"
+          }
+        ]
+      },
+      "relevant": {
+        "https://quantum-lab-example.org/milestone": 3,
+        "https://quantum2-lab-example.org/detail": 2,
+        "https://quantum-lab-example.org/milestone-reprint": 1,
+        "https://quantum-lab-example.org/milestone-again": 0
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 0.95
+    },
+    {
+      "id": "tech_docs_relevance",
+      "query": "python asyncio taskgroup 用法",
+      "domain": "code_search",
+      "engines": {
+        "mdn": [
+          {
+            "title": "asyncio.TaskGroup 用法 示例",
+            "url": "https://docs.python.org/3/library/asyncio-taskgroup.html",
+            "snippet": "asyncio taskgroup 用法 完整 示例 与 注意 事项"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "开源 基金会 年度 报告",
+            "url": "https://www.foundation-example.org/annual-2026",
+            "snippet": "开源 生态 年度 总结"
+          }
+        ]
+      },
+      "relevant": {
+        "https://docs.python.org/3/library/asyncio-taskgroup.html": 3,
+        "https://www.foundation-example.org/annual-2026": 1
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "weighted_rrf_authority_engine",
+      "query": "广义相对论 验证",
+      "domain": "general",
+      "engines": {
+        "wikipedia": [
+          {
+            "title": "广义相对论 的 实验 验证",
+            "url": "https://zh.wikipedia.org/wiki/广义相对论",
+            "snippet": "广义相对论 验证 实验 证据 汇总"
+          }
+        ],
+        "weibo": [
+          {
+            "title": "广义相对论 又 被 验证 了？热议 中",
+            "url": "https://weibo.com/u/123/456",
+            "snippet": "广义相对论 验证 讨论 贴"
+          }
+        ]
+      },
+      "relevant": {
+        "https://zh.wikipedia.org/wiki/广义相对论": 3,
+        "https://weibo.com/u/123/456": 1
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "rrf_position_decay",
+      "query": "冰川 消融 监测",
+      "domain": "general",
+      "engines": {
+        "engA": [
+          {
+            "title": "冰川 消融 监测 卫星 数据 集",
+            "url": "https://www.glacier-data-example.org/monitor",
+            "snippet": "冰川 消融 监测 数据"
+          },
+          {
+            "title": "冰川 消融 监测 现场 观测 手记",
+            "url": "https://www.glacier-field-example.com/notes",
+            "snippet": "冰川 消融 监测 现场"
+          }
+        ],
+        "engB": [
+          {
+            "title": "冰川 消融 监测 卫星 数据 集",
+            "url": "https://www.glacier-data-example.org/monitor",
+            "snippet": "冰川 消融 监测 数据"
+          }
+        ],
+        "engC": [
+          {
+            "title": "冰川 消融 监测 现场 观测 手记",
+            "url": "https://www.glacier-field-example.com/notes",
+            "snippet": "冰川 消融 监测 现场"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.glacier-data-example.org/monitor": 3,
+        "https://www.glacier-field-example.com/notes": 2
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "url_variants_merge",
+      "query": "咖啡因 摄入 上限",
+      "domain": "general",
+      "engines": {
+        "health": [
+          {
+            "title": "咖啡因 摄入 上限 健康 指南",
+            "url": "https://www.health-guide-example.com/coffee?utm_source=news",
+            "snippet": "咖啡因 摄入 上限 400mg 说明"
+          }
+        ],
+        "med": [
+          {
+            "title": "每日 咖啡因 摄入 上限 建议",
+            "url": "https://health-guide-example.com/coffee",
+            "snippet": "咖啡因 上限 建议 剂量"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "咖啡 历史 文化 漫谈",
+            "url": "https://www.coffee-history-example.com/hist",
+            "snippet": "咖啡 历史 与 文化"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.health-guide-example.com/coffee?utm_source=news": 3
+      },
+      "expect": {
+        "consensus_min": 2
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "modal_card_no_collision",
+      "query": "上海 天气",
+      "domain": "general",
+      "engines": {
+        "weather": [
+          {
+            "card_type": "weather_card",
+            "title": "",
+            "url": ""
+          },
+          {
+            "title": "上海 天气 预报 一周",
+            "url": "https://www.weather-example.org/shanghai",
+            "snippet": "上海 天气 预报 未来 一周"
+          }
+        ],
+        "train": [
+          {
+            "card_type": "train_card",
+            "title": "",
+            "url": ""
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.weather-example.org/shanghai": 3
+      },
+      "expect": {
+        "survive": [
+          "weather_card",
+          "train_card"
+        ]
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "single_engine_stable_order",
+      "query": "咖啡 拉花 技巧",
+      "domain": "general",
+      "engines": {
+        "latte": [
+          {
+            "title": "咖啡 拉花 技巧 入门 指南",
+            "url": "https://zh.wikipedia.org/wiki/拿铁",
+            "snippet": "咖啡 拉花 技巧 步骤"
+          },
+          {
+            "title": "咖啡 拉花 技巧 心得",
+            "url": "https://www.latte-blog-example.com/tips",
+            "snippet": "咖啡 拉花 技巧 分享"
+          }
+        ]
+      },
+      "relevant": {
+        "https://zh.wikipedia.org/wiki/拿铁": 3,
+        "https://www.latte-blog-example.com/tips": 1
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "consensus_content_merged",
+      "query": "火星 水探测 进展",
+      "domain": "general",
+      "engines": {
+        "anysearch": [
+          {
+            "title": "火星 水探测 进展 简讯",
+            "url": "https://www.planetary-example.org/mars-water",
+            "snippet": "火星 水探测 进展 简讯"
+          }
+        ],
+        "local_bing": [
+          {
+            "title": "火星 水探测 进展：雷达 图像 揭示 地下 冰层",
+            "url": "https://www.planetary-example.org/mars-water",
+            "snippet": "火星 水探测 进展 详细 数据 与 雷达 图像 分析，研究 团队 给出 了 地下 冰层 分布 的 证据 与 深度 估计，对 未来 着陆 点 选择 有 直接 影响。"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.planetary-example.org/mars-water": 3
+      },
+      "expect": {
+        "min_snippet_len": 40
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    },
+    {
+      "id": "freshness_future_year_penalized",
+      "query": "台风 路径 预报",
+      "domain": "general",
+      "engines": {
+        "local_bing": [
+          {
+            "title": "台风 路径 预报：${YEAR}-01-15 更新",
+            "url": "https://www.typhoon-example.org/track",
+            "snippet": "台风 路径 预报 ${YEAR}-01-15 发布"
+          },
+          {
+            "title": "台风 路径 预报 数据 异常 记录",
+            "url": "https://www.bad-data-example.com/typ",
+            "snippet": "台风 路径 预报 ${YEAR+2}-01-01 数据 异常"
+          }
+        ]
+      },
+      "relevant": {
+        "https://www.typhoon-example.org/track": 3,
+        "https://www.bad-data-example.com/typ": 1
+      },
+      "floor_mrr": 1.0,
+      "floor_ndcg": 1.0
+    }
+  ],
+  "_aggregate_floor": {
+    "mean_mrr": 1.0,
+    "mean_ndcg": 0.988
+  }
+}

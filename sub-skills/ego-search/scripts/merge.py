@@ -11,26 +11,21 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-_TRACKING = {
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "spm", "fbclid", "gclid",
-}
+# URL 归一化单一真源 = 主仓 scripts/url_canon.py。本文件曾自带一份 7 参数
+# 的 `_TRACKING` + 手写归一（无 www/移动站折叠、无参数排序、无 fragment
+# 处理），与主仓 4 处实现互不一致——同一链接 public 侧与 login 侧归一成
+# 不同键，`dual_sourced`/`conflicts` 恒为空，融合报告形同虚设（2026-09-13
+# 审查 BUG-3，实测 6/9 URL 变体发散）。归一规则改动一律进 url_canon。
+import sys as _sys
+from pathlib import Path as _Path
 
+_CORE_SCRIPTS = _Path(__file__).resolve().parents[3] / "scripts"
+if str(_CORE_SCRIPTS) not in _sys.path and _CORE_SCRIPTS.exists():
+    _sys.path.insert(0, str(_CORE_SCRIPTS))
 
-def canonicalize_url(url: str) -> str:
-    if not url:
-        return ""
-    try:
-        p = urlparse(url)
-        q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
-             if k.lower() not in _TRACKING]
-        return urlunparse((p.scheme, p.netloc.lower(), p.path, p.params, urlencode(q), ""))
-    except Exception:
-        return url
+from url_canon import canonical_url as canonicalize_url  # noqa: E402,F401
 
 
 def _items_from_payload(payload: dict[str, Any], *, partition: str) -> list[dict[str, Any]]:
@@ -96,16 +91,8 @@ def _items_from_payload(payload: dict[str, Any], *, partition: str) -> list[dict
 
 
 def _emit_merge_telemetry(out: dict[str, Any]) -> None:
-    """P2-6：融合结果遥测（计数 + conflicts 概览）。失败静默，不拖累融合主路径。
-
-    telemetry 位于 argo 根 scripts/，与本文件不在同一目录，故按相对路径注入。
-    """
+    """融合结果遥测（计数 + conflicts 概览）。失败静默，不拖累融合主路径。"""
     try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _scripts = _Path(__file__).resolve().parents[3] / "scripts"
-        if str(_scripts) not in _sys.path:
-            _sys.path.insert(0, str(_scripts))
         from telemetry import emit
         sources = out.get("sources") or {}
         emit("merge", {

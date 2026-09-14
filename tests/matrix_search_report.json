@@ -1102,7 +1102,7 @@
     {
       "name": "route:R_zh_weather",
       "status": "PASS",
-      "detail": "domain=weather_query eng=open_meteo combo=['open_meteo', 'weather', 'local_openstreetmap'] lang=zh",
+      "detail": "domain=weather_query eng=open_meteo combo=['open_meteo', 'byted', 'local_openstreetmap'] lang=zh",
       "meta": {
         "id": "R_zh_weather",
         "q": "北京 天气",
@@ -1112,7 +1112,7 @@
         "engine": "open_meteo",
         "combo": [
           "open_meteo",
-          "weather",
+          "byted",
           "local_openstreetmap"
         ],
         "primary_lang": "zh"
@@ -1121,15 +1121,16 @@
     {
       "name": "route:R_en_weather",
       "status": "PASS",
-      "detail": "domain=weather_query eng=weather combo=['weather'] lang=en",
+      "detail": "domain=weather_query eng=byted combo=['byted', 'weather'] lang=en",
       "meta": {
         "id": "R_en_weather",
         "q": "weather Tokyo",
         "scenario": "weather",
         "lang": "en",
         "domain": "weather_query",
-        "engine": "weather",
+        "engine": "byted",
         "combo": [
+          "byted",
           "weather"
         ],
         "primary_lang": "en"
@@ -1396,17 +1397,17 @@
     {
       "name": "route:R_zh_gen",
       "status": "PASS",
-      "detail": "domain=chinese_tech_deep eng=octen combo=['octen', 'cn_ai_news'] lang=zh",
+      "detail": "domain=chinese_tech_deep eng=byted combo=['byted', 'octen'] lang=zh",
       "meta": {
         "id": "R_zh_gen",
         "q": "如何学习机器学习",
         "scenario": "general",
         "lang": "zh",
         "domain": "chinese_tech_deep",
-        "engine": "octen",
+        "engine": "byted",
         "combo": [
-          "octen",
-          "cn_ai_news"
+          "byted",
+          "octen"
         ],
         "primary_lang": "zh"
       }

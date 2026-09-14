@@ -33,12 +33,12 @@ triggers:
 
 ```bash
 python3 scripts/search.py "查询词"                      # 自动路由搜索
-python3 scripts/search.py "查询词" --json --no-envelope  # JSON（Agent 消费默认加 --no-envelope）
+python3 scripts/search.py "查询词" --json --no-envelope --fields agent  # Agent 消费默认档
 python3 scripts/search.py "查询词" --verify 3            # 核验 top-3 并回填证据分
 python3 scripts/research.py "复杂问题" --json            # 取证包（扩词或多工作包 → dossier）
 ```
 
-`--no-envelope` 去掉归档用的候选封套，输出体积减半以上；要归档（`--archive`）或
+`--no-envelope` 去掉归档用的候选封套与 sources 投影（URL 与 results 全重），输出体积减半以上；`--fields agent` 再剥遥测字段只留答案（fetch_required 保留）。要归档（`--archive`）或
 需要 provenance 时才不加。三个视图分工（`results` 答案 / `sources` 引用 /
 `candidates` 归档）、全量字段、以及 `--list-engines --detail` 的体积陷阱见
 `references/usage.md`。
@@ -94,7 +94,7 @@ argo pdf "https://example.com/paper.pdf" [--pages "1-5"] [--password "secret"]
 3. **SERP 链**（baidu/s、sogou/link）：禁止当正文来源
 4. **社交帖**：叙事/舆情，不进事实真值
 5. **深度研究**：先读 `references/research-protocol.md`；有决策含义就交工作包，不要靠扩词充问题树；`quality_gate_results.passed=false` 必须降级表述
-6. **上下文纪律**：搜索加 `--no-envelope`、按需 `-n`；读答案用 `results`，不要读 `candidates`（归档视图，占大头）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会吐 186 KB
+6. **上下文纪律**：Agent 搜索用 `--json --no-envelope --fields agent`、按需 `-n`（超 10 无收益）；要 provenance/归档才用 envelope 模式（sources/candidates 只在那里）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会吐约 22 KB
 
 ## 证据闭环（v2.8.0）
 

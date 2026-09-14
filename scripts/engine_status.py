@@ -202,7 +202,7 @@ def list_engines_detail(
     """引擎详细状态行。
 
     engines：只保留这些 engine_id（None = 全量）。单引擎的详细行约 0.9 KB，
-    全量 216 个约 186 KB——`--list-engines --detail` 不带过滤时是诊断转储，
+    全量 216 个约 22 KB（2026-09-13 实测 22,365B，曾误记 186 KB）——`--list-engines --detail` 不带过滤时是诊断转储，
     调用方（尤其 Agent）应按需过滤，别把全量拉进上下文。
     """
     wanted = set(engines) if engines else None

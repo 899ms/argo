@@ -66,11 +66,9 @@ EGO_BIN = rt.EGO_BIN
 RESULT_MARKER = "EGO_RESULT|"
 SOURCE = "ego-browser"
 
-SEARCH_URLS = {
-    "bing": "https://www.bing.com/search?q={q}",
-    "baidu": "https://www.baidu.com/s?wd={q}",
-    "google": "https://www.google.com/search?q={q}",
-}
+# SEARCH_URLS / SERP 提取选择器单一真源 = serp_spec（ego 与 webbridge 共用，
+# 2026-09-13 收编：此前两份逐字节相同的 IIFE 各自维护，修一处漏一处）
+from serp_spec import SEARCH_URLS, build_serp_js as _build_serp_js
 
 DEFAULT_TIMEOUT = 120  # 秒
 API_DATA_LIMIT = 100_000  # 字符；超限截断并标记
@@ -203,43 +201,7 @@ def run_ego(js_script: str, timeout: int = DEFAULT_TIMEOUT) -> dict:
 # 转义纪律：页面内选择器写死在模板；Node 层只注入纯安全占位符。
 
 # 页面内 SERP 提取 IIFE 体（返回 JSON 字符串）。占位：%%ENGINE%% %%N%%
-SERP_EXTRACT_IIFE = r"""(() => {
-  const configs = {
-    bing: { item: 'li.b_algo', link: 'h2 a', snippet: '.b_caption p, p' },
-    baidu: { item: "div#content_left div[class*='c-container'], div#content_left div.result", link: 'h3 a', snippet: ".c-abstract, [class*='content-right']" },
-    google: { item: 'div.g, div[data-sncf]', link: 'a h3', snippet: 'div.VwiC3b, div[data-sncf]' }
-  };
-  const cfg = configs['%%ENGINE%%'] || configs.bing;
-  const items = [];
-  const extractDate = (t) => {
-    const m = t.match(/(20\d{2})[年\/\-\.](\d{1,2})[月\/\-\.](\d{1,2})/);
-    if (m) return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
-    const m2 = t.match(/(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* (\d{4})/i);
-    if (m2) { const mo={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}; return m2[3] + '-' + mo[m2[2].toLowerCase().slice(0,3)] + '-' + String(m2[1]).padStart(2,'0'); }
-    const m3 = t.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* (\d{1,2}),? (\d{4})/i);
-    if (m3) { const mo={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}; return m3[3] + '-' + mo[m3[1].toLowerCase().slice(0,3)] + '-' + String(m3[2]).padStart(2,'0'); }
-    return '';
-  };
-  document.querySelectorAll(cfg.item).forEach(el => {
-    const a = el.querySelector(cfg.link);
-    if (!a) return;
-    const p = el.querySelector(cfg.snippet);
-    const text = (el.innerText || '') + ' ' + (a.href || '');
-    items.push({
-      title: (a.innerText || '').trim(),
-      url: a.href || '',
-      snippet: (p ? p.innerText : '').trim().slice(0, 300),
-      published_at: extractDate(text),
-    });
-  });
-  if (!items.length) {
-    document.querySelectorAll('h2 a, h3 a').forEach(a => {
-      if (items.length >= %%N%%) return;
-      items.push({ title: (a.innerText || '').trim(), url: a.href || '', snippet: '', published_at: extractDate((a.innerText || '') + ' ' + (a.href || '')) });
-    });
-  }
-  return JSON.stringify(items.slice(0, %%N%%));
-})()"""
+# SERP 提取 IIFE 见 serp_spec.SERP_EXTRACT_TEMPLATE（单一真源）
 
 # 页面内正文提取 IIFE 体（返回 JSON 字符串）。占位：%%CONTENT_MAX%%
 BODY_EXTRACT_IIFE = r"""(() => {
@@ -286,6 +248,19 @@ try {
 JS_SEARCH = r"""
 const task = await useOrCreateTaskSpace('%%TASK_SPACE%%')
 await openOrReuseTab('%%URL%%', { wait: true, timeout: 25 })
+const info = await pageInfo()
+const serp = await js(String.raw`%%SERP_IIFE%%`)
+const parsed = JSON.parse(serp)
+cliLog('EGO_RESULT|' + JSON.stringify({
+  url: info.url, title: info.title, results: parsed,
+  task_space: '%%TASK_SPACE%%', task_id: task && task.id,
+}))
+""" + JS_FINISH
+
+# SERP 空结果重抽（不重新导航，任务空间里页面已打开）：
+# SERP 是 JS 注入的，load 事件早于渲染，首抽为空≠真没结果。
+JS_SERP_REEXTRACT = r"""
+const task = await useOrCreateTaskSpace('%%TASK_SPACE%%')
 const info = await pageInfo()
 const serp = await js(String.raw`%%SERP_IIFE%%`)
 const parsed = JSON.parse(serp)
@@ -364,7 +339,7 @@ cliLog('EGO_RESULT|' + JSON.stringify({
 """ + JS_FINISH
 
 def _serp_iife(engine: str, n: int) -> str:
-    return build_js(SERP_EXTRACT_IIFE, ENGINE=engine, N=n)
+    return _build_serp_js(engine, n)
 
 
 def _body_iife(content_max: int) -> str:
@@ -424,6 +399,28 @@ def _search_ego(args: argparse.Namespace) -> dict[str, Any]:
         return r
     p = r["payload"]
     results = p.get("results", [])
+    if not results:
+        # 空结果退避重抽（1s/2s + jitter）：SERP 渲染晚于 load，页面上
+        # 等一等再抽。只重跑提取不重新导航；仍为空则标 selector_stale——
+        # 调用方要能区分「真没结果」与「选择器/渲染失效」。
+        import random
+        import time as _t
+        for _delay in (1.0, 2.0):
+            _t.sleep(_delay + random.uniform(0, 0.3))
+            re_r = run_ego(
+                build_js(
+                    JS_SERP_REEXTRACT,
+                    TASK_SPACE=args.task_space,
+                    SERP_IIFE=_serp_iife(args.engine, args.n),
+                ),
+                args.timeout,
+            )
+            if re_r.get("ok") and re_r["payload"].get("results"):
+                p = re_r["payload"]
+                results = p.get("results", [])
+                break
+        if not results:
+            p["selector_stale"] = True
     since = getattr(args, "since", None)
     until = getattr(args, "until", None)
     if since or until:

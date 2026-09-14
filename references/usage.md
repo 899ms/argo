@@ -37,7 +37,7 @@ python3 scripts/search.py "查询词" \
 | `sources` | **引用用这个**：底部相关链接形态的稳定 5 字段投影 | 1.0 KB |
 | `candidates` | **归档/策展才要**：provenance 封套（`candidate_id`/`canonical_url`/`platform`/`verification`/`metrics`/`limitations`） | 4.9 KB |
 
-- **Agent 消费默认加 `--no-envelope`**：去掉候选封套即可省一半以上；只有做归档
+- **Agent 消费默认加 `--no-envelope --fields agent`**：前者去候选封套与 sources 投影（sources 是 results 的 URL 全重投影，envelope 模式才生成）；后者再剥遥测字段，实测 -n2 输出 1.3 KB（full --json ≈ 14.9 KB）。`fetch_required` 在两档都保留；只有做归档
   （`--archive`）或需要 provenance 时才保留（`--archive` 会强制保留）。
 - 另有一批诊断字段（`tfidf_scores`/`engine_outcomes`/`coverage`/`routes`/`limitations`/
   `lang_pref`）体积不大但通常无用，别把它们当结果读。
@@ -47,7 +47,7 @@ python3 scripts/search.py "查询词" \
 
 ### `--list-engines` 的体积陷阱
 
-`--list-engines` 列名字约 3 KB；**`--detail` 全量是 216 条 × ~0.9 KB ≈ 186 KB**
+`--list-engines` 列名字约 3 KB；**`--detail` 全量实测约 22 KB**（2026-09-13 实测 22,365B）
 （含每引擎的熔断/配额/准入/依赖运行态），属诊断转储。查单个或几个引擎请**同时
 给 `--engine`**（逗号分隔），体积降到 KB 级；未收录的名字会走 stderr 提示。
 

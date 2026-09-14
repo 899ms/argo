@@ -29,54 +29,10 @@ WEBBRIDGE_URL = os.environ.get(
 )
 DEFAULT_TIMEOUT = int(os.environ.get("EGO_SEARCH_WEBBRIDGE_TIMEOUT", "90"))
 
-SEARCH_URLS = {
-    "bing": "https://www.bing.com/search?q={q}",
-    "baidu": "https://www.baidu.com/s?wd={q}",
-    "google": "https://www.google.com/search?q={q}",
-}
+from serp_spec import SEARCH_URLS, build_serp_js  # noqa: E402  单一真源
 
 # 页面内 SERP 提取（与 ego 选择器同构）
-SERP_JS = r"""
-(() => {
-  const engine = %ENGINE_JSON%;
-  const n = %N%;
-  const configs = {
-    bing: { item: 'li.b_algo', link: 'h2 a', snippet: '.b_caption p, p' },
-    baidu: { item: "div#content_left div[class*='c-container'], div#content_left div.result", link: 'h3 a', snippet: ".c-abstract, [class*='content-right']" },
-    google: { item: 'div.g, div[data-sncf]', link: 'a h3', snippet: 'div.VwiC3b, div[data-sncf]' }
-  };
-  const cfg = configs[engine] || configs.bing;
-  const items = [];
-  const extractDate = (t) => {
-    const m = t.match(/(20\d{2})[年\/\-\.](\d{1,2})[月\/\-\.](\d{1,2})/);
-    if (m) return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
-    const m2 = t.match(/(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* (\d{4})/i);
-    if (m2) { const mo={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}; return m2[3] + '-' + mo[m2[2].toLowerCase().slice(0,3)] + '-' + String(m2[1]).padStart(2,'0'); }
-    const m3 = t.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* (\d{1,2}),? (\d{4})/i);
-    if (m3) { const mo={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}; return m3[3] + '-' + mo[m3[1].toLowerCase().slice(0,3)] + '-' + String(m3[2]).padStart(2,'0'); }
-    return '';
-  };
-  document.querySelectorAll(cfg.item).forEach(el => {
-    const a = el.querySelector(cfg.link);
-    if (!a) return;
-    const p = el.querySelector(cfg.snippet);
-    const text = (el.innerText || '') + ' ' + (a.href || '');
-    items.push({
-      title: (a.innerText || '').trim(),
-      url: a.href || '',
-      snippet: (p ? p.innerText : '').trim().slice(0, 300),
-      published_at: extractDate(text),
-    });
-  });
-  if (!items.length) {
-    document.querySelectorAll('h2 a, h3 a').forEach(a => {
-      if (items.length >= n) return;
-      items.push({ title: (a.innerText || '').trim(), url: a.href || '', snippet: '', published_at: extractDate((a.innerText || '') + ' ' + (a.href || '')) });
-    });
-  }
-  return JSON.stringify(items.slice(0, n));
-})()
-"""
+# SERP 提取 IIFE 见 serp_spec.SERP_EXTRACT_TEMPLATE（单一真源，与 ego_search 共用）
 
 # ── 时间窗工具（ego/webbridge 双路径共用）──────────────────────────────
 def _parse_time(s: str | None) -> str | None:
@@ -275,8 +231,7 @@ def search(
     if not nav.get("ok"):
         return nav
     code = (
-        SERP_JS.replace("%ENGINE_JSON%", json.dumps(engine))
-        .replace("%N%", str(int(n)))
+        build_serp_js(engine, n)
     )
     ev = evaluate(code, session)
     if not ev.get("ok"):
