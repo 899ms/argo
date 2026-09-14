@@ -507,16 +507,16 @@ class HttpClient:
                 current_url = "https://" + current_url
                 parsed = urllib.parse.urlparse(current_url)
 
-            # 使用 http.client（不自动解压，我们可以手动处理）
-            connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
-            conn = connection_class(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80),
-                                   timeout=self.timeout)
+            # 使用 http.client（不自动解压，我们可以手动处理）；出口经 net_proxy 调度
+            from net_proxy import open_connection, request_selector, resolve_proxy
+            proxy_url = resolve_proxy(current_url)
+            conn, via_proxy = open_connection(parsed, self.timeout, proxy_url)
 
             path = parsed.path or "/"
             if parsed.query:
                 path += "?" + parsed.query
 
-            conn.request("GET", path, headers=headers)
+            conn.request("GET", request_selector(parsed, path, via_proxy), headers=headers)
             resp = conn.getresponse()
             status = resp.status
             resp_headers = dict(resp.getheaders())
@@ -645,6 +645,18 @@ class HttpClient:
             return {"status": 0, "headers": {}, "text": "", "url": url,
                     "elapsed_ms": 0, "error": str(e)[:200]}
 
+    def _curl_proxies(self, url: str) -> dict | None:
+        """curl_cffi 的 proxies 参数；出口解析唯一真源在 net_proxy。"""
+        try:
+            from net_proxy import resolve_proxy
+            p = resolve_proxy(url)
+            if not p:
+                return None
+            scheme = urllib.parse.urlparse(url).scheme or "https"
+            return {scheme: p}
+        except Exception:
+            return None
+
     def get_impersonated(self, url: str, extra_headers: dict | None = None,
                          timeout: float | None = None,
                          profiles: list[str] | None = None) -> dict:
@@ -690,7 +702,8 @@ class HttpClient:
             for fp in profiles:
                 try:
                     resp = cr.get(current, impersonate=fp, headers=headers,
-                                  timeout=_timeout, allow_redirects=False)
+                                  timeout=_timeout, allow_redirects=False,
+                                  proxies=_curl_proxies(current))
                     status = resp.status_code
                     if status in (301, 302, 303, 307, 308):
                         location = resp.headers.get("Location", "")
@@ -797,15 +810,14 @@ class HttpClient:
             if not parsed.scheme:
                 current_url = "https://" + current_url
                 parsed = urllib.parse.urlparse(current_url)
-            connection_class = (http.client.HTTPSConnection
-                                if parsed.scheme == "https" else http.client.HTTPConnection)
-            conn = connection_class(parsed.hostname,
-                                    parsed.port or (443 if parsed.scheme == "https" else 80),
-                                    timeout=self.timeout)
+            from net_proxy import open_connection, request_selector, resolve_proxy
+            proxy_url = resolve_proxy(current_url)
+            conn, via_proxy = open_connection(parsed, self.timeout, proxy_url)
             path = parsed.path or "/"
             if parsed.query:
                 path += "?" + parsed.query
-            conn.request("POST", path, body=payload, headers=headers)
+            conn.request("POST", request_selector(parsed, path, via_proxy),
+                         body=payload, headers=headers)
             resp = conn.getresponse()
             status = resp.status
             resp_headers = dict(resp.getheaders())
@@ -882,16 +894,15 @@ class HttpClient:
             parsed = urllib.parse.urlparse(current)
             if parsed.scheme not in ("http", "https"):
                 return None
-            conn_cls = (http.client.HTTPSConnection if parsed.scheme == "https"
-                        else http.client.HTTPConnection)
             try:
-                conn = conn_cls(parsed.hostname,
-                                parsed.port or (443 if parsed.scheme == "https" else 80),
-                                timeout=self.timeout)
+                from net_proxy import open_connection, request_selector, resolve_proxy
+                proxy_url = resolve_proxy(current)
+                conn, via_proxy = open_connection(parsed, self.timeout, proxy_url)
                 path = parsed.path or "/"
                 if parsed.query:
                     path += "?" + parsed.query
-                conn.request("HEAD", path, headers=headers)
+                conn.request("HEAD", request_selector(parsed, path, via_proxy),
+                             headers=headers)
                 resp = conn.getresponse()
                 status = resp.status
                 location = resp.getheader("Location")

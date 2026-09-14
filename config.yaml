@@ -4502,3 +4502,21 @@ output:
   format: auto
   include_routing_decision: true
   include_scores: true
+
+# ── 网络出口调度（issue #13，2026-09-14）────────────────────────────────
+# 解析优先级：rules 域名命中 > ARGO_PROXY 环境变量 > 本段 url > 标准环境变量
+# （HTTPS_PROXY/HTTP_PROXY/ALL_PROXY，NO_PROXY 一直被尊重）> 直连。
+# 三档典型环境：
+#   A. TUN/全局代理（Clash TUN 等）：什么都不用配，直连即可达。
+#   B. 本地混合端口：设 ARGO_PROXY=http://127.0.0.1:7890，或下方 url 填同值。
+#   C. 按源分流：rules 给必须代理的域配 URL、给直连更优的域配 "direct"。
+network:
+  proxy:
+    # 全局代理 URL；空 = 不设 argo 级全局（回落到环境变量）。
+    # 例: url: "http://127.0.0.1:7890"
+    url: ""
+    # 按域名后缀匹配的覆盖规则；值 = 代理 URL 或 "direct"（强制直连）。
+    # 例:
+    #   "github.com": "http://127.0.0.1:7890"
+    #   "bochaai.com": "direct"
+    rules: {}

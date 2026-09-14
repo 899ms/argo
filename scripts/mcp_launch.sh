@@ -18,7 +18,7 @@ ENV_FILE="${HOME}/.config/argo/env"
 
 for k in ZHIHU_ACCESS_SECRET BOCHA_API_KEY EXA_API_KEY OCTEN_API_KEY \
          TAVILY_API_KEY WEB_SEARCH_API_KEY ANYSEARCH_API_KEY WEREAD_API_KEY \
-         TINYFISH_API_KEY; do
+         TINYFISH_API_KEY ARGO_PROXY HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY; do
   if [ -z "${(P)k}" ]; then
     v=$(launchctl getenv "$k" 2>/dev/null)
     [ -n "$v" ] && export "$k=$v"

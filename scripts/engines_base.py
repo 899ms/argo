@@ -557,8 +557,22 @@ def http_open(req: Any, timeout: float = 10.0, engine: str = ""):
     """
     if isinstance(req, str):
         req = urllib.request.Request(req)
+    # 出口调度（issue #13）：argo 级配置（rules/ARGO_PROXY/config url）显式建
+    # opener；无 argo 级配置时仍走 urlopen——标准 HTTPS_PROXY/NO_PROXY 由
+    # urllib 原生支持，行为与旧版完全一致
     try:
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        from net_proxy import resolve_proxy
+        _px = resolve_proxy(getattr(req, "full_url", ""))
+    except Exception:
+        _px = None
+    try:
+        if _px:
+            _scheme = urllib.parse.urlparse(getattr(req, "full_url", "")).scheme or "https"
+            _opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({_scheme: _px}))
+            resp = _opener.open(req, timeout=timeout)
+        else:
+            resp = urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.HTTPError as e:
         body_bytes = b""
         try:
