@@ -2315,5 +2315,24 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "parallel_free": {
+    "label": "Parallel免费搜索",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "seltz": {
+    "label": "Seltz搜索",
+    "documents": [
+      "general web search current information fresh results",
+      "AI agents startup funding product launch technology news",
+      "research comparison documentation troubleshooting how-to guide",
+      "company people news web signals low latency search API",
+      "科技 新闻 产品发布 融资 互联网 行业动态",
+      "教程 文档 对比 测评 指南 资料检索"
+    ],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

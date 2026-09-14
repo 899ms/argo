@@ -40,6 +40,7 @@ import sys
 import time
 import traceback
 import urllib.parse
+import uuid
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -651,6 +652,111 @@ def _jina_reader_fetch(url: str, max_chars: int = 8000,
     return result
 
 
+# ─── 第一级D：Parallel 免费 MCP web_fetch（keyless 云端渲染+提取）────────────
+
+_PARALLEL_MCP_URL = "https://search.parallel.ai/mcp"
+
+
+def _parallel_mcp_enabled() -> bool:
+    return os.environ.get("ARGO_FETCH_PARALLEL", "1") not in ("0", "false", "False")
+
+
+def _parallel_session_id() -> str:
+    """免费层限流按 session_id 关联：一次生成、持久复用（官方建议）。
+
+    状态目录不可写时退化为随机 id——仍唯一但不稳定，只损失限流关联的
+    连续性，不影响功能。
+    """
+    try:
+        from argo_paths import state_path
+        p = state_path("parallel_session_id.txt")
+        if p.exists() and p.read_text(encoding="utf-8").strip():
+            return p.read_text(encoding="utf-8").strip()
+        sid = uuid.uuid4().hex
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(sid, encoding="utf-8")
+        return sid
+    except Exception:
+        return uuid.uuid4().hex
+
+
+def _parallel_mcp_fetch(url: str, max_chars: int = 8000,
+                        timeout: float = 25.0) -> dict:
+    """Parallel 免费 MCP web_fetch（keyless，full_content markdown）。
+
+    定位：jina 同级的免浏览器快速路径——云端 JS 渲染 + 正文提取，
+    full_content=true 拿整页 markdown（官方警告长文可达数万 token，
+    故截到 max_chars）。无账号无 key（2026-09-14 实测无状态直调成立），
+    免费层限流按 session_id 关联。失败静默返回 success=False 放行后级。
+    调用方须先过 _is_public_host（第三方代理边界）。
+    """
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "web_fetch", "arguments": {
+                "urls": [url],
+                "objective": "Extract the main page content",
+                "full_content": True,
+                "session_id": _parallel_session_id(),
+            }}}
+    try:
+        from http_client import HttpClient
+        client = HttpClient(timeout=min(timeout, 25.0), max_retries=0,
+                            jitter=False)
+        resp = client.post(_PARALLEL_MCP_URL, body=body, extra_headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        })
+    except Exception as e:
+        return {"url": url, "title": "", "content": "", "html": "", "length": 0,
+                "success": False, "error": f"parallel_mcp: {e}",
+                "fetch_method": "parallel_mcp"}
+    if resp.get("status", 0) != 200 or not resp.get("text"):
+        return {"url": url, "title": "", "content": "", "html": "", "length": 0,
+                "success": False, "error": f"parallel_mcp: HTTP {resp.get('status')}",
+                "fetch_method": "parallel_mcp"}
+    try:
+        data = json.loads(resp["text"])
+    except (ValueError, TypeError):
+        return {"url": url, "title": "", "content": "", "html": "", "length": 0,
+                "success": False, "error": "parallel_mcp: 响应非 JSON",
+                "fetch_method": "parallel_mcp"}
+    # MCP 错误显式记录（fetch 链语义：失败放行后级，但 error 留痕可归因）
+    r = data.get("result") or {}
+    mcp_err = None
+    if r.get("isError"):
+        blk = (r.get("content") or [{}])
+        mcp_err = (blk[0].get("text", "")[:200] if isinstance(blk[0], dict)
+                   else str(blk[0])[:200])
+    elif isinstance(data.get("error"), dict):
+        mcp_err = str(data["error"].get("message") or data["error"])[:200]
+    inner: dict = {}
+    for block in (r.get("content") or []):
+        text = block.get("text", "") if isinstance(block, dict) else str(block)
+        try:
+            parsed = json.loads(text)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(parsed, dict) and parsed.get("results"):
+            inner = parsed
+            break
+    items = inner.get("results") or []
+    if not items:
+        return {"url": url, "title": "", "content": "", "html": "", "length": 0,
+                "success": False,
+                "error": f"parallel_mcp: {mcp_err or '上游无结果'}",
+                "fetch_method": "parallel_mcp"}
+    item = items[0]
+    # full_content=true → 整页 markdown；缺省（上游变更/未开启）退回 excerpts 拼接
+    raw = str(item.get("full_content") or "") or "\n\n".join(
+        str(e) for e in (item.get("excerpts") or []))
+    result = _make_result(url, "", max_chars, "parallel_mcp")
+    result["content"] = raw[:max_chars]
+    result["length"] = len(result["content"])
+    result["title"] = str(item.get("title") or "")[:200]
+    if mcp_err:
+        result["parallel_mcp_note"] = mcp_err
+    return result
+
+
 # ─── 第二级A：tinyfish 直连渲染（Markdown 直出，含 JS 执行）─────────────
 # 实现见 fetch_render_tinyfish（独立模块）：markdown-only 渲染，
 # 不产 raw html，故 need_html 场景由主链跳过本层。
@@ -768,6 +874,7 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
       第一级：增强 HTTP（UA 轮换 + Cookie 积累）；客户端形态分流型站点移动 UA 首发
       第一级B：TLS 指纹伪造（curl_cffi impersonate，指纹检测型反爬）
       第一级C：r.jina.ai 阅读器（keyless 免费层，仅公网 URL，markdown-only）
+      第一级D：Parallel 免费 MCP web_fetch（keyless 免费层，仅公网 URL，markdown-only）
       第二级A：tinyfish 直连渲染（markdown-only，需 TINYFISH_API_KEY；need_html 或开关关闭时跳过）
       第二级B：Wayback 快照 + Chrome CDP 浏览器（自动降级或 actions 触发）
       第三级：质量评估（content_ok/page_type/quality_score）
@@ -927,6 +1034,22 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                     if jina is not None and jina.get("success"):
                         jina["http_fallback"] = True
                         result = jina
+
+            if not result.get("stop_signal") and _budget_left() > 0:
+                # 第一级D：Parallel 免费 MCP web_fetch（keyless 云端渲染+提取）。
+                # jina 同级的免浏览器快速路径，markdown-only 同 tinyfish，
+                # need_html 场景跳过；免费层限流按持久 session_id 关联；
+                # full_content 整页较慢，超时受剩余预算约束。ARGO_FETCH_PARALLEL=0 关闭。
+                if (not gated and not need_html and _parallel_mcp_enabled()
+                        and _is_public_host(host)
+                        and (not result.get("success")
+                             or _needs_browser(result))):
+                    pm = _parallel_mcp_fetch(
+                        url, max_chars,
+                        timeout=min(max(_budget_left(), 1.0), 25.0))
+                    if pm.get("success") and not _needs_browser(pm):
+                        pm["http_fallback"] = True
+                        result = pm
 
             if not result.get("stop_signal") and _budget_left() > 0:
                 # 第二级：Wayback 快照回退（HTTP 失败 / 内容空 / 疑似被删页面）

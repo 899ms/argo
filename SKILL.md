@@ -1,6 +1,6 @@
 ---
 name: argo
-description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；218 个源（184 个免密钥开箱可用）TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡；recovery 防污染。CLI：search|research|fetch|crawl|extract|article|job|evidence|clarify|preflight|mcp。
+description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；220 个源（185 个免密钥开箱可用）TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡；recovery 防污染。CLI：search|research|fetch|crawl|extract|article|job|evidence|clarify|preflight|answer|watch|mcp。
 version: 2.8.7
 triggers:
   - 搜索
@@ -82,9 +82,11 @@ python3 scripts/clarify.py "有歧义的查询" --explain --json
 
 ```bash
 argo fetch "https://example.com" [--focus "关键词"] [--use-browser]
-# {url}.md 直出探测 → HTTP（桌面/移动 UA，抖音等分流站移动优先）→ TLS 指纹 → Wayback/浏览器 自动降级 + BM25 聚焦提取 + 质量信号 + 内容安全引擎
+# {url}.md 直出探测 → HTTP（桌面/移动 UA，抖音等分流站移动优先）→ TLS 指纹 → jina/Parallel 免费云渲染 → Wayback/浏览器 自动降级 + BM25 聚焦提取 + 质量信号 + 内容安全引擎
 argo screenshot "https://example.com" [--full-page] [--output /tmp/page.png]
 argo pdf "https://example.com/paper.pdf" [--pages "1-5"] [--password "secret"]
+argo answer "query"   # 直答：Seltz 带引用合成答案
+argo watch add|check|list|remove   # 观察模式：快照+变化检测（check --json 供 cron）
 ```
 
 ## Agent 执行纪律

@@ -112,6 +112,8 @@ from engines_builders_data_macro import (
 )
 from engines_builders_search import (
     _build_parallel_engine,
+    _build_parallel_free_engine,
+    _build_seltz_engine,
     _build_you_engine,
 )
 from engines_builders_intl import (
@@ -231,6 +233,8 @@ __all__ = [
     "_build_tencent_kline_engine",
     "_build_qq_music_engine",
     "_build_parallel_engine",
+    "_build_parallel_free_engine",
+    "_build_seltz_engine",
     "_build_you_engine",
     "_build_who_don_engine",
     "_build_who_gho_engine",

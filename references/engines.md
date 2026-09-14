@@ -43,10 +43,13 @@
 
 ## 三、通用兜底链的层次（`engine_policy.GENERAL_FREE_FALLBACK`）
 
-`anysearch` → `local_bing` → `uapi` → `local_baidu` → `firecrawl` → `wikipedia`。
+`anysearch` → `local_bing` → `uapi` → `local_baidu` → `firecrawl` → `parallel_free` → `wikipedia`。
 顺序有讲究：通用检索优先，本地零成本引擎居中，百科殿后；
 `firecrawl` 排在自由额度型源（1000 credits/月）**末位**，日常 fast/auto 的 combo 预算
 （2 / 3 个）够不到它，只在 deep / research 无截断时参战，共享免费层不会被烧穿。
+`parallel_free`（2026-09-14 收录）同为末位补位：官方免费 MCP 端点
+（search.parallel.ai，无账号无 key），与按量计费的 `parallel`（REST + key）分立——
+key 缺失/额度耗尽/REST 失败时由它接住，自带 excerpts 长摘录省一次 fetch。
 `duckduckgo` 2026-09 移出（实测 45% 错误率 + 11 秒 0 条）。
 
 ## 四、本地零成本引擎（`local_search` 聚合，25 个子引擎声明）

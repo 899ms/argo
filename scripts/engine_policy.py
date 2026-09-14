@@ -51,7 +51,8 @@ FORCE_DAILY_CORE: frozenset[str] = frozenset({
 # 排在通用检索源末位 + spec 的 tier=daily_support，日常 fast/auto 的 combo 预算
 # （2/3 个）够不到它，只在 deep/research 无截断时参战，共享免费层不被烧穿。
 GENERAL_FREE_FALLBACK: tuple[str, ...] = (
-    "anysearch", "local_bing", "uapi", "local_baidu", "firecrawl", "wikipedia",
+    "anysearch", "local_bing", "uapi", "local_baidu", "firecrawl", "parallel_free",
+    "wikipedia",
 )
 
 

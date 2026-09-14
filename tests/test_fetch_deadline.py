@@ -33,6 +33,8 @@ def chain_env(monkeypatch):
     # 第一级C 是真实网络级（keyless 免费层），测 deadline 机器必须与其他
     # 可选级同款关闭，否则计时断言被真实 RTT 污染
     monkeypatch.setenv("ARGO_FETCH_JINA", "0")
+    # 第一级D 同款：Parallel 免费 MCP web_fetch 也是真实网络级
+    monkeypatch.setenv("ARGO_FETCH_PARALLEL", "0")
 
 
 def _fail(method, secs=0.0):

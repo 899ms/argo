@@ -1811,6 +1811,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: Parallel AI 批量搜索（excerpts 长文摘录，结果自带正文省 fetch）
+- name: parallel_free
+  tier: T1
+  type: parallel_free
+  coverage:
+  - general
+  - chinese
+  - english
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: Parallel 免费搜索（官方免费 MCP 端点 search.parallel.ai，无账号无 key；excerpts 长文摘录省 fetch；与按量计费的
+    parallel REST 通道分立，作其缺位时的补位）
 - name: people_daily
   tier: T1
   type: people_daily
@@ -2034,6 +2048,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: Seeking Alpha 美股分析（HTML，反爬较强）
+- name: seltz
+  tier: T1
+  type: seltz
+  coverage:
+  - general
+  - english
+  latency_ms: 2000
+  cost: api
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: Seltz 搜索（2026 新兴 agent 搜索，云端索引低延迟；响应自带正文摘录省 fetch；中文覆盖未验证）
 - name: semantic_scholar
   tier: T1
   type: http

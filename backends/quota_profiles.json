@@ -1450,6 +1450,16 @@
     "cost_tier": "api",
     "priority": 11
   },
+  "parallel_free": {
+    "label": "Parallel免费搜索",
+    "qps": 1,
+    "limit": null,
+    "period": "month",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 55
+  },
   "people_daily": {
     "label": "people_daily",
     "qps": 2,
@@ -1629,6 +1639,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 57
+  },
+  "seltz": {
+    "label": "Seltz搜索",
+    "qps": 1,
+    "limit": 20000,
+    "period": "month",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "api",
+    "priority": 13
   },
   "semantic_scholar": {
     "label": "Semantic Scholar",

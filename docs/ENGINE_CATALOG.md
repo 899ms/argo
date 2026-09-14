@@ -6,9 +6,9 @@
 
 ## 一、总量与口径
 
-- **收录 218 个源**（config.yaml + `engines/specs/*.yaml` 声明合并后的总数）
-- **开箱可用 184 个**：不需要你配任何密钥或装额外工具，自动路由就会用上
-- **需自备密钥 19 个**：`bocha`、`bocha_ai`、`byted`、`em_miaoxiang`、`exa`、`keenable`、`octen`、`parallel`、`qweather`、`tavily`、`tinyfish`、`tinyfish_news`、`tinyfish_paper`、`weread`、`you`、`zhihu`、`zhihu_global`、`zhihu_hot`、`zhihu_user`（没配也不影响搜索，路由会跳过）
+- **收录 220 个源**（config.yaml + `engines/specs/*.yaml` 声明合并后的总数）
+- **开箱可用 185 个**：不需要你配任何密钥或装额外工具，自动路由就会用上
+- **需自备密钥 20 个**：`bocha`、`bocha_ai`、`byted`、`em_miaoxiang`、`exa`、`keenable`、`octen`、`parallel`、`qweather`、`seltz`、`tavily`、`tinyfish`、`tinyfish_news`、`tinyfish_paper`、`weread`、`you`、`zhihu`、`zhihu_global`、`zhihu_hot`、`zhihu_user`（没配也不影响搜索，路由会跳过）
 - **需装后端工具 3 个**：`reddit`、`twitter`、`xiaohongshu`（装好并登录后即可用）
 - **已停用 12 个**：`brave`、`europeana`、`felo`、`jikan`、`local_goodreads`、`local_google`、`local_yandex`、`metaso`、`realtime_index`、`searxng`、`soilgrids`、`wolframalpha`
 - **显式专用 5 个**：`doi`、`tinyfish`、`tinyfish_news`、`tinyfish_paper`、`twitter_syndication`（设计上不进自动路由，按 `--engine` 或交接提示调用）
@@ -26,8 +26,8 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 
 ## 二、费用与密钥：哪些白用、哪些要钱
 
-- **免费档 206 个**（含已停用）：无需密钥，或只需免费注册的密钥；其中 11 个要自备密钥（免费额度）：em_miaoxiang、keenable、qweather、tinyfish、tinyfish_news、tinyfish_paper、weread、wolframalpha、zhihu、zhihu_hot、zhihu_user
-- **计费档 12 个**（下表逐个列出，档位取自各源自己的 `cost_tier` 声明）
+- **免费档 207 个**（含已停用）：无需密钥，或只需免费注册的密钥；其中 11 个要自备密钥（免费额度）：em_miaoxiang、keenable、qweather、tinyfish、tinyfish_news、tinyfish_paper、weread、wolframalpha、zhihu、zhihu_hot、zhihu_user
+- **计费档 13 个**（下表逐个列出，档位取自各源自己的 `cost_tier` 声明）
 
 | 引擎 | 档位 | 是否进自动路由 | 需自备密钥 |
 |---|---|---|---|
@@ -40,11 +40,12 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `exa` | 按调用计费 | 是 | ARGO_EXA_API_KEY |
 | `octen` | 按调用计费 | 是 | ARGO_OCTEN_API_KEY |
 | `parallel` | 按调用计费 | 是 | PARALLEL_API_KEY |
+| `seltz` | 按调用计费 | 是 | SELTZ_API_KEY |
 | `tavily` | 按调用计费 | 是 | ARGO_TAVILY_API_KEY |
 | `you` | 按调用计费 | 是 | YDC_API_KEY |
 | `zhihu_global` | 按调用计费 | 是 | ARGO_ZHIHU_ACCESS_SECRET |
 
-**结论**：付费档里有 1 个进了自动路由（felo），用之前先确认额度；低价/按量计费的源有 9 个在自动路由路径上，多数带免费额度或已配密钥。额度记在本地配额表（`backends/quota_profiles.json` 的 limit / period，用量存在本机状态库），用尽后该源在语义路由里被降权；本地表统计的是 argo 自己的调用，若同一密钥还被别的工具用，实际额度以服务商侧为准。想彻底避开计费源，用 `--engine` 显式指定免费源，或走 `--mode budget`。
+**结论**：付费档里有 1 个进了自动路由（felo），用之前先确认额度；低价/按量计费的源有 10 个在自动路由路径上，多数带免费额度或已配密钥。额度记在本地配额表（`backends/quota_profiles.json` 的 limit / period，用量存在本机状态库），用尽后该源在语义路由里被降权；本地表统计的是 argo 自己的调用，若同一密钥还被别的工具用，实际额度以服务商侧为准。想彻底避开计费源，用 `--engine` 显式指定免费源，或走 `--mode budget`。
 
 ## 三、特别能力（不是普通网页搜索）
 
@@ -75,7 +76,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 
 状态含义：**可直接用** = 自动路由会用上；**需自配密钥 / 需装后端工具** = 配好后即可用；**被上游封锁** = 源站当前拒绝；**已停用** = 配置层面关闭。
 
-### 全网搜索（89）
+### 全网搜索（91）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
 |---|---|---|---|---|---|---|
@@ -123,6 +124,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `opencorporates` | 可直接用 | 免费 | 不限 | — | 域 company_search | OpenCorporates 全球公司注册（尽调/反欺诈，免认证） |
 | `openreview` | 可直接用 | 免费 | 不限 | — | 深度研究 boost | OpenReview 顶会论文（含评审可见性与 PDF，AI/ML 研究为主） |
 | `openstd` | 可直接用 | 免费 | 不限 | — | 域 standards | 国家标准全文公开系统（GB 全文预览入口，HTML 解析，免认证） |
+| `parallel_free` | 可直接用 | 免费 | 不限 | — | 通用兜底链 | Parallel 免费搜索（官方免费 MCP 端点 search.parallel.ai，无账号无 key；excerpts 长文摘录省 fetch；与按量计费的 parallel REST 通道分立，作其缺位时的补位） |
 | `people_daily` | 可直接用 | 免费 | 不限 | — | 域 news_realtime | 人民网搜索（权威综合中文新闻，官方接口，免认证） |
 | `redskill` | 可直接用 | 免费 | 不限 | — | 域 redskill_search | 小红书 REDSkill 排行榜与全量技能检索（47650 技能，data.json 本地缓存，免认证） |
 | `ror` | 可直接用 | 免费 | 不限 | — | 域 org_entity | ROR 研究机构标识（含域名映射，免认证） |
@@ -159,6 +161,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `parallel` | 需自备密钥 | 按调用计费 | 不限 | PARALLEL_API_KEY | 域 chinese_tech_deep | Parallel AI 批量搜索（excerpts 长文摘录，结果自带正文省 fetch） |
 | `realtime_index` | 已停用 | 免费 | 不限 | — | 已停用 | 实时索引数据源（免 Key，结构化输出，带发布时间维度与时间窗过滤） |
 | `searxng` | 已停用 | 免费 | 不限 | — | 已停用 | SearXNG 直连（已废弃，由 T3 替代） |
+| `seltz` | 需自备密钥 | 按调用计费 | 20000/月 | SELTZ_API_KEY | 语义画像命中 | Seltz 搜索（2026 新兴 agent 搜索，云端索引低延迟；响应自带正文摘录省 fetch；中文覆盖未验证） |
 | `soilgrids` | 已停用 | 免费 | 不限 | — | 域 earth_science、域 soil_agri | 全球土壤属性（ISRIC SoilGrids，逐点栅格，免认证） |
 | `tavily` | 需自备密钥 | 按调用计费 | 1000/月 | ARGO_TAVILY_API_KEY | 语义画像命中 | Tavily AI 搜索 API（免费层 1000 次/月，按 credit 计费；与 exa 同为 api 档） |
 | `tinyfish` | 需自备密钥 + 显式专用 | 免费 | 不限 | ARGO_TINYFISH_API_KEY | 显式调用（--engine） | TinyFish 实时网页搜索（免费，浏览器渲染，结果含原文摘要，X-API-Key 认证） |
@@ -487,7 +490,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 ## 七、怎么自己查当前状态
 
 ```bash
-argo search --list-engines --detail | python3 -m json.tool | less   # 全部 218 个源的详情
+argo search --list-engines --detail | python3 -m json.tool | less   # 全部 220 个源的详情
 argo search --list-engines --detail --routable-only              # 只看现在能用的
 python3 scripts/matrix_search_eval.py --offline                   # 可达性门：有没有死源
 python3 scripts/engine_validate.py --engine <名> --stage all       # 单个源的健康+质量双阶段体检

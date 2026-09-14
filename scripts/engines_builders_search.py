@@ -23,7 +23,7 @@ import re
 import urllib.request
 from typing import Any
 
-from engines_base import safe_search, http_open
+from engines_base import safe_search, http_open, mcp_error_of as _mcp_error_of
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -106,8 +106,153 @@ def _build_parallel_engine(spec: dict[str, Any]) -> Any:
     return _engine
 
 
-# ── You.com 搜索（ydc-index.io）───────────────────────────────────────────────
+# ── Parallel 免费通道（search.parallel.ai MCP，keyless）───────────────────────
 
+_PARALLEL_FREE_MCP_URL = "https://search.parallel.ai/mcp"
+
+
+def _build_parallel_free_engine(spec: dict[str, Any]) -> Any:
+    """Parallel 免费搜索：官方免费 MCP 端点的 web_search 工具，恒走免 key 通道。
+
+    与 parallel（REST + PARALLEL_API_KEY，按量计费）同上游、不同经济模型，
+    故注册为独立引擎而非共用 cost_tier——「计费源不当免费」门禁的语义
+    对两条通道各自成立。本引擎**不看 key**：key 的有无/有效与否是 parallel
+    的事；免费端点不收 key、按 key 计费，带了反而可能混淆计费归属。
+    路由上以 daily_support 低优先级做补位：每家族 max_per_family=2 挡住
+    与 parallel 的日常同查冗余，计费通道缺位（额度耗尽/失败/未配 key）时
+    由本通道接住。
+    2026-09-14 实测：无状态直调成立（免 initialize/session），响应
+    content[0].text 内嵌 JSON，字段与 REST 响应同构（url/title/publish_date/
+    excerpts）；响应 _meta.parallel.usage 自带上游计量（sku_search，免费
+    通道 cost_usd 仅记账）。
+    """
+    timeout = spec.get("timeout", 15)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None,
+                **kwargs) -> list[dict[str, Any]]:
+        to = _timeout or timeout
+        limit = max(1, int(n or 5))
+        # 多路召回：同 REST 通道，官方最佳实践 2-3 个关键词探针
+        try:
+            from query_variants import generate_query_variations
+            queries = generate_query_variations(query)[:3] or [query]
+        except Exception:
+            queries = [query]
+        body = {
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "web_search", "arguments": {
+                "objective": f"Find the latest, most relevant information about: {query}",
+                "search_queries": queries,
+            }},
+        }
+        try:
+            from http_client import HttpClient
+            # max_retries=0：引擎内不做连接级重试（同 anysearch，防与编排层重试叠乘）
+            client = HttpClient(timeout=to, max_retries=0, jitter=False)
+            resp = client.post(_PARALLEL_FREE_MCP_URL, body=body,
+                               extra_headers={"Content-Type": "application/json"})
+        except ImportError:
+            return []
+        if resp.get("status", 0) >= 400 or not resp.get("text"):
+            return []
+        try:
+            data = json.loads(resp["text"])
+        except (ValueError, TypeError):
+            return []
+        mcp_err = _mcp_error_of(data, source="parallel_free")
+        if mcp_err:
+            logger.warning(f"parallel_free 上游错误: {mcp_err}")
+            return [{"error": mcp_err, "source": "parallel_free"}]
+        inner: dict[str, Any] = {}
+        for block in (data.get("result", {}).get("content") or []):
+            text = block.get("text", "") if isinstance(block, dict) else str(block)
+            try:
+                parsed = json.loads(text)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(parsed, dict) and parsed.get("results"):
+                inner = parsed
+                break
+        results: list[dict[str, Any]] = []
+        for item in (inner.get("results") or [])[:limit]:
+            title = str(item.get("title") or "")[:200]
+            url = str(item.get("url") or "")
+            if not (title or url):
+                continue
+            excerpts = item.get("excerpts") or []
+            snippet = str(excerpts[0])[:300] if excerpts else ""
+            results.append({
+                "title": title,
+                "url": url,
+                "snippet": snippet,
+                "source": "parallel_free",
+                "published_at": str(item.get("publish_date") or "")[:64],
+            })
+        return results
+    return _engine
+
+
+# ── Seltz 搜索（api.seltz.ai，2026 新兴 agent 搜索）───────────────────────────
+
+_SELTZ_URL = "https://api.seltz.ai/v1/search"
+
+
+def _seltz_key() -> str:
+    return os.environ.get("SELTZ_API_KEY", "")
+
+
+def _build_seltz_engine(spec: dict[str, Any]) -> Any:
+    """Seltz Search：POST {query, max_results}，响应 {documents:[...]}。
+
+    官方文档 docs.seltz.ai：x-api-key 头鉴权。响应无 title 字段（content
+    即摘录正文，首行截作标题）；无 score/confidence 字段，排序即上游相关度。
+    注册赠 20000 次搜索额度（一次性），故配额按 month/20000 保守看管。
+    2026-09-14 实测：英文检索正常；中文覆盖未验证，coverage 不含 chinese。
+    """
+    timeout = spec.get("timeout", 15)
+
+    @safe_search
+    def _engine(query: str, n: int = 5, _timeout: float | None = None,
+                **kwargs) -> list[dict[str, Any]]:
+        key = _seltz_key()
+        if not key:
+            return [{"error": "SELTZ_API_KEY 未设置", "source": "seltz"}]
+        to = _timeout or timeout
+        limit = max(1, int(n or 5))
+        body = {"query": query, "max_results": min(limit, 10)}
+        req = urllib.request.Request(
+            _SELTZ_URL,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"x-api-key": key, "Content-Type": "application/json"},
+        )
+        try:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            logger.warning(f"seltz 请求失败: {e}")
+            return []
+        results: list[dict[str, Any]] = []
+        for item in (data.get("documents") or [])[:limit]:
+            url = str(item.get("url") or "")
+            content = str(item.get("content") or "")
+            # 官方响应无 title 字段；content 是 markdown，首行截标题时剥掉
+            # 井号标题标记（实测冒烟首行形如 "# Building a Rust HTTP/1.1 server..."）
+            title = str(item.get("title") or "") or content.split("\n")[0].lstrip("# ").strip()[:120]
+            if not (title or url):
+                continue
+            results.append({
+                "title": title[:200],
+                "url": url,
+                "snippet": content[:300],
+                "source": "seltz",
+                "published_at": str(item.get("published_date") or "")[:64],
+            })
+        return results
+    return _engine
+
+
+# ── You.com 搜索（ydc-index.io）───────────────────────────────────────────────
 _YOU_URL = "https://ydc-index.io/v1/search"
 
 
