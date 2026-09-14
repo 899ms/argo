@@ -367,7 +367,7 @@ def _search_exa(q: str, n: int) -> list:
     d = _post("https://api.exa.ai/search",
               {"query": q, "includeDomains": DOMAINS, "numResults": n * 3,
                "type": "auto"},
-              {"x-api-key": os.environ["EXA_API_KEY"]})
+              {"x-api-key": get_env(["ARGO_EXA_API_KEY", "EXA_API_KEY"])})
     return [{"title": r.get("title", ""), "url": r.get("url", ""),
              "snippet": (r.get("text") or "")[:200],
              "date": r.get("publishedDate", "")}
@@ -376,7 +376,7 @@ def _search_exa(q: str, n: int) -> list:
 
 def _search_tavily(q: str, n: int) -> list:
     d = _post("https://api.tavily.com/search",
-              {"api_key": os.environ["TAVILY_API_KEY"], "query": q,
+              {"api_key": get_env(["ARGO_TAVILY_API_KEY", "TAVILY_API_KEY"]), "query": q,
                "include_domains": DOMAINS, "max_results": n * 3,
                "search_depth": "basic", "days": 90})
     return [{"title": r.get("title", ""), "url": r.get("url", ""),
@@ -390,7 +390,7 @@ def _search_byted(q: str, n: int) -> list:
         try:
             d = _post("https://open.feedcoopapi.com/search_api/web_search",
                       {"Query": f"site:{domain} {q}", "Count": n, "SearchType": "web"},
-                      {"Authorization": f"Bearer {os.environ['WEB_SEARCH_API_KEY']}"})
+                      {"Authorization": f"Bearer {get_env(["ARGO_BYTED_API_KEY", "ARGO_WEB_SEARCH_API_KEY", "WEB_SEARCH_API_KEY"])}"})
         except Exception:
             continue  # 单平台失败不拖累整体
         if not d or not isinstance(d, dict):
@@ -406,7 +406,7 @@ def _search_bocha(q: str, n: int) -> list:
     d = _post("https://api.bochaai.com/v1/web-search",
               {"query": q, "summary": True, "freshness": "oneYear",
                "count": min(n * 3, 50)},
-              {"Authorization": f"Bearer {os.environ['BOCHA_API_KEY']}"})
+              {"Authorization": f"Bearer {get_env(["ARGO_BOCHA_API_KEY", "BOCHA_API_KEY"])}"})
     pages = (d.get("data") or {}).get("webPages") or {}
     return [{"title": i.get("name", "") or i.get("title", ""),
              "url": i.get("url", ""),
@@ -422,7 +422,7 @@ def _search_octen(q: str, n: int) -> list:
                "safesearch": "off",
                "highlight": {"enable": True, "max_tokens": 512},
                "full_content": {"enable": False}, "include_images": False},
-              {"X-Api-Key": os.environ["OCTEN_API_KEY"]})
+              {"X-Api-Key": get_env(["ARGO_OCTEN_API_KEY", "OCTEN_API_KEY"])})
     items = (d.get("data") or {}).get("results") or []
     return [{"title": r.get("title", ""), "url": r.get("url", ""),
              "snippet": (r.get("highlight") or "")[:200], "date": ""}

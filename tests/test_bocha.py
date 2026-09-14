@@ -95,7 +95,11 @@ class TestBochaWebEngine(unittest.TestCase):
 
     def test_missing_key_returns_error_item(self):
         os.environ.pop("BOCHA_API_KEY", None)
-        results = self.builder("测试", 3)
+        os.environ.pop("ARGO_BOCHA_API_KEY", None)
+        # get_env 会热读 ~/.config/argo/env 兜底，测试机可能真配了 key，须屏蔽
+        from unittest.mock import patch as _patch
+        with _patch("engine_env._envfile_load", return_value={}):
+            results = self.builder("测试", 3)
         self.assertEqual(len(results), 1)
         self.assertIn("error", results[0])
         self.assertEqual(results[0]["source"], "bocha")
@@ -174,7 +178,11 @@ class TestBochaAiEngine(unittest.TestCase):
 
     def test_missing_key_returns_error_item(self):
         os.environ.pop("BOCHA_API_KEY", None)
-        results = self.builder("测试", 3)
+        os.environ.pop("ARGO_BOCHA_API_KEY", None)
+        # get_env 会热读 ~/.config/argo/env 兜底，测试机可能真配了 key，须屏蔽
+        from unittest.mock import patch as _patch
+        with _patch("engine_env._envfile_load", return_value={}):
+            results = self.builder("测试", 3)
         self.assertEqual(len(results), 1)
         self.assertIn("error", results[0])
         self.assertEqual(results[0]["source"], "bocha_ai")

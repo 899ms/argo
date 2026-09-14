@@ -14,6 +14,7 @@ import urllib.request
 from datetime import datetime
 from typing import Any
 
+from engine_env import get_env
 from engines_base import (
     rank_score,
     safe_search, _run, _resolve, _get_path, _coerce_field, _detect_anti_bot,
@@ -78,7 +79,7 @@ def _build_weread_engine(spec: dict[str, Any]) -> Any:
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
         import urllib.parse as up
         to = _timeout or timeout
-        key = os.environ.get("WEREAD_API_KEY") or os.environ.get("ARGO_WEREAD_API_KEY")
+        key = get_env(["ARGO_WEREAD_API_KEY", "WEREAD_API_KEY"])
         if not key:
             logger.warning("Weread 缺 WEREAD_API_KEY")
             return []
@@ -791,7 +792,7 @@ def _build_qweather_engine(spec: dict[str, Any]) -> Any:
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
         import urllib.parse as up
         to = _timeout or timeout
-        key = os.environ.get("QWEATHER_KEY", "")
+        key = get_env(["ARGO_QWEATHER_KEY", "QWEATHER_KEY"])
         if not key:
             logger.warning("QWEATHER_KEY 未设置，跳过和风天气")
             return [{"error": "QWEATHER_KEY 未设置", "source": "qweather"}]
@@ -961,7 +962,7 @@ def _build_octen_engine(spec: dict[str, Any]) -> Any:
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, depth: str = "fast", **kwargs) -> list[dict[str, Any]]:
         to = _timeout or timeout
-        api_key = os.environ.get("OCTEN_API_KEY", "")
+        api_key = get_env(["ARGO_OCTEN_API_KEY", "OCTEN_API_KEY"])
         if not api_key:
             logger.warning("OCTEN_API_KEY 未设置")
             return []

@@ -15,6 +15,8 @@ search.py — Unified Search v2 CLI 主入口 & 执行编排
 from __future__ import annotations
 
 import argparse
+
+from engine_env import get_env
 import json
 import os
 import re
@@ -732,7 +734,7 @@ def rerank_results(query: str, results: list[dict[str, Any]],
     if not results or len(results) <= 1:
         return results, "skipped_short"
 
-    api_key = os.environ.get("BOCHA_API_KEY", "")
+    api_key = get_env(["ARGO_BOCHA_API_KEY", "BOCHA_API_KEY"])
     if not api_key:
         return results, "skipped_no_key"
 

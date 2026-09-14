@@ -16,6 +16,7 @@ from typing import Any
 
 from engines_base import (safe_search, _run, _resolve, _get_path, _coerce_field, rank_score,
                           _http_get_raw, mcp_error_of as _mcp_error_of, http_open)
+from engine_env import get_env
 
 logger = logging.getLogger("unified_search.engines")
 
@@ -28,10 +29,11 @@ def _build_exa_engine(spec: dict[str, Any]) -> Any:
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, depth: str = "fast", **kwargs) -> list[dict[str, Any]]:
         to = _timeout or timeout
-        api_key = os.environ.get("EXA_API_KEY", "")
+        api_key = get_env(["ARGO_EXA_API_KEY", "EXA_API_KEY"])
         if not api_key:
-            logger.warning("EXA_API_KEY 未设置")
-            return []
+            logger.warning("exa 密钥未设置（ARGO_EXA_API_KEY / EXA_API_KEY）")
+            return [{"error": "exa: ARGO_EXA_API_KEY / EXA_API_KEY 未设置",
+                     "source": "exa"}]
         url = "https://api.exa.ai/search"
         body = json.dumps({
             "query": query,
@@ -92,7 +94,7 @@ def _build_anysearch_engine(spec: dict[str, Any]) -> Any:
         body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                 "params": {"name": "search", "arguments": args}}
         headers = {"Content-Type": "application/json"}
-        api_key = os.environ.get("ANYSEARCH_API_KEY", "")
+        api_key = get_env(["ARGO_ANYSEARCH_API_KEY", "ANYSEARCH_API_KEY"])
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         try:
@@ -438,7 +440,7 @@ def _build_github_engine(spec: dict[str, Any]) -> Any:
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
         to = _timeout or timeout
-        token = os.environ.get("GITHUB_TOKEN", "").strip()
+        token = get_env(["ARGO_GITHUB_TOKEN", "GITHUB_TOKEN"]).strip()
         endpoint = _github_endpoint(query, bool(token))
         url = _github_url(endpoint, query, n)
         headers = {

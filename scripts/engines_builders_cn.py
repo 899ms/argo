@@ -13,6 +13,8 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from engine_env import get_env
+
 from engines_base import safe_search, _run, _resolve, _get_path, _coerce_field, _http_get_raw, http_open, rank_score
 
 logger = logging.getLogger("unified_search.engines")
@@ -189,7 +191,7 @@ def _build_em_miaoxiang_engine(spec: dict[str, Any]) -> Any:
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
         import json as _json
         to = _timeout or timeout
-        key = os.environ.get("EASTMONEY_APIKEY") or os.environ.get("ARGO_EASTMONEY_APIKEY")
+        key = get_env(["ARGO_EASTMONEY_APIKEY", "EASTMONEY_APIKEY"])
         if not key:
             logger.warning("妙想搜索缺 EASTMONEY_APIKEY")
             return []
@@ -1066,7 +1068,7 @@ def _build_zhihu_global_engine(spec: dict[str, Any]) -> Any:
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
         import urllib.parse as up
         to = _timeout or timeout
-        secret = os.environ.get("ZHIHU_ACCESS_SECRET") or os.environ.get("ARGO_ZHIHU_ACCESS_SECRET", "")
+        secret = get_env(["ARGO_ZHIHU_ACCESS_SECRET", "ZHIHU_ACCESS_SECRET"])
         if not secret:
             return []
 
@@ -1207,7 +1209,7 @@ def _build_zhihu_user_engine(spec: dict[str, Any]) -> Any:
                 **kwargs) -> list[dict[str, Any]]:
         import urllib.parse as up
         to = _timeout or timeout
-        secret = os.environ.get("ZHIHU_ACCESS_SECRET") or os.environ.get("ARGO_ZHIHU_ACCESS_SECRET", "")
+        secret = get_env(["ARGO_ZHIHU_ACCESS_SECRET", "ZHIHU_ACCESS_SECRET"])
         if not secret:
             return []
 
@@ -1314,7 +1316,7 @@ def _bocha_http_error(exc: Exception, source: str) -> list[dict[str, Any]]:
 
 
 def _bocha_key() -> str:
-    return os.environ.get("ARGO_BOCHA_API_KEY") or os.environ.get("BOCHA_API_KEY", "")
+    return get_env(["ARGO_BOCHA_API_KEY", "BOCHA_API_KEY"])
 
 
 def _bocha_web_item(item: dict[str, Any]) -> dict[str, Any]:
