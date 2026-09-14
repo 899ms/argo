@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.7-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-220-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -545,6 +545,8 @@ argo/
 ---
 
 ## 최근 업데이트
+
+### v2.8.8: 실사용자 버그 수정 2건 + answer/watch 서브커맨드 — 자세한 내용은 [release notes](docs/RELEASE_NOTES_v2.8.8.md)
 
 ### v2.8.7: 소스 218개로 확충 + 수정 일괄
 

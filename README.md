@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.7-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-220-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -608,6 +608,11 @@ argo/
 ---
 
 ## 最近更新
+
+### v2.8.8：两个真实用户问题修复 + 直答/观察子命令
+
+- **修复**：按推荐名配密钥后引擎静默失效（#12）；抓取链不走代理，GitHub 等站点必然失败（#13）——现在 `ARGO_PROXY`、config 按域规则、标准代理环境变量都生效，`NO_PROXY` 尊重
+- **新增**：parallel_free（免密钥）/ seltz 引擎（220 源）、`argo answer` 直答、`argo watch` 网页观察、抓取链免费云渲染级；详见 [发布说明](docs/RELEASE_NOTES_v2.8.8.md)
 
 ### v2.8.7：数据源扩充到 218 个 + 一批修复
 

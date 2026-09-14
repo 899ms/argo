@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.7-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-220-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -545,6 +545,8 @@ argo/
 ---
 
 ## 最近の更新
+
+### v2.8.8：実ユーザー報告の修正 2 件 + answer/watch サブコマンド — 詳細は [release notes](docs/RELEASE_NOTES_v2.8.8.md)
 
 ### v2.8.7：ソースを 218 に拡充 + 修正一括
 

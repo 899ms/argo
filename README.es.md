@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.7-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-220-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -545,6 +545,8 @@ argo/
 ---
 
 ## Actualizaciones recientes
+
+### v2.8.8: dos correcciones reportadas por usuarios reales + subcomandos answer/watch — detalles en [release notes](docs/RELEASE_NOTES_v2.8.8.md)
 
 ### v2.8.7: fuentes ampliadas a 218 + una tanda de correcciones
 
