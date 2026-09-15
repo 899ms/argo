@@ -79,7 +79,6 @@ DOMAIN_TIER_MAP = {
     "general_search": "general",
     "chinese_general": "general",
     "chinese_tech_deep": "research",
-    "english_tech": "research",
     "fact_check": "research",
     "code_search": "research",
     "wechat_search": "news",

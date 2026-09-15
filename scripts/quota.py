@@ -17,7 +17,7 @@ import json
 import time
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import argo_paths
 

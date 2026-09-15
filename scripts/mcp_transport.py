@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+from typing import Any
 
 from mcp_handlers import _warm_core_async, execute_tool
 from mcp_tools import TOOLS
