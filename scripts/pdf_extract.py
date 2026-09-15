@@ -336,13 +336,30 @@ def format_pdf_result(result: dict[str, Any], include_tables: bool = False) -> s
 
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print("用法: python pdf_extract.py <path_or_url> [pages]")
-        sys.exit(1)
-    path = sys.argv[1]
-    pages = sys.argv[2] if len(sys.argv) > 2 else None
-    result = extract_pdf(path, pages=pages)
-    print(format_pdf_result(result, include_tables=True)[:2000])
-    if not result.get("content_ok"):
-        print("\n⚠️ 内容质量较低，建议 OCR。")
+    import argparse
+    import json
+
+    p = argparse.ArgumentParser(
+        description="Argo pdf — PDF 正文提取（URL 或本地路径）")
+    p.add_argument("url_or_path", help="PDF 的 URL 或本地路径")
+    # 位置参数保留：旧用法 `python pdf_extract.py <path> <pages>` 不受影响
+    p.add_argument("pages_pos", nargs="?", default=None, metavar="pages",
+                   help="页码范围，如 1-5（等价于 --pages，兼容旧位置参数用法）")
+    p.add_argument("--pages", dest="pages", default=None, help="页码范围，如 1-5")
+    p.add_argument("--password", default=None, help="加密 PDF 口令")
+    p.add_argument("--force-ocr", action="store_true", help="强制 OCR")
+    p.add_argument("--json", action="store_true",
+                   help="JSON 输出（完整内容，不按 2000 字符截断）")
+    args = p.parse_args()
+
+    result = extract_pdf(args.url_or_path,
+                         pages=args.pages or args.pages_pos,
+                         password=args.password,
+                         force_ocr=args.force_ocr)
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(format_pdf_result(result, include_tables=True)[:2000])
+        if not result.get("content_ok"):
+            print("\n⚠️ 内容质量较低，建议 OCR。")
