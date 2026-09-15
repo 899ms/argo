@@ -243,13 +243,14 @@ class TestLegacyStateMigration:
         assert "预演" in res["status"] and "quota.json" in res["moved"]
         assert (legacy / "quota.json").exists(), "预演不该动任何文件"
 
-    def test_non_interactive_requires_yes(self, monkeypatch, tmp_path):
+    def test_requires_explicit_yes(self, monkeypatch, tmp_path):
+        """不管是不是 TTY，没有 --yes 就不动数据（不用 TTY 探测做确认）。"""
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
         legacy = self._legacy(tmp_path)
-        res = argo_paths.migrate_legacy_state()                 # 无 yes、非 TTY
-        assert "拒绝" in res["status"]
-        assert (legacy / "quota.json").exists()
+        res = argo_paths.migrate_legacy_state()                 # 未加 yes
+        assert "拒绝" in res["status"] and "--yes" in res["status"]
+        assert (legacy / "quota.json").exists(), "未确认就不该动任何文件"
 
     def test_migration_moves_state_and_convention_takes_effect(self, monkeypatch, tmp_path):
         """核心断言：搬完之后 state_root 必须**真的**切到惯例目录。

@@ -156,7 +156,8 @@ def migrate_legacy_state(*, yes: bool = False, dry_run: bool = False) -> dict[st
     - 仅当根目录由**历史默认**决定时才可迁移。`ARGO_STATE_DIR` 或 config.yaml 的
       `cache.db_path` 说了算时直接拒绝——那是用户明确指定的位置，不该被搬家。
     - 目标目录已存在且有内容时拒绝（绝不覆盖）。
-    - 非 TTY 环境必须显式 `--yes`：不给"顺带"执行的机会。
+    - 必须显式传 `yes=True`/`--yes` 才会动数据（不做 TTY 探测：那既不是可靠判据，
+      也让脚本与交互两种场景行为不一致）。
     - 搬完尝试 `rmdir` 历史目录（只在空时成功）。这一步是关键：留着空目录会让
       `state_root()` 继续判「历史存在」而停在旧路径，用户会以为数据丢了。
       目录里还有别的文件（不是 argo 的）时 rmdir 失败，此时明确提示用户设
