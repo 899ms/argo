@@ -1002,9 +1002,9 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
             "r": r, "title": title,
             "relevance": relevance, "authority": authority,
             "freshness": freshness, "completeness": completeness,
-            # _priors 与 results 等长且同步推进（循环内无 continue），
-            # 原先的 `if len(enriched) < len(_priors)` 是恒真守卫，
-            # 会让「下标错位」这种真缺陷静默退化为 prior=0。
+            # bigrams 一次性预算：贪心选序会反复查阅同一标题，把分词+哈希
+            # 摊到外层避免 O(n²) 重复计算（n 为待排结果数）。
+            "bg": _bigrams(_tokens(title)),
             "prior": _priors[_i],
         })
 
@@ -1015,8 +1015,7 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
     while pool:
         best_idx, best_score, best_novelty = 0, -1.0, 1.0
         for i, e in enumerate(pool):
-            bg = _bigrams(_tokens(e["title"]))
-            novelty = 1.0 - _jaccard(bg, selected_bigrams)
+            novelty = 1.0 - _jaccard(e["bg"], selected_bigrams)
             score = (w["relevance"] * e["relevance"]
                      + w["authority"] * e["authority"]
                      + w["freshness"] * e["freshness"]
@@ -1036,7 +1035,7 @@ def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
             "novelty": round(best_novelty, 4),
             "prior": round(chosen["prior"], 4),
         }
-        selected_bigrams |= _bigrams(_tokens(chosen["title"]))
+        selected_bigrams |= chosen["bg"]
         ranked.append(r)
 
     return ranked[:top_n]
@@ -2523,7 +2522,10 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
     result["status"] = "completed"
     result["execution_tier"] = tier
     result["requires_confirmation"] = False  # 日常/专业热路径永不阻塞等确认
-    if original_query != query:
+    # query_original 仅当改写改变检索词时才携带原始词，供存档/MCP 回退。
+    # 此前条件 `original_query != query` 恒为 False（原查询词从未被重赋），
+    # 导致该字段永远未写出——任何依赖它的下游都拿不到「是否被改写」的信号。
+    if search_query != original_query:
         result["query_original"] = original_query
 
     # professional：附加离线 plan 元数据（不阻断、不二次搜索）

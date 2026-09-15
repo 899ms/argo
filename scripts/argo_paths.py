@@ -240,19 +240,186 @@ def migrate_legacy_state(*, yes: bool = False, dry_run: bool = False) -> dict[st
     return result
 
 
+def _lock_impl_name() -> str:
+    """当前平台实际可用的锁实现——真机验证时第一眼要看的东西。"""
+    try:
+        import fcntl
+        if hasattr(fcntl, "flock"):
+            return "flock（POSIX）"
+    except ImportError:
+        pass
+    try:
+        import msvcrt
+        if hasattr(msvcrt, "locking"):
+            return "msvcrt（Windows）"
+    except ImportError:
+        pass
+    return "无（fail-open：不阻断主路径，但多进程状态下会有丢更新）"
+
+
+def _check_lock_roundtrip(hold_s: float) -> tuple[str, str]:
+    """真起一个子进程握住锁，父进程再抢一次——验证互斥真的生效。
+
+    这是平台相关的关键自检：Windows 的 msvcrt 分支在 macOS 上只能用假模块测契约，
+    真机行为（锁区间语义、跨进程可见性）只有在目标机器上跑一次才算验过。
+    """
+    import subprocess
+    import tempfile as _tempfile
+    lock_path = state_path(".lock-check")
+    # 锁文件建不出来时(file_lock 会按设计 fail-open)必须说清原因，否则这条自检
+    # 看起来像"锁的实现坏了"，而真正的问题在目录可写性上。
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+    except OSError as e:
+        return "warn", (f"锁文件无法创建（{lock_path.parent} 不可写：{e}）——"
+                        f"按设计 fail-open，先解决状态目录可写性再看这项")
+    child = _tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8")
+    child.write(
+        "import sys, time\n"
+        f"sys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+        "from pathlib import Path\n"
+        "import argo_paths\n"
+        f"with argo_paths.file_lock(Path({str(lock_path)!r}), timeout=5.0):\n"
+        "    print('LOCKED', flush=True)\n"
+        f"    time.sleep({hold_s!r})\n")
+    child.close()
+    proc = None
+    try:
+        proc = subprocess.Popen([sys.executable, child.name],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, encoding="utf-8", errors="replace")
+        line = proc.stdout.readline().strip() if proc.stdout else ""
+        if line != "LOCKED":
+            err = (proc.stderr.read() if proc.stderr else "").strip()[:200]
+            return "fail", f"子进程没能持锁（stdout={line!r} stderr={err!r}）"
+        t0 = time.monotonic()
+        with file_lock(lock_path, timeout=3.0):
+            waited = (time.monotonic() - t0) * 1000
+        if waited < 100:
+            return "fail", f"第二个持有者没被挡住（{waited:.0f} ms 就拿到锁）"
+        return "pass", f"互斥生效：第二个持有者等待 {waited:.0f} ms"
+    finally:
+        if proc is not None:
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        for p in (child.name, str(lock_path)):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+def run_checks(lock_hold_s: float = 0.6) -> list[dict[str, Any]]:
+    """在**当前机器**上实测一遍路径解析与关键能力（`argo paths --check`）。
+
+    为什么要有它：跨平台分支（Windows 用哪个目录、msvcrt 锁是否真互斥、解释器候选
+    最终落到谁）在开发机上只能做契约级测试，真机验证此前得靠人肉翻代码。这里把
+    「这台机器上实际发生了什么」一次打印清楚——任何平台一条命令自证。
+    """
+    checks: list[dict[str, Any]] = []
+
+    def add(name: str, status: str, detail: str) -> None:
+        checks.append({"check": name, "status": status, "detail": detail})
+
+    info = resolved_paths()
+    add("平台", "info",
+        f"{sys.platform} | 状态目录来源：{info['state_source']} | 锁实现：{_lock_impl_name()}")
+
+    root = state_root()
+    add("状态目录解析", "pass", f"{root}（来源：{info['state_source']}）")
+    if (str(root) == info["legacy_root"]
+            and str(root) != info["platform_cache_default"]):
+        add("惯例提示", "warn",
+            f"当前用历史目录，平台惯例目录是 {info['platform_cache_default']}；"
+            f"想切换先 `argo paths --migrate --dry-run` 看内容")
+
+    probe = root / ".write-check"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        add("状态目录可写", "pass", str(root))
+    except OSError as e:
+        add("状态目录可写", "fail",
+            f"{root} 不可写：{e}（可设 ARGO_STATE_DIR 指向可写目录）")
+
+    env_files = [p for p in info["env_files"].split(os.pathsep) if p]
+    if any(Path(p).is_file() for p in env_files):
+        try:
+            import engine_env
+            keys = engine_env._envfile_load()
+            add("密钥文件", "pass",
+                f"在读 {info['env_file_in_use']}（{len(keys)} 个键；值不回显）")
+        except Exception as e:
+            add("密钥文件", "fail", f"{info['env_file_in_use']} 解析失败：{e}")
+    else:
+        add("密钥文件", "warn",
+            f"候选均不存在：{'、'.join(env_files)}（未配置密钥时属正常）")
+
+    try:
+        from config import load_config
+        cfg = load_config()
+        n = len([k for k, v in (cfg.get("engines") or {}).items() if isinstance(v, dict)])
+        add("配置加载", "pass", f"engines={n}")
+    except Exception as e:
+        add("配置加载", "fail", f"load_config 失败：{e}")
+
+    try:
+        from importlib.machinery import SourceFileLoader
+        import importlib.util as _ilu
+        bin_path = Path(__file__).parent.parent / "bin" / "argo"
+        spec = _ilu.spec_from_file_location(
+            "argo_bin_check", bin_path,
+            loader=SourceFileLoader("argo_bin_check", str(bin_path)))
+        mod = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        if mod._self_capable():
+            add("解释器", "pass", f"当前解释器就地执行（{sys.executable}）")
+        else:
+            picked = mod._pick_python()
+            add("解释器", "pass" if picked else "fail",
+                f"探测结果：{picked or '未找到可用解释器'}")
+    except Exception as e:
+        add("解释器", "warn", f"未能检查（{e}）")
+
+    try:
+        status, detail = _check_lock_roundtrip(lock_hold_s)
+        add("跨进程锁", status, detail)
+    except Exception as e:
+        add("跨进程锁", "fail", f"自检异常：{e}")
+
+    return checks
+
+
 def _cli() -> int:
     import argparse
     import json as _json
     parser = argparse.ArgumentParser(
         description="argo 路径诊断：状态目录与密钥文件到底解析到了哪里")
     parser.add_argument("--json", action="store_true", help="机器可读输出")
+    parser.add_argument("--check", action="store_true",
+                        help="实测本机解析与能力（目录可写性 / 跨进程锁 / 配置 / 解释器）")
     parser.add_argument("--migrate", action="store_true",
                         help="把历史状态目录搬到平台惯例目录（默认只报告）")
     parser.add_argument("--yes", action="store_true",
-                        help="配合 --migrate：非交互环境确认执行")
+                        help="配合 --migrate：确认执行（该命令会移动数据）")
     parser.add_argument("--dry-run", action="store_true",
                         help="配合 --migrate：只列出将移动的内容")
     args = parser.parse_args()
+
+    if args.check:
+        checks = run_checks()
+        if args.json:
+            print(_json.dumps(checks, ensure_ascii=False, indent=2))
+        else:
+            marks = {"pass": "通过", "fail": "失败", "warn": "注意", "info": "信息"}
+            print(f"argo 路径自检（{sys.platform}）")
+            for c in checks:
+                print(f"  [{marks.get(c['status'], c['status'])}] {c['check']}：{c['detail']}")
+        return 0 if all(c["status"] != "fail" for c in checks) else 1
 
     if args.migrate:
         result = migrate_legacy_state(yes=args.yes, dry_run=args.dry_run)

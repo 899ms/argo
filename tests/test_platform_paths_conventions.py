@@ -309,5 +309,63 @@ class TestLegacyStateMigration:
         assert "部分完成" in res["status"]
 
 
+class TestPathSelfCheck:
+    """`argo paths --check`：任何平台一条命令自证「这台机器上实际发生了什么」。"""
+
+    def test_all_results_are_structured(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(argo_paths.ENV_STATE_DIR, str(tmp_path))
+        checks = argo_paths.run_checks(lock_hold_s=0.2)
+        names = [c["check"] for c in checks]
+        for required in ("平台", "状态目录解析", "状态目录可写", "密钥文件",
+                         "配置加载", "解释器", "跨进程锁"):
+            assert required in names, f"自检缺少 {required}：{names}"
+        for c in checks:
+            assert c["status"] in ("pass", "fail", "warn", "info"), c
+            assert c["detail"], f"{c['check']} 没有细节说明"
+        failed = [c for c in checks if c["status"] == "fail"]
+        assert not failed, f"本机自检出现失败：{failed}"
+
+    def test_unwritable_state_dir_is_reported(self, monkeypatch, tmp_path):
+        """只读挂载 / 权限不足时必须是 fail，并给出可执行的出路。"""
+        ro = tmp_path / "ro"
+        ro.mkdir()
+        ro.chmod(0o500)
+        monkeypatch.setenv(argo_paths.ENV_STATE_DIR, str(ro))
+        try:
+            checks = {c["check"]: c for c in argo_paths.run_checks(lock_hold_s=0.2)}
+        finally:
+            ro.chmod(0o700)
+        assert checks["状态目录可写"]["status"] == "fail"
+        assert "ARGO_STATE_DIR" in checks["状态目录可写"]["detail"]
+
+    def test_cli_exit_code_marks_failure(self, monkeypatch):
+        monkeypatch.setattr(argo_paths, "run_checks", lambda *a, **k: [
+            {"check": "X", "status": "fail", "detail": "boom"}])
+        monkeypatch.setattr(sys, "argv", ["argo_paths.py", "--check"])
+        assert argo_paths._cli() == 1
+        monkeypatch.setattr(argo_paths, "run_checks", lambda *a, **k: [
+            {"check": "X", "status": "pass", "detail": "ok"}])
+        assert argo_paths._cli() == 0
+
+    def test_lock_roundtrip_detects_broken_lock(self, monkeypatch, tmp_path):
+        """锁形同虚设时必须报 fail——否则这个自检在真机上会给出假绿。"""
+        import contextlib
+        monkeypatch.setenv(argo_paths.ENV_STATE_DIR, str(tmp_path))
+
+        @contextlib.contextmanager
+        def fake_lock(path, timeout=10.0):
+            yield          # 假装拿到锁（完全无互斥）
+
+        monkeypatch.setattr(argo_paths, "file_lock", fake_lock)
+        status, detail = argo_paths._check_lock_roundtrip(0.2)
+        assert status == "fail", f"锁没生效却报通过：{detail}"
+
+    def test_lock_roundtrip_passes_with_real_lock(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(argo_paths.ENV_STATE_DIR, str(tmp_path))
+        status, detail = argo_paths._check_lock_roundtrip(0.2)
+        assert status == "pass", detail
+        assert "等待" in detail
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

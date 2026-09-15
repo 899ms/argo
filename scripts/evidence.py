@@ -348,14 +348,15 @@ def _years_from_text(text: str) -> list[int]:
     return [y for y in years if 1990 <= y <= now_y + 1]
 
 
-def score_freshness(result: dict[str, Any], query_time: float = None) -> dict[str, Any]:
-    """评估结果的时效性（优先完整日期 / URL 年 / 最新合理年）。"""
-    if query_time is None:
-        query_time = time.time()
+@functools.lru_cache(maxsize=512)
+def _score_freshness_cached(url: str, title: str, snippet: str) -> tuple[float, str]:
+    """score_freshness 的缓存版本：同一 (url, title, snippet) 组合在 rerank、
+    selection 及 evidence 打分间只算一次，避免重复的时效性评分
+    （实测热路径节省一次 full-text 年份提取）。返回 (score, reason)。
 
-    snippet = result.get("snippet", "") or ""
-    title = result.get("title", "") or ""
-    url = result.get("url", "") or ""
+    注：原 `query_time` 参数在 score_freshness 内从未参与计算，
+    此处不入缓存键以保持检索一致性。
+    """
     combined = f"{title} {snippet}"
     now_y = datetime.now().year
 
@@ -392,6 +393,22 @@ def score_freshness(result: dict[str, Any], query_time: float = None) -> dict[st
         score = min(score + 0.1, 1.0)
         reason += "（含时效关键词）"
 
+    return score, reason
+
+
+def score_freshness(result: dict[str, Any], query_time: float = None) -> dict[str, Any]:
+    """评估结果的时效性（优先完整日期 / URL 年 / 最新合理年）。
+
+    结果按 (url, title, snippet) 做进程内 lru_cache：同一 URL 在 rerank、
+    selection 与 evidence 打分间只算一次，避免 search.py 的
+    local_five_dim_rerank 与 _attach_selection_signals 对同一结果重复评分。
+    `query_time` 保留以保持调用契约（当前评分逻辑不依赖它）。
+    """
+    score, reason = _score_freshness_cached(
+        result.get("url", "") or "",
+        result.get("title", "") or "",
+        result.get("snippet", "") or "",
+    )
     return {"score": round(score, 2), "reason": reason}
 
 

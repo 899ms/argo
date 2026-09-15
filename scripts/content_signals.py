@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import re
+import functools
 from datetime import datetime, date, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -291,12 +292,11 @@ _DISCLOSE_RE = re.compile(
 )
 
 
-def score_evidence_density(text: str, title: str = "") -> dict:
-    """证据密度评分（snippet 或正文均可）。
-
-    第一性：Agent 需要的不是「被检索到」，而是「可抽取、可核对的证据块」。
-    返回布尔特征 + absorption_score ∈ [0,1]。
-    """
+@functools.lru_cache(maxsize=512)
+def _score_evidence_density_cached(text: str, title: str = "") -> tuple:
+    """score_evidence_density 的缓存版本：纯函数（仅 regex + 长度判定，
+    无时间/全局状态），返回元组以避免 lru_cache 缓存可变 dict 被调用侧
+    意外修改——与 score_authority 的缓存形态统一。"""
     body = f"{title or ''}\n{text or ''}"
     has_numbers = bool(_NUM_RE.search(body))
     has_definition = bool(_DEF_RE.search(body))
@@ -323,6 +323,24 @@ def score_evidence_density(text: str, title: str = "") -> dict:
     if is_qa_format:
         score -= 0.08  # GEO: 纯 Q&A 格式平均吸收略负
 
+    absorption = round(min(max(score, 0.0), 1.0), 3)
+    return (has_numbers, has_definition, has_comparison, has_howto,
+            has_disclose, is_qa_format, absorption)
+
+
+def score_evidence_density(text: str, title: str = "") -> dict:
+    """证据密度评分（snippet 或正文均可）。
+
+    第一性：Agent 需要的不是「被检索到」，而是「可抽取、可核对的证据块」。
+    返回布尔特征 + absorption_score ∈ [0,1]。
+
+    结果按 (text, title) 做进程内 lru_cache：rerank / selection / evidence
+    打分 / compute_content_quality 间共享，避免同一 snippet 反复跑六次
+    正则提取。调用契约不变（返回新 dict）。
+    """
+    has_numbers, has_definition, has_comparison, has_howto, \
+        has_disclose, is_qa_format, absorption = _score_evidence_density_cached(
+            text, title)
     return {
         "has_numbers": has_numbers,
         "has_definition": has_definition,
@@ -330,7 +348,7 @@ def score_evidence_density(text: str, title: str = "") -> dict:
         "has_howto": has_howto,
         "has_disclose": has_disclose,
         "is_qa_format": is_qa_format,
-        "absorption_score": round(min(max(score, 0.0), 1.0), 3),
+        "absorption_score": absorption,
     }
 
 
