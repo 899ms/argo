@@ -23,6 +23,7 @@ MECE 分解：
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -208,28 +209,24 @@ def is_serp_or_jump_url(url: str) -> bool:
     return False
 
 
-def score_authority(url: str, source: str = "") -> dict[str, Any]:
-    """评估 URL 的权威性（Selection 门槛）。"""
+@functools.lru_cache(maxsize=512)
+def _score_authority_cached(url: str, source: str = "") -> tuple:
+    """score_authority 的缓存版本，返回 tuple（lru_cache 要求可哈希返回值）。"""
     if not url:
-        return {"score": 0.3, "reason": "无 URL", "tier": "unknown", "domain": "", "is_serp": True}
+        return (0.3, "无 URL", "unknown", "", True)
 
     domain = _normalize_domain(url)
     is_serp = is_serp_or_jump_url(url)
 
     if is_serp:
-        return {
-            "score": 0.12,
-            "reason": "搜索结果页/跳转链（不可作吸收源）",
-            "tier": "very_low",
-            "domain": domain,
-            "is_serp": True,
-        }
+        return (
+            0.12,
+            "搜索结果页/跳转链（不可作吸收源）",
+            "very_low",
+            domain,
+            True,
+        )
 
-    best_score = 0.5
-    best_reason = "通用域名"
-    cfg = _load_cn_source_types()
-
-    # 最长后缀匹配 AUTHORITY_TIERS
     best_score = 0.5
     best_reason = "通用域名"
     best_len = -1
@@ -241,21 +238,21 @@ def score_authority(url: str, source: str = "") -> dict[str, Any]:
                 best_reason = f"域名匹配：{pattern}"
 
     # JSON 覆盖
-    for d, score in (cfg.get("authority_overrides") or {}).items():
+    for d, score in (_load_cn_source_types().get("authority_overrides") or {}).items():
         if domain == d or domain.endswith("." + d):
             if len(d) >= best_len:
                 best_len = len(d)
                 best_score = float(score)
                 best_reason = f"中文信源表：{d}"
 
-    demote = cfg.get("demote_domains") or {}
+    demote = _load_cn_source_types().get("demote_domains") or {}
     for d, meta in demote.items():
         if domain == d or domain.endswith("." + d):
             best_score = float(meta.get("score", 0.3))
             best_reason = f"降权：{meta.get('reason', d)}"
             break
 
-    social = cfg.get("social_narrative_only") or {}
+    social = _load_cn_source_types().get("social_narrative_only") or {}
     for d, score in social.items():
         if domain == d or domain.endswith("." + d):
             best_score = min(best_score, float(score))
@@ -296,12 +293,23 @@ def score_authority(url: str, source: str = "") -> dict[str, Any]:
         else "very_low"
     )
 
+    return (best_score, best_reason, tier, domain, bool(is_serp))
+
+
+def score_authority(url: str, source: str = "") -> dict[str, Any]:
+    """评估 URL 的权威性（Selection 门槛）。
+
+    结果按 (url, source) 做进程内 lru_cache：同一 URL + source 组合在多次
+    rerank/selection 中只算一次，避免 search.py 的 local_five_dim_rerank 与
+    _attach_selection_signals 对同一 URL 重复评分。
+    """
+    score, reason, tier, domain, is_serp = _score_authority_cached(url, source)
     return {
-        "score": round(best_score, 2),
-        "reason": best_reason,
+        "score": round(score, 2),
+        "reason": reason,
         "tier": tier,
         "domain": domain,
-        "is_serp": False,
+        "is_serp": is_serp,
     }
 
 

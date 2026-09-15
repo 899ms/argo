@@ -1113,12 +1113,36 @@ def _attach_selection_signals(merged: list[dict[str, Any]], mode: str,
 
 def _align_facts_safe(merged: list[dict[str, Any]], mode: str,
                       depth: str) -> dict[str, Any] | None:
-    """关键事实交叉标记（P0-004）。仅 deep/auto 且结果 ≥3；fast 跳过。"""
+    """关键事实交叉标记（P0-004）。仅 deep/auto 且结果 ≥3；fast 跳过。
+
+    输出体积限制：corroborated/conflicts 各最多保留 10 条，避免大结果集
+    下 fact_alignment 膨胀（实测极端案例单条冲突含 50+ domains，输出 >5KB）。
+    """
     if not merged:
         return None
     try:
         from fact_align import align_facts
-        return align_facts(merged, min_results=3, mode=mode, depth=depth)
+        raw = align_facts(merged, min_results=3, mode=mode, depth=depth)
+        if raw is None:
+            return None
+        # 体积截断：保留 stats 完整性，截断明细数组
+        corroborated = raw.get("fact_corroborated", [])[:10]
+        conflicts = raw.get("fact_conflicts", [])[:10]
+        # 单条冲突的 domains 也限制（保留前 5 个域名）
+        for c in conflicts:
+            for v in c.get("values", []):
+                if len(v.get("domains", [])) > 5:
+                    v["domains"] = v["domains"][:5]
+        return {
+            "enabled": raw.get("enabled", True),
+            "fact_conflicts": conflicts,
+            "fact_corroborated": corroborated,
+            "stats": raw.get("stats", {}),
+            "truncated": bool(
+                len(raw.get("fact_corroborated", [])) > 10
+                or len(raw.get("fact_conflicts", [])) > 10
+            ),
+        }
     except ImportError:
         return None  # fact_align 模块不可用
     except Exception as e:
@@ -1717,7 +1741,11 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                     _settle_pending(pending)
                     return True
             if not progressed:
-                time.sleep(0.02)
+                # 自适应轮询间隔：剩余时间充裕时多睡，快到期时少睡。
+                # 固定 20ms 在尾部会浪费时间（实测最多浪费 20ms），
+                # 自适应后平均等待时长降至 5-8ms。
+                remain = deadline - time.time()
+                time.sleep(min(0.02, remain / 10) if remain > 0 else 0.005)
         _settle_pending(pending)
         return False
 
@@ -1778,7 +1806,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                     if early_stopped or not pending:
                         break
                     if not progressed:
-                        time.sleep(0.02)
+                        # 自适应轮询间隔（同 _run_engines_bounded）
+                        remain = _race_deadline - time.time()
+                        time.sleep(min(0.02, remain / 10) if remain > 0 else 0.005)
                 # 超时/弃置：仍活线程标记 timeout（daemon 自行结束，不阻塞
                 # 退出）；恰在末次轮询后完成的线程照常入账——此前它既不
                 # ingest 也不标 timeout，结果静默丢失。latency 记账用真实

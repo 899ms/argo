@@ -188,7 +188,7 @@ def _hash_token(t: str, seed: int) -> int:
     return h
 
 
-@functools.lru_cache(maxsize=512)
+@functools.lru_cache(maxsize=2048)
 def _signature(s: str) -> tuple[int, ...]:
     """查询的 minhash 签名：每个置换下全部 n-gram 的最小哈希。
 
