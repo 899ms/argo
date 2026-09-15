@@ -184,6 +184,54 @@ def build_coverage(engine_outcomes: list[dict[str, Any]] | None, max_results: in
     return out
 
 
+def _route_login_used(
+    search_result: dict[str, Any],
+    candidates: list[dict[str, Any]] | None = None,
+) -> bool:
+    """本次结果是否用到登录态（决定能否写入公共缓存）。
+
+    candidates 只在 envelope 路径可得；精简路径传 None，其余判据同样成立。
+    """
+    return bool(
+        search_result.get("login_state_used") is True
+        or search_result.get("cache_eligible") is False
+        or _login_state_of(search_result, str(search_result.get("engine") or ""))
+        or any(
+            (c.get("access") or {}).get("login_state_used")
+            for c in (candidates or [])
+        )
+    )
+
+
+def build_limitations(
+    search_result: dict[str, Any],
+    extra_limitations: list[str] | None = None,
+    candidates: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    """结果局限声明——agent 判断「这批结果能用到什么程度」的依据。
+
+    这是**质量信号，与归档开关无关**：envelope 模式与精简模式共用本实现，
+    避免两处各写一份导致口径漂移（本仓对「同一件事写两遍」的一贯态度）。
+
+    2026-09-15 输出契约审查发现：精简档（--no-envelope，文档推荐给 agent
+    的档位）此前整块拿不到局限声明，于是 agent 无从知晓自己拿到的是
+    「相关发现而非正文」「降级路由结果」「未预确认的 daily 档」——把单次
+    归档开关的副作用，变成了日常路径的质量损失。
+    """
+    limitations = list(extra_limitations or [])
+    limitations.append("Do not treat engagement metrics as factual correctness.")
+    if search_result.get("early_stopped"):
+        limitations.append("early_stopped: later engines in combo may not have run.")
+    if search_result.get("recovery"):
+        limitations.append("recovery path used; results may come from fallback engines.")
+    if search_result.get("cached"):
+        limitations.append(
+            f"served from cache level={search_result.get('cache_level')}")
+    if _route_login_used(search_result, candidates):
+        limitations.append("login_state_used: do not write to public SearchCache")
+    return limitations
+
+
 def attach_envelope(
     search_result: dict[str, Any],
     *,
@@ -208,23 +256,8 @@ def attach_envelope(
     max_results = int(search_result.get("count") or len(results) or 5)
     coverage = build_coverage(search_result.get("engine_outcomes"), max_results=max_results)
 
-    limitations = list(extra_limitations or [])
-    limitations.append("Do not treat engagement metrics as factual correctness.")
-    if search_result.get("early_stopped"):
-        limitations.append("early_stopped: later engines in combo may not have run.")
-    if search_result.get("recovery"):
-        limitations.append("recovery path used; results may come from fallback engines.")
-    if search_result.get("cached"):
-        limitations.append(f"served from cache level={search_result.get('cache_level')}")
-
-    route_login = (
-        search_result.get("login_state_used") is True
-        or search_result.get("cache_eligible") is False
-        or _login_state_of(search_result, str(search_result.get("engine") or ""))
-        or any(c.get("access", {}).get("login_state_used") for c in candidates)
-    )
-    if route_login:
-        limitations.append("login_state_used: do not write to public SearchCache")
+    route_login = _route_login_used(search_result, candidates)
+    limitations = build_limitations(search_result, extra_limitations, candidates)
 
     # 去重：canonical_url
     seen: set[str] = set()

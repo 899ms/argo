@@ -2440,25 +2440,30 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
     except Exception:
         pass
 
+    # 结果局限声明：**质量信号，与归档开关无关**，两条路径共用同一口径。
+    # 此前只在 envelope 分支内计算，于是 --no-envelope（文档推荐给 agent 的
+    # 档位）整块拿不到它——agent 无从知晓拿到的是「相关发现而非正文」
+    # 「降级路由结果」「未预确认的 daily 档」（2026-09-15 输出契约审查）。
+    extra_lim: list[str] = []
+    if kind == "url-seed":
+        extra_lim.append(
+            "url-seed: seed URL was not fetched; results are related discovery only"
+        )
+    if result.get("recovery"):
+        extra_lim.append("recovery used; engine fallback may differ from primary route")
+    if tier == "daily":
+        extra_lim.append(
+            "daily tier: direct search; no pre-confirm gate"
+        )
+    elif tier == "professional":
+        extra_lim.append(
+            "professional tier: plan metadata attached; verify top-k before hard claims"
+        )
+
     # 候选交接包（附加字段，不改 results 排序）
     if envelope:
         try:
             from candidate_envelope import attach_envelope
-            extra_lim = []
-            if kind == "url-seed":
-                extra_lim.append(
-                    "url-seed: seed URL was not fetched; results are related discovery only"
-                )
-            if result.get("recovery"):
-                extra_lim.append("recovery used; engine fallback may differ from primary route")
-            if tier == "daily":
-                extra_lim.append(
-                    "daily tier: direct search; no pre-confirm gate"
-                )
-            elif tier == "professional":
-                extra_lim.append(
-                    "professional tier: plan metadata attached; verify top-k before hard claims"
-                )
             attach_envelope(
                 result,
                 query=query,
@@ -2472,6 +2477,14 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
                 f"envelope 跳过: {type(e).__name__}")
             result.setdefault("schema_version", "1.0")
             result.setdefault("limitations", [])
+    else:
+        # 精简档：attach_envelope 不跑，局限声明仍须上报（同一个 build_limitations
+        # 实现，避免两处各写一份导致口径漂移）
+        try:
+            from candidate_envelope import build_limitations
+            result["limitations"] = build_limitations(result, extra_lim)
+        except Exception:
+            result.setdefault("limitations", list(extra_lim))
 
     # 证据闭环 P0：回填已核验证据分 + 高后果门控（finance/health/legal）
     # 输出 fetch_required / evidence_loop 汇总，每条结果带 fetch_suggested
@@ -2552,6 +2565,10 @@ def _strip_for_agent(payload: dict[str, Any]) -> dict[str, Any]:
         "query", "engine", "engines", "engines_used", "domain", "count",
         "mode", "depth", "status", "fetch_required", "evidence_loop",
         "errors", "login_hint",
+        # 质量信号：局限声明与告警必须随答案一起到达。此前 agent 档把
+        # limitations/recovery/time_filter_warning 一并剥掉，agent 无从判断
+        # 「这批结果能用到什么程度」（2026-09-15 输出契约审查）。
+        "limitations", "recovery", "time_filter_warning",
     )
     out: dict[str, Any] = {k: payload[k] for k in keep_top
                            if payload.get(k) is not None}
