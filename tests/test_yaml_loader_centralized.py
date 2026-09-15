@@ -119,21 +119,29 @@ class TestLoaderChoice:
 
 
 class TestPeekCacheDbPathContract:
-    """peek 的契约：解析至多一次、失败不写记忆、损坏配置 fail-open。"""
+    """peek 的契约：解析至多一次、失败不写记忆、损坏配置 fail-open。
+
+    这里的用例都关掉落盘缓存（ARGO_CONFIG_CACHE=0）：要测的是**解析链**的
+    记忆化与失败语义，而落盘缓存命中时压根不解析（那条路径由
+    TestConfigDiskCache 覆盖）。
+    """
 
     @pytest.fixture(autouse=True)
     def _reset_memo(self, monkeypatch):
-        monkeypatch.setattr(config, "_peek_db_path_cache", None)
+        monkeypatch.setenv("ARGO_CONFIG_CACHE", "0")
+        monkeypatch.setattr(config, "_parsed_yaml_cache", None)
 
     def test_parses_at_most_once_per_process(self, monkeypatch):
         n = [0]
-        real = config._peek_cache_db_path_read
+        real = config._load_yaml
 
-        def counting():
+        def counting(text):
             n[0] += 1
-            return real()
+            return real(text)
 
-        monkeypatch.setattr(config, "_peek_cache_db_path_read", counting)
+        # 计「真解析」而不是「入口被调用」：记忆化命中时入口仍会被调一次，
+        # 但不会走到 _load_yaml——那才是要消灭的重复劳动。
+        monkeypatch.setattr(config, "_load_yaml", counting)
         vals = [config.peek_cache_db_path() for _ in range(4)]
         assert n[0] == 1, f"解析了 {n[0]} 次（应记忆化到 1 次）——冷启动链上会 ×4"
         assert len(set(vals)) == 1, "四次调用结果不一致"
@@ -160,9 +168,9 @@ class TestPeekCacheDbPathContract:
 
         def boom():
             calls[0] += 1
-            return False, None
+            return False, None, None
 
-        monkeypatch.setattr(config, "_peek_cache_db_path_read", boom)
+        monkeypatch.setattr(config, "_read_config_yaml", boom)
         assert config.peek_cache_db_path() is None
         assert config.peek_cache_db_path() is None
         assert calls[0] == 2, "失败被记忆化了，后续调用不再重试"
@@ -170,6 +178,46 @@ class TestPeekCacheDbPathContract:
     def test_missing_config_returns_none(self, monkeypatch, tmp_path):
         monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "不存在.yaml")
         assert config.peek_cache_db_path() is None
+
+
+class TestConfigParseSharedWithLoad:
+    """peek 与 load_config 共用同一次解析——同一份 123 KB 文本此前解析两遍。"""
+
+    @pytest.fixture(autouse=True)
+    def _reset(self, monkeypatch):
+        monkeypatch.setenv("ARGO_CONFIG_CACHE", "0")
+        monkeypatch.setattr(config, "_parsed_yaml_cache", None)
+        monkeypatch.setattr(config, "_config_cache", None)
+        monkeypatch.setattr(config, "_config_mtime", 0.0)
+
+    def test_peek_then_load_parses_once(self, monkeypatch):
+        n = [0]
+        real = config._load_yaml
+
+        def counting(text):
+            n[0] += 1
+            return real(text)
+
+        monkeypatch.setattr(config, "_load_yaml", counting)
+        db = config.peek_cache_db_path()
+        cfg = config.load_config()
+        assert n[0] == 1, (
+            f"config.yaml 真解析了 {n[0]} 次（peek + load_config 应共用一份）")
+        assert cfg.get("engines"), "共享解析结果后配置仍须完整"
+        assert db == config.peek_cache_db_path(), "两次 peek 口径不一致"
+
+    def test_shared_parse_does_not_leak_mutations(self, monkeypatch):
+        """共享的是「原样解析结果」，load_config 的归一化必须作用在副本上。
+
+        否则 ~ 展开、相对路径解析、外置合并会写进缓存对象，同一进程里后续
+        peek 会看到被改过的值——缓存不得成为隐式的共享可变状态。
+        """
+        config.peek_cache_db_path()
+        before = config._read_config_yaml()[1]
+        snapshot = repr(before)
+        config.load_config()
+        after = config._read_config_yaml()[1]
+        assert repr(after) == snapshot, "load_config 改写了共享的解析结果"
 
 
 class TestArgoInterpreterCache:
@@ -231,6 +279,46 @@ class TestArgoInterpreterCache:
         assert "requests" not in code, "幽灵依赖：仓库里没有任何 import requests"
         # 不能真 import（那正是要省掉的成本）
         assert "import yaml" not in code and "import requests" not in code
+
+    def test_self_capable_does_not_require_requests(self, argo_bin, monkeypatch):
+        """原地执行判定与廉价校验同一口径：只卡版本与 PyYAML，不卡 requests。
+
+        重现的事故：照 install.sh 只装 pyyaml 的正常机器并没有 requests，旧判定
+        因此恒为 False，每次 CLI 都被迫重选解释器并重启（实测每次多约 96ms），
+        「省掉重复启动」的优化在终端用户机器上悄悄失效，只在装了 requests 的
+        开发机上才生效。
+        """
+        import importlib.util
+        import inspect
+        import re
+        # 源码层面：不允许再用 find_spec 去查 requests（注释里可以解释来龙去脉，
+        # 但判定条件里不能真的去要这个包）
+        src = inspect.getsource(argo_bin._self_capable)
+        assert not re.search(r"find_spec\([\"']requests[\"']\)", src), \
+            "幽灵依赖 requests 不得作为原地执行的判定条件"
+        # 行为层面：PyYAML 在、requests 查不到时，当前高版本解释器仍可原地执行
+        real_find = importlib.util.find_spec
+
+        def _without_requests(name, *args, **kwargs):
+            if name == "requests":
+                return None
+            return real_find(name, *args, **kwargs)
+
+        monkeypatch.setattr(importlib.util, "find_spec", _without_requests)
+        assert argo_bin._self_capable() is True
+
+    def test_self_capable_still_needs_yaml(self, argo_bin, monkeypatch):
+        """去掉 requests 门槛不等于没有门槛：缺 PyYAML 时仍不能原地执行。"""
+        import importlib.util
+        real_find = importlib.util.find_spec
+
+        def _without_yaml(name, *args, **kwargs):
+            if name == "yaml":
+                return None
+            return real_find(name, *args, **kwargs)
+
+        monkeypatch.setattr(importlib.util, "find_spec", _without_yaml)
+        assert argo_bin._self_capable() is False
 
 
 if __name__ == "__main__":

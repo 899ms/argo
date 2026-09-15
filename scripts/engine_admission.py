@@ -36,6 +36,10 @@ DEFAULT_ADMISSION_DIR = Path(
 
 
 def admission_dir() -> Path:
+    # 保持每次幂等确保目录存在：状态目录会被测试用 ARGO_STATE_DIR 隔离，进程内也
+    # 可能切换，缓存目录反而容易写到已被清理的旧目录。exist_ok=True 在目录已存在
+    # 时只是一次很便宜的路径查询，真正的重复大头（读记录前先 exists 再 read）已在
+    # load_admission 里去掉。
     d = DEFAULT_ADMISSION_DIR
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -46,19 +50,96 @@ def admission_path(engine_id: str) -> Path:
     return admission_dir() / f"{safe}.json"
 
 
+def _read_path(engine_id: str) -> Path:
+    """读记录用的路径，不触发 mkdir。
+
+    读一个还不存在的记录根本不需要先建目录；此前 load_admission 经
+    admission_path 每次都 mkdir(parents=True)，一次搜索因此多出约两百次
+    路径查询。写记录（save_admission 等）仍走 admission_path 确保目录存在。
+    """
+    safe = engine_id.replace("/", "_").replace("..", "_")
+    return DEFAULT_ADMISSION_DIR / f"{safe}.json"
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
-def load_admission(engine_id: str) -> dict[str, Any] | None:
-    path = admission_path(engine_id)
-    if not path.exists():
-        return None
+# 读缓存：一次 routable 扫描会对每个引擎问一次 is_blocked()，此前每次都裸读盘
+# （实测一次扫描 668 次 read_text / 41 ms；同一份记录被读 3 次——is_blocked、
+# is_admitted、引擎详情各来一遍）。按文件路径记忆，**写入路径立即失效**：同
+# 进程读己所写永远新鲜（record_validation → load_admission 的测试序列就靠这条
+# 保证）；别的进程改了记录则由 TTL 兜底（默认 1 s，ARGO_ADMISSION_TTL_S 可调，
+# 设 0 关闭记忆、回到逐次读盘）。
+#
+# 键用路径字符串而非 engine_id：状态目录可被 ARGO_STATE_DIR / ARGO_ADMISSION_DIR
+# 在进程内切换（测试隔离的常规手段），按 engine_id 记忆会把「A 目录下没有记录」
+# 错认成「B 目录下也没有」。
+_admission_read_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
+
+
+def _admission_ttl() -> float:
+    """读缓存的 TTL（秒）；未设置或非法值回落 1.0。
+
+    走 engine_env.get_env 而不是 os.environ 直读：开关写进 ~/.config/argo/env
+    也要生效——与 config._stamp_ttl 同一口径（同一个旋钮不该有两套可读位置）。
+    """
+    raw = os.environ.get("ARGO_ADMISSION_TTL_S", "")
+    if not raw.strip():
+        try:
+            from engine_env import get_env
+            raw = get_env("ARGO_ADMISSION_TTL_S")
+        except Exception:
+            raw = ""
+    try:
+        return float(raw or 1.0)
+    except ValueError:
+        return 1.0
+
+
+def _read_admission_file(path: Path) -> dict[str, Any] | None:
+    """裸读一份准入记录（无缓存）。"""
+    # 直接读、靠异常判断文件是否存在：既不先 exists()，也不先建目录。
+    # 文件/目录不存在时 read_text 抛 FileNotFoundError（OSError 子类），一并兜底。
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
-    except Exception:
+    except (OSError, json.JSONDecodeError, ValueError):
         return None
+
+
+def load_admission(engine_id: str) -> dict[str, Any] | None:
+    """读一份准入记录（带进程内 TTL 缓存，见 _admission_read_cache）。
+
+    **只用于读路径**（路由判定、状态展示）。读-改-写的调用方要用
+    load_admission_fresh：TTL 窗口里的旧值会被原样写回，吞掉别的进程刚写入的
+    字段（审计实测：子进程写入 stages_passed 的 quality，父进程在 TTL 内读-改-写
+    后只剩 health，quality 丢失）。
+    """
+    path = _read_path(engine_id)
+    ttl = _admission_ttl()
+    now = time.monotonic()
+    if ttl > 0:
+        hit = _admission_read_cache.get(str(path))
+        if hit is not None and now - hit[0] < ttl:
+            return hit[1]
+    data = _read_admission_file(path)
+    if ttl > 0:
+        _admission_read_cache[str(path)] = (now, data)
+    return data
+
+
+def load_admission_fresh(engine_id: str) -> dict[str, Any] | None:
+    """读一份准入记录并刷新缓存——读-改-写序列的读端专用。
+
+    写路径必须看到磁盘上的最新状态：缓存的旧值会让「读旧 → 合并 → 写回」丢掉
+    别的进程刚写进去的字段，而准入记录是路由的输入，丢字段会直接改变路由结果。
+    """
+    path = _read_path(engine_id)
+    data = _read_admission_file(path)
+    if _admission_ttl() > 0:
+        _admission_read_cache[str(path)] = (time.monotonic(), data)
+    return data
 
 
 def save_admission(engine_id: str, record: dict[str, Any]) -> dict[str, Any]:
@@ -76,11 +157,15 @@ def save_admission(engine_id: str, record: dict[str, Any]) -> dict[str, Any]:
         "quality": record.get("quality"),
     }
     path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 写完即失效：缓存与文件是一对状态，只更新一半会让本进程读到自己没写的旧值
+    _admission_read_cache.pop(str(path), None)
     return out
 
 
 def set_blocked(engine_id: str, blocked: bool, reason: str = "") -> dict[str, Any]:
-    current = load_admission(engine_id) or {"engine_id": engine_id, "stages_passed": []}
+    # 读端用 fresh：这是读-改-写序列，缓存里的旧值会被原样写回，吞掉别的进程
+    # 刚写进去的字段（TTL 窗口内的丢更新）
+    current = load_admission_fresh(engine_id) or {"engine_id": engine_id, "stages_passed": []}
     current["blocked"] = blocked
     current["reason"] = reason
     if not blocked and not current.get("admitted_at"):
@@ -101,7 +186,8 @@ def record_validation(
     admit: bool = False,
 ) -> dict[str, Any]:
     """写入验证结果；admit=True 且未 blocked 时标记准入时间。"""
-    current = load_admission(engine_id) or {}
+    # 读-改-写：读端必须 fresh，否则 TTL 内的旧值会把并发写入的字段吞掉
+    current = load_admission_fresh(engine_id) or {}
     merged_stages = list(dict.fromkeys(
         list(current.get("stages_passed") or []) + list(stages_passed or [])
     ))

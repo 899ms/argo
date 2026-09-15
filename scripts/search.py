@@ -1690,8 +1690,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         架空——上面每个预算判断都以为自己已经止损，进程却还在等一个卡住的
         HTTP 读（models.dev 全量 API 超时 15s，实测单查询被拖到 76s，而
         w2_wait / deadline 早已到期）。daemon 线程 + 轮询才真正有界：
-        早停后弃置线程既不阻塞函数返回，也不阻塞进程退出——与 wave-1 的
-        # 与上面的 hedged 分支共用同一套并发执行方式。
+        早停后弃置线程既不阻塞函数返回，也不阻塞进程退出——与上面的
+        hedged 分支共用同一套并发执行方式。
         """
         if not engs:
             return False

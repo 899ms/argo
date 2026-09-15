@@ -20,7 +20,8 @@ import time
 from typing import Any
 
 try:
-    from config import load_config, get_engines, get_domains, get_cost_factor
+    from config import (load_config, get_engines, get_domains, get_cost_factor,
+                        config_stamp)
     from tfidf_router import semantic_route, get_router
     from quota import get_quota_manager
     from engine_families import engines_demote_for_lang, engines_not_for_lang, lang_allows
@@ -28,7 +29,8 @@ except ImportError:
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
-    from config import load_config, get_engines, get_domains, get_cost_factor
+    from config import (load_config, get_engines, get_domains, get_cost_factor,
+                        config_stamp)
     from tfidf_router import semantic_route, get_router
     from quota import get_quota_manager
     from engine_families import engines_demote_for_lang, engines_not_for_lang, lang_allows
@@ -109,9 +111,11 @@ def _build_engine_names() -> dict[str, str]:
 
 
 # 惰性初始化：模块级立即调用 get_engines() 会触发 config 全量加载
-# （合并全部外置引擎 spec，实测约 1.7s），让「import route」为一张显示名表
-# 付出冷启动大头。改为首次使用时构建（_engine_display 是内部唯一读取入口）。
-# config 内部有 mtime 缓存，进程内第二次起零成本。
+# （合并全部外置引擎 spec，实测约 0.1s——见 config.peek_cache_db_path 的勘误：
+# 此处曾写「约 1.7s」，该数字无法复现，真实成本是「一次合并 ~0.1s，且 import
+# 链上被连调 4 次」），让「import route」为一张显示名表付出冷启动大头。改为首次
+# 使用时构建（_engine_display 是内部唯一读取入口）。config 内部有 mtime 缓存，
+# 进程内第二次起零成本。
 #
 # 兼容：历史上 _ENGINE_NAMES 是模块级公开名字，外部（含测试）会
 # `from route import _ENGINE_NAMES` 直接引用。此处**故意不在模块级绑定**
@@ -119,12 +123,28 @@ def _build_engine_names() -> dict[str, str]:
 # 语义与旧的全量字典完全一致；若模块级绑定的是 None 占位值，__getattr__ 不会触发，
 # 外部拿到的就是 None（埋雷）。
 _ENGINE_NAMES_CACHE: dict[str, str] | None = None
+_ENGINE_NAMES_STAMP: float | None = None
 
 
 def _engine_names_map() -> dict[str, str]:
-    global _ENGINE_NAMES_CACHE
-    if _ENGINE_NAMES_CACHE is None:
+    """引擎 id → 显示名 映射，按 config_stamp 热重建。
+
+    此前建一次就永不失效：长驻进程（MCP server / 交互式调用）里新增或改名的
+    引擎要重启才可见，而同一个 diff 里的 get_registry 已经按 config_stamp 热
+    重建——同一份配置两个缓存两套失效口径，是最容易踩的那种不一致。stamp 本身
+    按 TTL 记忆（见 config.config_stamp），所以只在配置真的变了才重建，热路径
+    上只是一次字典构造。
+    """
+    global _ENGINE_NAMES_CACHE, _ENGINE_NAMES_STAMP
+    try:
+        stamp: float | None = config_stamp()
+    except Exception:
+        # config 不可用时判断不了新鲜度：退化为旧行为（建一次不失效），
+        # 而不是每次调用都重建（那会让一张显示名表拖垮热路径）。
+        stamp = None
+    if _ENGINE_NAMES_CACHE is None or _ENGINE_NAMES_STAMP != stamp:
         _ENGINE_NAMES_CACHE = _build_engine_names()
+        _ENGINE_NAMES_STAMP = stamp
     return _ENGINE_NAMES_CACHE
 
 

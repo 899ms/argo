@@ -110,9 +110,13 @@ def _allowed_paths(inputs: list[dict[str, Any]]) -> list[str]:
 
 def _env_allowed() -> bool:
     # 默认关（该开关是授权语义，不是能力开关）：未设置或为空 → 不放行。
-    # 统一走 env_flag，与全仓其他布尔开关同一口径（0/false/no/off 都算关）。
+    # 统一走 env_flag，与全仓其他布尔开关同一口径（0/false/no/off 都算关）；
+    # expand=False 是授权位专有的口径：只认 ARGO_ALLOW_RECOMPUTE 这一字面名，
+    # 不认裸名 ALLOW_RECOMPUTE。此前走别名展开，环境里任何工具设一个少写前缀
+    # 的同名变量就等于替用户放行了「受限子进程执行脚本」——授权只认明确信号。
     from engine_env import env_flag
-    return env_flag("ARGO_ALLOW_RECOMPUTE", default=False)
+    return env_flag("ARGO_ALLOW_RECOMPUTE", default=False,
+                    expand=False, strict=True)
 
 
 def run_recompute(

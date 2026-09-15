@@ -28,10 +28,13 @@
 from __future__ import annotations
 
 import http.client
+import logging
 import os
 import urllib.parse
 import urllib.request
 from typing import Any
+
+logger = logging.getLogger("unified_search.net_proxy")
 
 _cfg_cache: dict[str, Any] | None = None
 _cfg_stamp: float | None = None
@@ -126,7 +129,11 @@ def open_url(req: Any, timeout: float = 10.0):
         # include_standard_env=False：urlopen 原生认标准环境变量，这里只补
         # argo 级增量配置，避免重复接管改变既有 mock/失败语义。
         px = resolve_proxy(url, include_standard_env=False)
-    except Exception:
+    except Exception as e:
+        # 静默直连是最坏的选择：本模块存在的理由就是「必须经代理才能出网」的
+        # 环境里直连会一直连不上，而解析失败后表现为完全一样的症状——用户看到
+        # 「一直连不上」，日志里什么都没有，只能猜。留一条 debug 给排查。
+        logger.debug("代理解析失败（%s），本次按直连处理：%r", url, e)
         px = None
     if not px:
         return urllib.request.urlopen(req, timeout=timeout)

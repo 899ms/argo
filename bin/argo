@@ -85,7 +85,7 @@ def _pick_python() -> str:
 
     背景：macOS 默认 /usr/bin/python3 是 3.9，而 argo 脚本用了 3.10+ 语法
     （如 `X | None` 联合类型），3.9 会报 TypeError。逐个探测版本并验证
-    yaml/requests 依赖后选第一个可用的。
+    PyYAML 依赖后选第一个可用的。
 
     探测结果落盘缓存（见 _PY_CACHE）：命中时不再起子进程 import 依赖。显式
     指定 ARGO_PYTHON 时不查也不写缓存——用户的覆盖是权威，不该被缓存遮蔽，
@@ -126,12 +126,18 @@ def _self_capable() -> bool:
     的机器上（如 homebrew 3.14）落到的往往就是 _pick_python 会选中的那个
     解释器。此时「探测一遍 + execv 重启」纯粹是把同一个解释器再启一次，
     每次调用白付一次进程启动与一次校验子进程。达标就地执行即可。
+
+    依赖口径与 _PY_CHEAP_CHECK / _probe_python 完全一致：只认 PyYAML 这一个
+    必需第三方依赖。这里曾多要求 requests，但全仓没有任何 `import requests`
+    （它是早已移除的幽灵依赖，可选增强是 curl_cffi）。多要求一个用户机器上
+    不存在的包，会让本函数在「照 install.sh 只装了 pyyaml」的正常环境里恒为
+    False，于是每次调用都被迫重选解释器并 execv 重启——本该省掉的重复启动，
+    在所有终端用户机器上静默失效，只在恰好装了 requests 的开发机上才生效。
     """
     if sys.version_info < (3, 10):
         return False
     import importlib.util as _util
-    return (_util.find_spec("yaml") is not None
-            and _util.find_spec("requests") is not None)
+    return _util.find_spec("yaml") is not None
 
 
 def _engine_count():

@@ -206,5 +206,83 @@ class TestAdmissionStateNotSelfContradictory(unittest.TestCase):
         )
 
 
+class TestAdmissionReadCache(unittest.TestCase):
+    """读缓存契约：一次 routable 扫描不该对同一份记录读三遍（实测 668 次读盘）。
+
+    缓存与文件是一对状态，只更新一半就是经典的自相矛盾——所以这两条一起锁：
+    重复读命中缓存、写入立刻失效。TTL 是跨进程的兜底，也要能关。
+    """
+
+    def setUp(self):
+        import engine_admission
+        self.mod = engine_admission
+        self._saved_ttl = os.environ.get("ARGO_ADMISSION_TTL_S")
+        os.environ.pop("ARGO_ADMISSION_TTL_S", None)
+        self.mod._admission_read_cache.clear()
+
+    def tearDown(self):
+        self.mod._admission_read_cache.clear()
+        if self._saved_ttl is None:
+            os.environ.pop("ARGO_ADMISSION_TTL_S", None)
+        else:
+            os.environ["ARGO_ADMISSION_TTL_S"] = self._saved_ttl
+
+    def test_repeated_reads_hit_cache(self):
+        m = self.mod
+        m.save_admission("cache_probe_a", {"stages_passed": ["health"]})
+        first = m.load_admission("cache_probe_a")
+        second = m.load_admission("cache_probe_a")
+        self.assertIs(first, second, "重复读取没有命中缓存——热路径又去读盘了")
+        self.assertTrue(m.is_blocked("cache_probe_a") is False)
+
+    def test_write_invalidates_cache(self):
+        """写完必须立刻失效：读到自己没写的旧值是最难查的一类不一致。"""
+        m = self.mod
+        m.save_admission("cache_probe_b", {"stages_passed": ["health"]})
+        before = m.load_admission("cache_probe_b")
+        m.set_blocked("cache_probe_b", True, reason="manual")
+        after = m.load_admission("cache_probe_b")
+        self.assertIsNot(before, after, "写入后仍返回缓存中的旧对象")
+        self.assertTrue(after["blocked"], "写入后读到的仍是旧值")
+        self.assertFalse(m.is_blocked("cache_probe_c"))
+
+    def test_ttl_zero_disables_cache(self):
+        m = self.mod
+        m.save_admission("cache_probe_d", {"stages_passed": ["health"]})
+        os.environ["ARGO_ADMISSION_TTL_S"] = "0"
+        try:
+            first = m.load_admission("cache_probe_d")
+            second = m.load_admission("cache_probe_d")
+            self.assertIsNot(first, second, "TTL=0 应关闭记忆化（逐次读盘）")
+        finally:
+            os.environ.pop("ARGO_ADMISSION_TTL_S", None)
+
+    def test_write_path_sees_external_updates(self):
+        """读-改-写必须看到磁盘最新状态：缓存里的旧值会把并发写入的字段吞掉。
+
+        审计实测的丢更新：子进程写入 stages_passed 的 quality，父进程在 TTL 内
+        读-改-写后只剩 health——准入记录是路由的输入，丢字段直接改变路由结果。
+        """
+        m = self.mod
+        m.save_admission("cache_probe_e", {"stages_passed": ["health"]})
+        m.load_admission("cache_probe_e")          # 故意先把旧值读进缓存
+        path = m.admission_path("cache_probe_e")
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        rec["stages_passed"] = ["health", "quality"]   # 模拟另一个进程的写入
+        path.write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
+        out = m.record_validation("cache_probe_e", stages_passed=["search"])
+        self.assertIn("quality", out["stages_passed"],
+                      f"并发写入的 quality 被缓存旧值吞掉：{out['stages_passed']}")
+
+    def test_fresh_read_refreshes_cache(self):
+        """load_admission_fresh 读完要回填缓存，避免写路径每次都重读。"""
+        m = self.mod
+        m.save_admission("cache_probe_f", {"stages_passed": ["health"]})
+        m.load_admission_fresh("cache_probe_f")
+        self.assertIs(m.load_admission("cache_probe_f"),
+                      m.load_admission("cache_probe_f"),
+                      "fresh 读之后缓存没回填，后续读又去读盘")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -199,8 +199,12 @@ _FALSY_VALUES = frozenset({
     "0", "false", "no", "off", "n", "disable", "disabled", "none",
 })
 
+# 授权位的「开」值白名单（strict=True 时使用）：只有明确写出的真值算放行
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on", "y", "t"})
 
-def env_flag(name: str, default: bool = True) -> bool:
+
+def env_flag(name: str, default: bool = True, *, expand: bool = True,
+             strict: bool = False) -> bool:
     """布尔环境开关的统一解析（全仓只有这一处）。
 
     此前全仓有四套互不兼容的判断规则，同一写法在不同开关上行为不同：
@@ -216,11 +220,28 @@ def env_flag(name: str, default: bool = True) -> bool:
     未设置或值为空 → default。读取走 get_env：os.environ 优先，随后
     ~/.config/argo/env 热读——此前这些开关只认 os.environ，把开关写进 env
     文件（密钥的规范位置）是不生效的。
+
+    expand=False 只认**字面名字**，不做别名展开。授权类开关（决定「是否放行
+    一个受限动作」的开关，如 ARGO_ALLOW_RECOMPUTE）必须用它：别名展开是给
+    密钥用的便利（`X_API_KEY` 与 `ARGO_X_API_KEY` 都认），一旦落在授权位上就
+    变成了授权扩张——环境里任何一个工具随手设 `ALLOW_RECOMPUTE=1`（少写了
+    ARGO_ 前缀的一个无关变量）就等于替用户放行了受限子进程执行脚本。授权只
+    认推荐名这一条明确信号，误触不了；能力开关（超时、并发、渲染降级）继续
+    保留两套写法的容忍度。
+
+    strict=True 只认**明确写出的真值**（1/true/yes/on/y/t），其余一律算关。
+    授权位必须同时用 expand=False + strict=True：默认口径是「非关即开」，那对
+    能力开关没问题（最坏是换个行为），对授权位就是「任何拼错的值都放行」——
+    `ARGO_ALLOW_RECOMPUTE=0x0`、`=maybe`、`=ture` 全都会授权。门禁见
+    tests/test_static_lint_gate.py（漏写任一项即报红）。
     """
-    raw = get_env(name)
-    if raw is None or str(raw).strip() == "":
+    raw = get_env(_name_variants(name) if expand else [name])
+    val = str(raw).strip().lower()
+    if val == "":
         return default
-    return str(raw).strip().lower() not in _FALSY_VALUES
+    if strict:
+        return val in _TRUE_VALUES
+    return val not in _FALSY_VALUES
 
 
 def sync_envfile_to_environ() -> list[str]:

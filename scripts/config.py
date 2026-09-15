@@ -12,12 +12,13 @@ config.py — Unified Search v2 配置加载器
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # ── 路径 ──────────────────────────────────────────────────────────────────────
 
@@ -230,27 +231,105 @@ def _merge_external_engines(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-def _external_engines_mtime() -> float:
+_ext_scan_cache: tuple[float, tuple[float, int, int, int]] | None = None  # (monotonic 时刻, 指纹)
+
+
+def _external_engines_scan_uncached() -> tuple[float, int, int, int]:
+    """扫一遍外置声明目录 → (最新 mtime, 文件数, 总字节数, 最新 ctime_ns)。
+
+    为什么不能只报 mtime：**max 对「删除」与「回填旧时间」是盲的**——删掉一个
+    不是最新的声明（engines/specs/train.yaml 之类），max 不变；`cp -p` 拷进来
+    一个新声明（mtime 被保留成旧值），max 也不变。两者都会让落盘配置缓存继续
+    命中，表现为「引擎删了还在 / 加了不生效」（审计实测）。文件数与总字节数对
+    集合变化敏感；ctime 覆盖「等长改写 + 还原 mtime」这种 mtime 被伪造的写法。
+    这些字段本来就在同一次 stat 里拿到，不额外扫盘。
+    """
     latest = 0.0
+    latest_ctime = 0
+    count = 0
+    total = 0
     if not ENGINES_DIR.is_dir():
-        return latest
+        return latest, count, total, latest_ctime
     for path in ENGINES_DIR.rglob("*.yaml"):
         if "plugins" in path.parts:
             continue
         try:
-            latest = max(latest, path.stat().st_mtime)
+            st = path.stat()
         except OSError:
-            pass
-    return latest
+            continue
+        count += 1
+        total += st.st_size
+        latest = max(latest, st.st_mtime)
+        latest_ctime = max(latest_ctime, st.st_ctime_ns)
+    return latest, count, total, latest_ctime
+
+
+def _ttl_memo(cache: tuple[float, float] | None, ttl: float,
+              compute: Callable[[], float]) -> tuple[tuple[float, float] | None, float]:
+    """TTL 记忆化的唯一实现：TTL 内复用 cache，否则调 compute 并回填。
+
+    同一个形状（`if ttl>0 and cache and now-cache[0]<ttl: return cache[1]`）
+    此前在外置引擎 mtime 与 config_stamp 各写一遍，失效语义靠人工对齐——
+    一处改了 force 语义、另一处没改，就是这类漂移的温床（review 实测点出）。
+    返回 (新 cache, 取值)：ttl<=0 时不写记忆（关闭记忆化的逃生门）。
+    """
+    now = time.monotonic()
+    if ttl > 0 and cache is not None and now - cache[0] < ttl:
+        return cache, cache[1]
+    value = compute()
+    if ttl > 0:
+        return (now, value), value
+    return cache, value
+
+
+def _remember_ext_scan(scan: tuple[float, int, int, int]) -> None:
+    """把刚测到的外置声明指纹回填记忆——force 重读后不必立刻再扫一遍。"""
+    global _ext_scan_cache
+    if _stamp_ttl() > 0:
+        _ext_scan_cache = (time.monotonic(), scan)
+
+
+def _external_engines_scan() -> tuple[float, int, int, int]:
+    """外置声明目录指纹，按与 config_stamp 相同的 TTL 记忆。"""
+    global _ext_scan_cache
+    _ext_scan_cache, value = _ttl_memo(
+        _ext_scan_cache, _stamp_ttl(), _external_engines_scan_uncached)
+    return value
+
+
+def _external_engines_mtime() -> float:
+    """外置引擎声明目录的最新 mtime，按与 config_stamp 相同的 TTL 记忆。
+
+    扫一遍要 rglob 并 stat 全部外置声明（约 60 个文件、60 多次系统调用）。
+    load_config() 与 config_stamp() 在一次搜索里会被调用十几次，此前每次都
+    重新扫盘，实测一次搜索因此产生约 900 次 stat，绝大多数是在重复读不会变
+    的文件。外置声明新增/改动晚 1 秒生效没有实际影响，所以在 TTL 内只扫一次
+    （TTL 由 ARGO_CONFIG_STAMP_TTL_S 控制，设 0 即关闭记忆、每次即时扫描）。
+    """
+    return _external_engines_scan()[0]
 
 
 _stamp_cache: tuple[float, float] | None = None  # (monotonic 时刻, stamp)
 
 
 def _stamp_ttl() -> float:
-    """stamp 记忆化的 TTL（秒）。每次读，便于测试与现场调参。"""
+    """stamp 记忆化的 TTL（秒）。每次读，便于测试与现场调参。
+
+    走 engine_env.get_env 而非 os.environ 直读：开关写进 ~/.config/argo/env
+    （密钥与开关的规范位置）也要生效——这正是 env_flag 统一布尔口径时定下的
+    契约，同一个旋钮不该有两套可读位置。engine_env 只依赖标准库，懒导入避免
+    与 config 成环；导入或读取失败一律回落到 os.environ 与默认值。
+    """
+    name = "ARGO_CONFIG_STAMP_TTL_S"
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        try:
+            from engine_env import get_env
+            raw = get_env(name)
+        except Exception:
+            raw = ""
     try:
-        return float(os.environ.get("ARGO_CONFIG_STAMP_TTL_S") or 1.0)
+        return float(raw or 1.0)
     except ValueError:
         return 1.0
 
@@ -265,40 +344,325 @@ def config_stamp() -> float:
     故折叠到 TTL 内一次。
     """
     global _stamp_cache
-    ttl = _stamp_ttl()
-    now = time.monotonic()
-    if ttl > 0 and _stamp_cache is not None and now - _stamp_cache[0] < ttl:
-        return _stamp_cache[1]
+    _stamp_cache, value = _ttl_memo(_stamp_cache, _stamp_ttl(),
+                                    _stamp_uncached)
+    return value
+
+
+def _stamp_uncached() -> float:
     try:
         combined = CONFIG_PATH.stat().st_mtime
     except OSError:
         combined = 0.0
-    stamp = max(combined, _external_engines_mtime())
-    if ttl > 0:
-        _stamp_cache = (now, stamp)
-    return stamp
+    return max(combined, _external_engines_mtime())
+
+
+# ── 跨进程配置缓存（落盘 JSON）─────────────────────────────────────────────────
+#
+# 为什么需要：每条命令都是一次新进程，config.yaml + 63 个外置声明的解析合并
+# 在**每个** CLI 调用里重付一遍；进程内记忆化救不了跨进程的重复。输入几乎从不
+# 变化，故把「归一化后」的配置按输入指纹落盘，命中时用 json.loads 取代整条链。
+# 实测（新进程 min of 4，macOS/Python 3.14）：load_config 关缓存 50–82 ms、命中
+# 16–18 ms；其中 read+json.loads 约 2 ms，余下是每次都必须现算的外置声明扫描与
+# CLI 路径校验（那两项是「结论随环境变，不能连结论一起缓存」的部分）。
+#
+# 键必须同时覆盖「输入」与「解释输入的代码」：只按 config.yaml 的 mtime 命中，
+# 升级 argo（归一化逻辑改了）后仍会读回旧逻辑写下的缓存，表现是「升级了没生效」。
+# 故把 config.py 与 yaml_load.py 的源码 mtime 也算进键里（见 _loader_sig）。
+_CONFIG_DISK_CACHE_SCHEMA = 2
+_loader_sig_cache: int | None = None
+
+
+def _loader_sig() -> int:
+    """本模块源码的 mtime_ns —— 磁盘缓存的「代码版本」键（进程内记忆一次）。
+
+    归一化链不只在 config.py：`_load_yaml` 走 yaml_load.py（loader 选择直接
+    影响解析结果）。两处都进签名，改任一处缓存立刻失效——不这么做的话，
+    升级后读回的是旧逻辑写下的结果，表现是「改了没生效」。
+    """
+    global _loader_sig_cache
+    if _loader_sig_cache is None:
+        sig = 0
+        for mod in (Path(__file__), Path(__file__).parent / "yaml_load.py"):
+            try:
+                sig = (sig * 1_000_003 + mod.stat().st_mtime_ns) % (2 ** 62)
+            except OSError:
+                continue
+        _loader_sig_cache = sig
+    return _loader_sig_cache
+
+
+def _config_disk_cache_enabled() -> bool:
+    """落盘缓存开关（默认开）；ARGO_CONFIG_CACHE=0/false/no/off 关闭。
+
+    走 engine_env.env_flag 而不是自己判真假：全仓布尔开关只有这一套口径（它
+    同时认 env 文件里的写法），再写一份 `in {"0","false",...}` 就是又一处会
+    漂移的第二口径。engine_env 只依赖标准库，懒导入避免与 config 成环。
+    """
+    try:
+        from engine_env import env_flag
+        return env_flag("ARGO_CONFIG_CACHE", default=True)
+    except Exception:
+        # 判定链不可用时按「开」处理：缓存是纯性能优化，关掉它不影响正确性，
+        # 而误判为「关」只会让每次调用回到全量解析（旧的既定行为）。
+        return True
+
+
+def _config_disk_cache_path() -> Path:
+    """落盘缓存位置：**引导根目录**，按 config 路径分槽，不依赖配置解析。
+
+    这是解开「自锁」的关键：状态目录（argo_paths.state_root）要靠 config.yaml
+    的 cache.db_path 才能算出来，而缓存的意义正是省掉这次解析——把缓存放进
+    状态目录，就变成了「为了找缓存必须先解析配置」。故放在一个静态可推导的
+    引导位置：ARGO_STATE_DIR（测试/多环境隔离）优先，否则历史默认根。
+
+    文件名按 config.yaml 的绝对路径分槽：同机多份 argo（skills/argo 与一份
+    backup 副本、或两个不同 checkout）共用引导根时，此前会互相顶掉对方的缓存，
+    每次调用都退化成全量解析——命中率归零，收益归零（审计实测 5 次运行 5 次
+    全解析）。分槽后各写各的，键里的 config_path 仍留作第二道校验。
+    """
+    override = os.environ.get(argo_paths.ENV_STATE_DIR, "").strip()
+    root = (Path(os.path.expanduser(override)) if override
+            else argo_paths.legacy_root())
+    slot = hashlib.sha256(str(CONFIG_PATH).encode("utf-8")).hexdigest()[:16]
+    return root / f"config-cache-{slot}.json"
+
+
+def _json_round_trip_safe(obj: Any) -> bool:
+    """配置能否无损过一遍 JSON：字典键必须都是字符串。
+
+    YAML 允许 `1: x` 这样的非字符串键，json.dumps 会静默写成 "1"，回读时键
+    类型已变——缓存不得改变语义，发现这类键就整个不写缓存（退回每次解析）。
+    """
+    if isinstance(obj, dict):
+        return all(isinstance(k, str) and _json_round_trip_safe(v)
+                   for k, v in obj.items())
+    if isinstance(obj, list):
+        return all(_json_round_trip_safe(v) for v in obj)
+    return True
+
+
+def _config_disk_cache_key(st: os.stat_result,
+                           scan: tuple[float, int, int, int]) -> dict[str, Any]:
+    """缓存指纹：凡能改变「解析结果」的输入都要进键。
+
+    - config.yaml 的 (mtime_ns, size, ctime_ns)：mtime/size 覆盖常规改写；
+      ctime 覆盖「等长改写 + `touch -r`/`cp -p` 还原 mtime」这种 mtime 被
+      伪造的写法（内核维护的 ctime 用户态改不回去）。
+    - 外置声明指纹 (max_mtime, 文件数, 总字节, max_ctime)：**只取 max_mtime
+      对删除与 `cp -p` 是盲的**——删掉一个不是最新的声明、或拷进来一个时间戳
+      很旧的声明，max 都不变，缓存会继续给出一份「引擎删了还在 / 加了不生效」
+      的配置。文件数、总字节对集合变化敏感，ctime 对「改写后还原 mtime」敏感。
+    - loader_sig：解释这份配置的代码变了（归一化逻辑改了）也要失效，
+      否则升级后读回的是旧逻辑写下的结果。
+    - home：`~` 展开依赖 HOME，同一个 ARGO_STATE_DIR 下换 HOME 会拿到
+      上一个 HOME 的展开路径。
+    """
+    return {
+        "config_path": str(CONFIG_PATH),
+        "config_mtime_ns": st.st_mtime_ns,
+        "config_size": st.st_size,
+        "config_ctime_ns": st.st_ctime_ns,
+        "ext_mtime": scan[0],
+        "ext_files": scan[1],
+        "ext_bytes": scan[2],
+        "ext_ctime_ns": scan[3],
+        "loader_sig": _loader_sig(),
+        "home": os.path.expanduser("~"),
+    }
+
+
+def _config_db_path_key(st: os.stat_result) -> tuple[str, int, int, int]:
+    """db_path 只取决于 config.yaml 本身，故它的键只看这份文件的四个字段
+    （不含 ext_mtime——那要多扫一轮 engines/ 才拿得到，为读一个路径不值）。
+
+    带上 ctime_ns：mtime 可以被 `touch -r` / `cp -p` / `tar -x` 原样还原，
+    而 ctime 由内核在每次写入 inode 元数据时更新、用户态改不回去。少了它，
+    「等长改写 + 还原 mtime」就能让缓存与解析两条路径各说各话（审计实测）。
+    """
+    return (str(CONFIG_PATH), st.st_mtime_ns, st.st_size, st.st_ctime_ns)
+
+
+def _looks_like_config(cfg: Any) -> bool:
+    """缓存载荷的结构自检：不可信输入不得让加载链崩掉。
+
+    缓存文件可能被外部改写、写坏、或来自结构已变的版本（schema 只防我们自己
+    升格式，防不了手工编辑）。`engines` 被改成字符串这类结构损坏，会让下游
+    `cfg.get("engines", {}).items()` 抛 AttributeError——表现是「每条命令都崩
+    且看不出跟缓存有关」，用户无从知道要删哪个文件。结构不符一律当「没有缓存」
+    退回解析链（解析链随后会重写这份缓存，自愈）。
+    """
+    if not isinstance(cfg, dict):
+        return False
+    for key in ("engines", "domains", "cache", "execution", "network", "output"):
+        if key in cfg and not isinstance(cfg[key], (dict, list)):
+            return False
+    return True
+
+
+_disk_cache_memo: tuple[tuple[str, int, int, int], dict[str, Any] | None] | None = None
+
+
+def _disk_cache_payload() -> dict[str, Any] | None:
+    """读落盘缓存文件的原始载荷（进程内按 config.yaml 的 stat 记忆）。
+
+    peek 与 load_config 都从这里取，一次进程最多读盘一次；读取失败（无缓存 /
+    损坏 / 被裁剪）一律返回 None，由调用方走完整解析链。
+    """
+    global _disk_cache_memo
+    if not _config_disk_cache_enabled():
+        return None
+    try:
+        st = CONFIG_PATH.stat()
+    except OSError:
+        return None
+    key = _config_db_path_key(st)
+    if _disk_cache_memo is not None and _disk_cache_memo[0] == key:
+        return _disk_cache_memo[1]
+    payload: dict[str, Any] | None = None
+    try:
+        raw = json.loads(_config_disk_cache_path().read_text(encoding="utf-8"))
+        if (isinstance(raw, dict)
+                and raw.get("schema") == _CONFIG_DISK_CACHE_SCHEMA
+                and isinstance(raw.get("key"), dict)
+                and isinstance(raw.get("config"), dict)):
+            payload = raw
+    except (OSError, ValueError):
+        payload = None
+    _disk_cache_memo = (key, payload)
+    return payload
+
+
+def _load_config_disk_cache(st: os.stat_result,
+                           scan: tuple[float, int, int, int]) -> dict[str, Any] | None:
+    """取落盘配置缓存；指纹不完全匹配或结构不对则返回 None（走完整解析链）。"""
+    raw = _disk_cache_payload()
+    if raw is None or raw.get("key") != _config_disk_cache_key(st, scan):
+        return None
+    cfg = raw.get("config")
+    return cfg if _looks_like_config(cfg) else None
+
+
+def _peek_disk_cache_db_path(st: os.stat_result) -> tuple[bool, str | None]:
+    """从落盘缓存里取 cache.db_path → (命中, db_path)。
+
+    命中时 import 链上的路径派生（argo_paths）连 YAML 都不用解析——这是冷启动
+    固定开销里最后一块可省的重复劳动：config.yaml 有 123 KB，C 版 loader 解析
+    一遍约 20 ms，而派生只需要里面一个标量。
+
+    **必须校验 (config_path, mtime_ns, size, ctime_ns)**：db_path 是状态目录的
+    源头（argo_paths.state_root），只比 config_path 会漏掉「配置改了但缓存文件
+    还在」的窗口——peek 拿到旧路径、load_config 拿到新路径，两处口径分裂，
+    长驻进程整个生命周期都会把状态文件写到旧目录（审计实测复现）。外置声明
+    指纹不在此校验：db_path 只由 config.yaml 本身决定。
+
+    返回的路径与走 YAML 时**同为展开后的形式**（~ 已展开）：两条分支口径必须
+    一致，否则同一个进程里先命中缓存、后走解析会拿到两种形态，给未来的调用者
+    埋雷（当前唯一消费者 argo_paths 会再 expanduser 一次，所以现在看不出来）。
+    """
+    raw = _disk_cache_payload()
+    if raw is None:
+        return False, None
+    key = raw.get("key") or {}
+    path, mtime_ns, size, ctime_ns = _config_db_path_key(st)
+    if (key.get("config_path"), key.get("config_mtime_ns"),
+            key.get("config_size"), key.get("config_ctime_ns")) != (
+            path, mtime_ns, size, ctime_ns):
+        return False, None
+    cfg = raw.get("config")
+    if not _looks_like_config(cfg):
+        return False, None
+    cache_cfg = cfg.get("cache")
+    if not isinstance(cache_cfg, dict):
+        return True, None
+    db_path = cache_cfg.get("db_path")
+    return True, (os.path.expanduser(str(db_path)) if db_path else None)
+
+
+def _save_config_disk_cache(st: os.stat_result, scan: tuple[float, int, int, int],
+                            config: dict[str, Any]) -> None:
+    """原子写落盘缓存；任何失败静默（只读环境退回每次解析的老路）。
+
+    存的是**归一化后、校验前**的配置：`_validate_engine_paths` 的结论依赖
+    运行环境（该机器 PATH 上有没有这个 CLI、文件在不在），必须每次现算——
+    把「已禁用」的结论一起缓存，会让在 A 机器（缺某 CLI）写下的判定被 B 机器
+    读成事实，正是这套配置里最忌讳的「结论当输入存」。
+    """
+    global _disk_cache_memo
+    if not _config_disk_cache_enabled() or not _json_round_trip_safe(config):
+        return
+    payload = {
+        "schema": _CONFIG_DISK_CACHE_SCHEMA,
+        "key": _config_disk_cache_key(st, scan),
+        "config": config,
+    }
+    path = _config_disk_cache_path()
+    try:
+        # 原子写走 argo_paths 的单一真源（mkstemp 唯一 tmp + os.replace 的
+        # 正确性在一处维护，多进程并行写同一目标不会互相搬走 tmp）
+        argo_paths.atomic_write_json(path, payload, indent=None)
+    except (OSError, TypeError, ValueError):
+        # TypeError：YAML 里的日期/自定义类型无法进 JSON——整份跳过，不降级
+        # 成 default=str（那会静默改变类型语义）
+        _disk_cache_memo = None
+        return
+    # 刚写的这份就是本进程的最新真值，直接填入记忆，省掉一次回读
+    _disk_cache_memo = (_config_db_path_key(st), payload)
 
 
 def load_config(force: bool = False) -> dict[str, Any]:
     """加载配置，支持热加载；合并 engines/*.yaml 外置声明。"""
-    global _config_cache, _config_mtime, _config_load_error
+    global _config_cache, _config_mtime, _config_load_error, _stamp_cache
     try:
-        mtime = CONFIG_PATH.stat().st_mtime
+        st = CONFIG_PATH.stat()
+        mtime = st.st_mtime
     except OSError:
         if _config_cache is None:
             base = _validate_engine_paths(_expand_value(json.loads(json.dumps(DEFAULT_CONFIG))))
             _config_cache = _merge_external_engines(base)
         return _config_cache
 
-    ext_mtime = _external_engines_mtime()
+    # force=True 表示调用方明确要立即重读（如 --check、测试改写配置后），
+    # 此时绕过 TTL 记忆直接扫盘，保证强制刷新语义不被记忆化延迟。
+    scan = (_external_engines_scan_uncached() if force
+            else _external_engines_scan())
+    ext_mtime = scan[0]
     combined_mtime = max(mtime, ext_mtime)
+
+    if force:
+        # force 语义必须贯穿**所有**同级缓存，否则重读与快照脱节：外置声明
+        # 指纹记忆留着旧值 → 本函数下一次非 force 调用按旧值判定「没变」；
+        # stamp 记忆留着旧值 → 1 秒内 get_registry() 仍按旧 stamp 决定要不要
+        # 重建，于是「--check 之后立刻搜索」拿到的注册表与刚重读的配置不是
+        # 一个版本。两者都已在本函数里算出来了，直接回填，不额外扫盘。
+        _remember_ext_scan(scan)
+        if _stamp_ttl() > 0:
+            _stamp_cache = (time.monotonic(), combined_mtime)
 
     if not force and _config_cache is not None and combined_mtime == _config_mtime:
         return _config_cache
 
+    # 跨进程缓存：force 不读（调用方明确要求重读，不许拿旧结论）。
+    # 整段包 try：缓存是加速器不是依赖，结构被外部改写之类的问题必须退化成
+    # 「走一遍完整解析」，绝不能把异常抛给每个调用方（那种表现是「CLI 每次都崩、
+    # 且看不出跟缓存有关」，用户无从知道要删哪个文件）。
+    if not force:
+        try:
+            disk = _load_config_disk_cache(st, scan)
+            if disk is not None:
+                _config_cache = _validate_engine_paths(disk)
+                _config_mtime = combined_mtime
+                _config_load_error = None
+                return _config_cache
+        except Exception:
+            pass
+
     try:
-        text = CONFIG_PATH.read_text(encoding="utf-8")
-        parsed = _load_yaml(text)
+        # 与 peek_cache_db_path 共享同一次解析（同一份 123 KB 文本此前各解析
+        # 一遍，纯属重复劳动）
+        _ok, parsed, err = _read_config_yaml()
+        if err:
+            _config_load_error = err
         if parsed:
             expanded = _expand_value(parsed)
             resolved = _resolve_relative_paths(expanded)
@@ -306,9 +670,10 @@ def load_config(force: bool = False) -> dict[str, Any]:
             # 外置 spec 的 cmd 是相对路径 → 合并后必须再解析一次，
             # 否则它们永远保持相对（且校验随 CWD 漂移）
             resolved = _resolve_relative_paths(resolved)
+            _save_config_disk_cache(st, scan, resolved)
             _config_cache = _validate_engine_paths(resolved)
             _config_mtime = combined_mtime
-            _config_load_error = None
+            _config_load_error = err
         elif _config_cache is None:
             base = _validate_engine_paths(_resolve_relative_paths(_expand_value(json.loads(json.dumps(DEFAULT_CONFIG)))))
             _config_cache = _merge_external_engines(base)
@@ -372,33 +737,53 @@ def get_domains(config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     return cfg.get("domains", [])
 
 
-# peek 结果记忆化：key = config.yaml 的 (mtime_ns, size)。
+# 解析结果记忆化：key = config.yaml 的 (mtime_ns, size)。
 # import 期的状态目录派发会连调 4 次（quota / adaptive / argo_engine_registry /
 # cache 各自的模块级常量），此前每次重解析一遍 123 KB 配置——实测 4×~79 ms。
 # 配置被改写（mtime 或 size 变）即失效，语义与逐次读盘一致。
-_peek_db_path_cache: tuple[tuple[int, int], str | None] | None = None
+#
+# 这份解析结果是 peek 与 load_config **共用**的：两处此前各解析一遍同一份
+# 123 KB 文本（C 版 loader 实测约 20 ms/遍），等于每个进程白付一遍。
+_parsed_yaml_cache: tuple[tuple[int, int], dict[str, Any] | None] | None = None
 
 
-def _peek_cache_db_path_read() -> tuple[bool, str | None]:
-    """真正解析一次 → (解析链可用, db_path)。不可用时调用方不写记忆。"""
+def _read_config_yaml() -> tuple[bool, dict[str, Any] | None, str | None]:
+    """读并解析 config.yaml，按 (mtime_ns, size) 记忆化。
+
+    返回 (可记忆, 解析结果, 错误信息)：
+
+    - 可记忆=False 表示读取/解析链不可用（文件缺失、配置损坏），调用方不得
+      写记忆——一次瞬时故障不该固化成本进程的永久 None（原 peek 契约）。
+    - 解析结果按原样缓存，**调用方只读**：load_config 先 _expand_value 出副本
+      再归一化，所以缓存对象不会被就地改写。
+    - PyYAML 缺失仍抛 ImportError，由 load_config 给出安装提示（原先它对
+      ImportError 与 YAMLError 是两种处置）。
+    """
+    global _parsed_yaml_cache
+    try:
+        st = CONFIG_PATH.stat()
+    except OSError as e:
+        return False, None, f"config.yaml 不可读：{e}"
+    key = (st.st_mtime_ns, st.st_size)
+    if _parsed_yaml_cache is not None and _parsed_yaml_cache[0] == key:
+        return True, _parsed_yaml_cache[1], None
     try:
         text = CONFIG_PATH.read_text(encoding="utf-8")
-    except OSError:
-        return False, None
+    except OSError as e:
+        return False, None, f"config.yaml 读取失败：{e}"
     try:
         parsed = _load_yaml(text)
-    except Exception:
-        # 含 yaml.YAMLError（ParserError 等）——它不是 ValueError 的子类，
+    except ImportError:
+        raise
+    except Exception as e:
+        # 含 yaml.YAMLError（ParserError 等）——它不是 ValueError 的子类。
         # 此前只 catch (ImportError, ValueError) 会让「配置损坏」直接抛出，
-        # 与本文档声明的 fail-open 契约不符（2026-09-15 实测确认）。
-        return False, None
+        # 与 fail-open 契约不符（2026-09-15 实测确认）。
+        return False, None, f"config.yaml 解析失败：{type(e).__name__}: {e}"
     if not isinstance(parsed, dict):
-        return True, None
-    cache_cfg = parsed.get("cache")
-    if not isinstance(cache_cfg, dict):
-        return True, None
-    db_path = cache_cfg.get("db_path")
-    return True, (str(db_path) if db_path else None)
+        parsed = None
+    _parsed_yaml_cache = (key, parsed)
+    return True, parsed, None
 
 
 def peek_cache_db_path() -> str | None:
@@ -414,26 +799,37 @@ def peek_cache_db_path() -> str | None:
     「一次合并约 0.1 s，而 import 链上被连调 4 次」而非单次 1.7 s。数字已按
     可复现口径改写。）
     语义与 get_cache_config() 的 db_path 字段保持一致：用户未配置返回 None
-    （由调用方回退 state_path）；~ 展开由调用方做（与 load_config 链路相同，
-    _resolve_relative_paths 不触碰 db_path，故此处无需复制该步骤）。
+    （由调用方回退 state_path）。返回值统一是**展开后的形式**（`~` 已展开）：
+    缓存命中与走解析两条分支必须同一口径，调用方再 expanduser 一次也无副作用。
     PyYAML 缺失 / 配置损坏时 fail-open 返回 None，与 _config_db_path 契约一致。
 
-    结果按 config.yaml 的 (mtime_ns, size) 记忆化：同一进程内多次调用只解析
-    一次。解析链不可用时（PyYAML 缺失 / 配置损坏）不写记忆，下次调用仍会重试，
-    避免把一次瞬时故障固化成本进程的永久 None。
+    结果按 config.yaml 的 (mtime_ns, size, ctime_ns) 记忆化：同一进程内多次
+    调用只解析一次（与 load_config 共享同一份解析结果，见 _read_config_yaml）。
+    解析链不可用时（PyYAML 缺失 / 配置损坏）不写记忆，下次调用仍会重试，避免
+    把一次瞬时故障固化成本进程的永久 None。
+
+    落盘缓存命中时**连 YAML 都不解析**：db_path 只取决于 config.yaml 本身，
+    而缓存键里已经记着这份文件的 stat，与逐次读盘语义一致。缓存未命中或停用
+    （ARGO_CONFIG_CACHE=0）则照旧走解析链。
     """
-    global _peek_db_path_cache
     try:
         st = CONFIG_PATH.stat()
     except OSError:
         return None
-    key = (st.st_mtime_ns, st.st_size)
-    if _peek_db_path_cache is not None and _peek_db_path_cache[0] == key:
-        return _peek_db_path_cache[1]
-    ok, value = _peek_cache_db_path_read()
-    if ok:
-        _peek_db_path_cache = (key, value)
-    return value
+    hit, db_path = _peek_disk_cache_db_path(st)
+    if hit:
+        return db_path
+    try:
+        ok, parsed, _err = _read_config_yaml()
+    except ImportError:
+        return None
+    if not ok or not isinstance(parsed, dict):
+        return None
+    cache_cfg = parsed.get("cache")
+    if not isinstance(cache_cfg, dict):
+        return None
+    db_path = cache_cfg.get("db_path")
+    return os.path.expanduser(str(db_path)) if db_path else None
 
 
 def get_cache_config(config: dict[str, Any] | None = None) -> dict[str, Any]:

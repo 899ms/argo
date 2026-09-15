@@ -181,6 +181,61 @@ def _duplicate_dict_keys(paths: list[Path]) -> list[str]:
     return problems
 
 
+def _authorization_flags_are_explicit(paths: list[Path]) -> list[str]:
+    """授权类布尔开关必须写明 `expand=False, strict=True`。
+
+    为什么这道门禁要存在（2026-09-15 审查发现）：`env_flag` 走 `get_env`，而
+    单名字符串会展开成「原名 + 去前缀裸名」候选链——这是给密钥准备的便利
+    （`X_API_KEY` 与 `ARGO_X_API_KEY` 都认）。落在**授权位**上就变成了授权扩张：
+    `ARGO_ALLOW_RECOMPUTE` 是「允许 argo 在受限子进程里执行脚本」的放行位，
+    展开后环境里任何一个工具随手设的 `ALLOW_RECOMPUTE=1`（少写前缀的一个无关
+    变量）就等于替用户放行了。
+
+    另一项 `strict=True`（只认 1/true/yes/on/y/t 这类明确真值）同样必要：默认
+    口径是「非关即开」，对能力开关没问题（最坏换个行为），对授权位就是「拼错
+    的值一律放行」——`ARGO_ALLOW_RECOMPUTE=0x0`、`=maybe`、`=ture` 都会授权。
+
+    判据：调用名 `env_flag`、第一个实参是以 `ARGO_ALLOW_` 开头的字符串字面量
+    时，必须同时显式写 `expand=False` 与 `strict=True`。能力开关（超时、并发、
+    渲染降级）不受此限——它们的别名容忍度与宽松取值是特性，误触后果只是换个
+    行为，不是放行。
+    """
+    problems: list[str] = []
+    want = {"expand": False, "strict": True}
+    for path in paths:
+        if not path.is_file():
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError:
+            continue  # 语法错误由 ruff/E9 报，这里不重复
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else (
+                func.attr if isinstance(func, ast.Attribute) else "")
+            if name != "env_flag" or not node.args:
+                continue
+            first = node.args[0]
+            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+                continue
+            if not first.value.startswith("ARGO_ALLOW_"):
+                continue
+            kw = {k.arg: k.value for k in node.keywords if k.arg}
+            missing = [
+                f"{key}={val}"
+                for key, val in want.items()
+                if not (isinstance(kw.get(key), ast.Constant)
+                        and kw[key].value is val)
+            ]
+            if missing:
+                problems.append(
+                    f"{_rel(path)}:{node.lineno} 授权开关 {first.value} 未写明 "
+                    f"{'、'.join(missing)}——授权只能认字面名与明确真值")
+    return problems
+
+
 def _rel(path: Path) -> str:
     """相对仓库根的路径：子目录递归后 path.name 会与顶层同名文件混淆。"""
     try:
@@ -266,6 +321,14 @@ class TestStaticLintGate(unittest.TestCase):
             "字典字面量存在重复键（后者静默覆盖前者）：\n  "
             + "\n  ".join(problems))
 
+    def test_authorization_flags_use_exact_names(self):
+        """授权开关必须 expand=False + strict=True：别名展开与宽松取值都是授权扩张。"""
+        problems = _authorization_flags_are_explicit(_iter_target_files())
+        self.assertEqual(
+            problems, [],
+            "授权类开关没写明 expand/strict（少写前缀的变量、拼错的值都可能放行）：\n  "
+            + "\n  ".join(problems))
+
     def test_no_ruff_findings(self):
         """ruff 引擎：覆盖 RULES 全量规则。ruff 不可用时跳过（不阻塞）。"""
         findings = _ruff_findings(TARGETS)
@@ -291,6 +354,26 @@ class TestStaticLintGate(unittest.TestCase):
             problems = _duplicate_dict_keys([bad])
         self.assertEqual(len(problems), 1, f"造错样本没被抓住：{problems}")
         self.assertIn("alpha", problems[0])
+
+    def test_gate_has_teeth_authorization_rule(self):
+        """造一个漏写 expand/strict 的授权开关，两种写法都必须被抓住。"""
+        with tempfile.TemporaryDirectory() as td:
+            bad = Path(td) / "bad_flag.py"
+            bad.write_text(
+                "from engine_env import env_flag\n\n"
+                "def a():\n"
+                "    return env_flag('ARGO_ALLOW_RECOMPUTE', default=False)\n\n"
+                "def b():\n"
+                "    return env_flag('ARGO_ALLOW_RECOMPUTE', default=False, expand=False)\n\n"
+                "def ok_capability():\n"
+                "    return env_flag('ARGO_FETCH_JINA')\n\n"
+                "def ok_auth():\n"
+                "    return env_flag('ARGO_ALLOW_RECOMPUTE', default=False,\n"
+                "                    expand=False, strict=True)\n",
+                encoding="utf-8")
+            problems = _authorization_flags_are_explicit([bad])
+        self.assertEqual(len(problems), 2, f"造错样本没被抓住：{problems}")
+        self.assertTrue(all("ARGO_ALLOW_RECOMPUTE" in p for p in problems))
 
     def test_gate_has_teeth_ruff_engine(self):
         """造一个用未导入 `Any` 的样本，ruff 必须抓住（对应本次修复的缺陷）。"""
