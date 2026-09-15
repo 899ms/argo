@@ -85,10 +85,10 @@ class TestAtomicWrite:
     def test_helper_survives_unlocked_concurrent_writers(self):
         """不带文件锁的并发写：atomic_write_json 自身必须零崩溃。
 
-        这一条针对的是**原语**而非调用方。`quota.record_many` 有 file_lock
-        串行化，会把「固定 tmp 名」的 bug 掩盖掉——但该原语还被熔断器、
-        语言偏好、v2ex 缓存直接使用，它们没有外层锁。所以必须在原语层
-        独立证明唯一 tmp 名生效。
+        这一条测的是 `atomic_write_json` 这个函数本身，而不是它的调用方。
+        `quota.record_many` 有 file_lock 串行化，会把「固定 tmp 名」的 bug
+        掩盖掉——但熔断器、语言偏好、v2ex 缓存都直接用它，外面没有锁。
+        所以要在这里单独证明「每次写入都换一个临时文件名」确实生效。
 
         用真实子进程（spawn）：同进程线程复现不出这个 bug。
         旧实现（`str(path) + ".tmp"`）实测 8 进程 × 200 次 = 崩溃 1032 次。

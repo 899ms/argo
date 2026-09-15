@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""local-seek 评估体系：断言式回归测试。
+"""local-seek 评估体系：检查式回归测试。
 
-把「手工验证过的行为」固化为可重复的断言集，防止后续改动破坏既有能力。
+把「手工验证过的行为」固化为可重复的检查集，防止后续改动破坏既有能力。
 仿 netresearch/file-search-skill 的 evals 思路，但直接在真实语料上跑 seek.py。
 
 自污染防护：eval_seek.py 自身位于语料 ~/.agents/skills 内，且用例 args 里
@@ -14,7 +14,7 @@
   python3 eval_seek.py --filter 扩展  # 只跑名称含「扩展」的用例
   python3 eval_seek.py --list         # 列出所有用例
 
-断言类型：
+检查类型：
   expect_rc       期望退出码（未命中/报错为 1，正常命中为 0）
   expect_hit      输出必须包含的片段（通常是被命中的文件路径）
   expect_no_hit   输出必须不包含的片段（回归防噪音）

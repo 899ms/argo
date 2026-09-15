@@ -26,6 +26,12 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+# 出口调度唯一入口（issue #13 同类修复）：urlopen 不认 config.yaml 的
+# network.proxy，裸用会在「必须经代理才能出网」的环境里整源连不上。
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from net_proxy import open_url  # noqa: E402
+
 FXTWITTER_BASE = "https://api.fxtwitter.com"
 USER_AGENT = "argo-search/1.0 (+https://github.com/taxueseek/argo; fxtwitter)"
 
@@ -56,7 +62,7 @@ def _http_get_with_retry(
     for attempt in range(max_retries + 1):
         try:
             req = urllib.request.Request(url, headers=hdrs)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with open_url(req, timeout=timeout) as resp:
                 return resp.read(), resp.status
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < max_retries:

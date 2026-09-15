@@ -173,7 +173,7 @@ class TestDossierContract(unittest.TestCase):
 
 
 class TestLocalFileInputs(unittest.TestCase):
-    """file_inputs 白名单校验（fail-closed）。"""
+    """file_inputs 白名单校验（默认拒绝）。"""
 
     def _write(self, tmp_dir: str, name: str, text: str) -> str:
         p = Path(tmp_dir) / name

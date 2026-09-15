@@ -43,14 +43,14 @@ class TestEnvAliasConsistency(unittest.TestCase):
         self.assertEqual(problems, [], "别名不一致（#12 同类）:\n  " + "\n  ".join(problems))
 
     def test_gate_has_teeth(self):
-        """变异验证：把 exa 行改回只读旧名，门禁必须报红。"""
+        """故意造错验证：把 exa 行改回只读旧名，门禁必须报红。"""
         exa = SCRIPTS / "engines_builders_tech.py"
         src = exa.read_text(encoding="utf-8")
         patched = src.replace(
             'get_env(["ARGO_EXA_API_KEY", "EXA_API_KEY"])',
             'os.environ.get("EXA_API_KEY", "")').replace(
             "ARGO_EXA_API_KEY", "")  # 文案/注释里的新名提及一并抹掉
-        self.assertNotEqual(patched, src, "变异源未生效，测试本身失效")
+        self.assertNotEqual(patched, src, "造错样本没生效，测试本身失效")
         exa.write_text(patched, encoding="utf-8")
         try:
             found = []
@@ -58,7 +58,7 @@ class TestEnvAliasConsistency(unittest.TestCase):
             for m in _DIRECT_READ.finditer(s):
                 if m.group(1) == "EXA_API_KEY" and "ARGO_EXA_API_KEY" not in s:
                     found.append(m.group(1))
-            self.assertTrue(found, "变异后门禁未捕获——门禁无牙")
+            self.assertTrue(found, "造错之后检查没抓住——等于没检查")
         finally:
             exa.write_text(src, encoding="utf-8")
 

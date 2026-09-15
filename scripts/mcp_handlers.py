@@ -53,7 +53,7 @@ _LOCAL_READ_ALLOWED_EXTS = {
 
 
 def _local_read_whitelist() -> list[str]:
-    """白名单目录：ARGO_LOCAL_READ_DIRS（逗号分隔）；未配置返回空（fail-closed）。"""
+    """白名单目录：ARGO_LOCAL_READ_DIRS（逗号分隔）；没配置就返回空，不放行。"""
     raw = (os.environ.get("ARGO_LOCAL_READ_DIRS") or "").strip()
     if not raw:
         return []
@@ -72,7 +72,7 @@ def _local_read_preview(
     allowed = _local_read_whitelist()
     if not allowed:
         raise PermissionError(
-            "本地读取未配置白名单：设 ARGO_LOCAL_READ_DIRS=目录1,目录2（fail-closed）"
+            "本地读取未配置白名单：设 ARGO_LOCAL_READ_DIRS=目录1,目录2（没配置就不放行）"
         )
     if not any(root == d or root.startswith(d + os.sep) for d in allowed):
         raise PermissionError(f"路径不在白名单目录内: {path}")
@@ -635,7 +635,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             }, pretty=pretty)
 
         elif name == "argo_local_read":
-            # 白名单本地文本预览（非联网）：分析本地数据/研究成果用；fail-closed
+            # 白名单本地文本预览（非联网）：分析本地数据/研究成果用；没配置就不放行
             raw_path = str(arguments.get("path", "")).strip()
             max_chars = max(200, min(int(arguments.get("max_chars", 4000) or 4000), 20000))
             line_start = arguments.get("line_start")
@@ -661,7 +661,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             }, pretty=pretty)
 
         elif name == "argo_recompute":
-            # fail-closed 可复算执行器：受限子进程运行计算脚本，验证数值。
+            # 可复算执行器（默认拒绝）：受限子进程运行计算脚本，验证数值。
             # 默认拒绝（allow_exec=false / ARGO_ALLOW_RECOMPUTE 未设），返回 skipped_reason。
             script = str(arguments.get("script", "")).strip()
             inputs_raw = arguments.get("file_inputs")

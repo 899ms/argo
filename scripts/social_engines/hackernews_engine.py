@@ -12,6 +12,13 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+# 出口调度唯一入口（issue #13 同类修复）：urlopen 不认 config.yaml 的
+# network.proxy，裸用会在「必须经代理才能出网」的环境里整源连不上。
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from net_proxy import open_url  # noqa: E402
+
 HN_API = "https://hn.algolia.com/api/v1/search"
 
 
@@ -20,7 +27,7 @@ def _http_get(url: str, timeout: int = 10) -> bytes:
         url,
         headers={"User-Agent": "argo-search/1.0 (+https://github.com/taxueseek/argo)", "Accept": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with open_url(req, timeout=timeout) as resp:
         return resp.read()
 
 

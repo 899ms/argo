@@ -33,6 +33,8 @@ except ImportError:  # pragma: no cover
     def check_url(url: str) -> tuple[bool, str]:
         return True, ""
 
+from engine_env import env_flag  # 布尔开关统一判断（见 env_flag 的说明）
+
 
 # robots.txt 进程内缓存：key=(scheme, host)，TTL 1 小时
 _CACHE_TTL = 3600
@@ -45,8 +47,7 @@ _ROBOTS_UA = "argo-fetch (+respect-robots; local research agent)"
 
 def _robots_enabled() -> bool:
     """开关：ARGO_RESPECT_ROBOTS=0 关闭，默认开启。"""
-    return os.environ.get("ARGO_RESPECT_ROBOTS", "1").strip() not in (
-        "0", "false", "False", "no")
+    return env_flag("ARGO_RESPECT_ROBOTS")
 
 
 def _domain_key(url: str) -> tuple[str, str]:

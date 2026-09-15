@@ -12,7 +12,7 @@
   _sufficient_internal（wave-1/wave-2）与串行 break；只影响「是否早停」，
   不丢弃结果，最坏代价多跑一个引擎。
 
-本文件三层断言（全部离线，mock 引擎）：
+本文件三层检查（全部离线，mock 引擎）：
   1. 守卫单元：当日事故样本（mdn 垃圾）必须被判「不充分」；好结果不误伤；
      CJK fail-open；min_results 答案型语义不动。
   2. 执行集成：真实 route_query 决策 + mock 引擎，垃圾首引擎 → 次引擎

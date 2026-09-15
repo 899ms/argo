@@ -38,12 +38,12 @@ python3 scripts/search.py "查询词" --verify 3            # 核验 top-3 并�
 python3 scripts/research.py "复杂问题" --json            # 取证包（扩词或多工作包 → dossier）
 ```
 
-`--no-envelope` 去掉归档用的候选封套与 sources 投影（URL 与 results 全重），输出体积减半以上；`--fields agent` 再剥遥测字段只留答案（fetch_required 保留）。要归档（`--archive`）或
-需要 provenance 时才不加。三个视图分工（`results` 答案 / `sources` 引用 /
+`--no-envelope` 去掉归档用的候选列表与 sources 投影（URL 与 results 全重），输出体积减半以上；`--fields agent` 再剥掉遥测字段只留答案（fetch_required 保留）。要归档（`--archive`）或
+需要来源追溯时才不加。三个视图分工（`results` 答案 / `sources` 引用 /
 `candidates` 归档）、全量字段、以及 `--list-engines --detail` 的体积陷阱见
 `references/usage.md`。
 
-深度研究只走这一条路径。机器产出 **dossier**（来源/覆盖/缺口/门禁），不是判断稿。Agent 先读 `references/research-protocol.md`，写出工作包再取证；判断按事实/推断/建议写。不要另装「专业深度研究」skill。
+深度研究只此一条。机器产出**取证包（dossier）**：来源、覆盖、缺口、是否达标，不是判断稿。Agent 先读 `references/research-protocol.md`，写出工作包再取证；判断按事实/推断/建议写。不要另装「专业深度研究」skill。
 
 ## 核心命令
 
@@ -64,12 +64,12 @@ python3 scripts/research.py "复杂问题" --json            # 取证包（扩�
 ### 增强三工具
 
 ```bash
-# research — 取证（扩词或 --work-packages → dossier + citations + 可判定门禁）
-#   工作包可带 file_inputs（本地一手数据入账）+ recompute（可复算脚本，fail-closed 授权）
+# research — 取证（扩词或 --work-packages → 取证包 + 引用 + 达标检查）
+#   工作包可带 file_inputs（本地一手数据入账）+ recompute（可复算脚本，默认拒绝，需显式授权）
 #   社交舆情：--mode social-sentiment --platforms xiaohongshu,reddit,twitter
 python3 scripts/research.py "查询" [--work-packages PATH|JSON] [--depth deep] [--json] [--verify N]
 
-# evidence — 可信度评估（Selection×Absorption）
+# evidence — 可信度评估（选拔×吸收两维）
 echo '{"results": [...]}' | python3 scripts/evidence.py "查询词" --stdin --json [--high-stakes]
 
 # clarify — 意图消歧
@@ -96,11 +96,11 @@ argo watch add|check|list|remove   # 观察模式：快照+变化检测（check 
 3. **SERP 链**（baidu/s、sogou/link）：禁止当正文来源
 4. **社交帖**：叙事/舆情，不进事实真值
 5. **深度研究**：先读 `references/research-protocol.md`；有决策含义就交工作包，不要靠扩词充问题树；`quality_gate_results.passed=false` 必须降级表述
-6. **上下文纪律**：Agent 搜索用 `--json --no-envelope --fields agent`、按需 `-n`（超 10 无收益）；要 provenance/归档才用 envelope 模式（sources/candidates 只在那里）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会吐约 22 KB
+6. **上下文纪律**：Agent 搜索用 `--json --no-envelope --fields agent`、按需 `-n`（超 10 无收益）；要来源追溯或归档才用 envelope 模式（sources/candidates 只在那里）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会输出约 22 KB
 
 ## 证据闭环（v2.8.0）
 
-搜索输出自带可编程门控，回答「现在能不能下结论」：`fetch_required`（高后果域为
+搜索输出自带可编程判定开关，回答「现在能不能下结论」：`fetch_required`（高后果域为
 true，下结论前必须核验正文）、`evidence_loop.suggested/verified_count/pending_count`、
 每条结果的 `fetch_suggested` / `has_fetched_evidence` / `post_fetch_absorption`。
 字段语义见 `references/usage.md`。
@@ -112,18 +112,18 @@ python3 scripts/search.py "贵州茅台股价" --verify 3
 
 ## 按需读取（低频操作细节）
 
-以下内容不每次必读，按需打开对应参考。日常搜索/抓取/深度研究走上面核心命令即可。
+以下按需打开；日常搜索/抓取/研究走上面核心命令即可。
 
 | 场景 | 读什么 |
 |------|--------|
 | MCP 工具全清单 / 多客户端注入 / DSH 插件接入 / 配额·TinyFish / 子技能 / 本地打通 / 工程纪律 | `references/operations.md` |
 | 参数大全、三大工具输出字段、子技能细节 | `references/usage.md` |
-| 深度研究协议：契约、工作包、dossier vs 判断稿、可判定门禁 | `references/research-protocol.md` |
-| 契约 / 工作包 / 判断稿骨架 | `references/research-templates.md` |
+| 深度研究协议：约定、工作包、取证包 vs 判断稿、达标检查 | `references/research-protocol.md` |
+| 约定 / 工作包 / 判断稿模板 | `references/research-templates.md` |
 | 引擎全景：垂直域/社交/学术/本地引擎表 + 路由规则 | `references/engines.md` |
 | 学术检索：查询构造（arXiv/S2/GS 语法）、相关性五因子排序、引用网络挖掘、学术反模式与证据分级 | `references/academic-query.md` |
 | 架构：文件结构、证据流水线、量化公式、输出 JSON Schema、内容质量信号 | `references/architecture.md` |
 | MCP 多客户端注入详解 | `docs/MCP_SETUP.md` |
 | **搜索源使用文档**：全量清单（费用 / 密钥 / 状态 / 域组合）+ 特别能力 + 打开方式 | `docs/ENGINE_CATALOG.md`（生成，勿手改） |
 
-> 工程纪律（单一真源：代码真源=本仓库、引擎声明真源=config.yaml、宿主入口用 link_source.py symlink、新增搜索源流程）见 `references/operations.md` 末尾。
+> 工程纪律（每个事实只定义一处：代码看本仓库、引擎声明看 config.yaml、宿主入口用 link_source.py 建软链、新增源流程）见 `references/operations.md` 末尾。

@@ -79,6 +79,11 @@ if __name__ == '__main__':
     p.add_argument('target', nargs='?', metavar='URL')
     p.add_argument('--url')
     p.add_argument('--mode', default='all', choices=['tables','metadata','jsonld','all'])
+    # 同 crawl：bin/argo 的 usage 承诺 Common flags「--json」，此前 parser 里
+    # 没有它，照文档传参报 unrecognized arguments。默认 3000 字符截断预览，
+    # --json 输出完整可解析 JSON。
+    p.add_argument('--json', action='store_true',
+                   help='输出完整 JSON（默认为 3000 字符截断预览）')
     args = p.parse_args()
     url = args.url or args.target
     if not url:
@@ -90,4 +95,5 @@ if __name__ == '__main__':
     if args.mode in ('tables','all'): output['tables'] = extract_tables(html)
     if args.mode in ('metadata','all'): output['metadata'] = extract_metadata(html)
     if args.mode in ('jsonld','all'): output['jsonld'] = extract_jsonld(html)
-    print(json.dumps(output, ensure_ascii=False, indent=2)[:3000])
+    out = json.dumps(output, ensure_ascii=False, indent=2)
+    print(out if args.json else out[:3000])

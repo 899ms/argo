@@ -16,7 +16,7 @@
      刚上线的 syndication 通道能免登录抓它。
 
 设计原则：这些门禁全部**从真实入口取事实**（执行 CLI、读磁盘派生件、
-调用真实函数），不读中间变量的自述——上面第 3 条正是「断言自己」的产物。
+调用真实函数），不读中间变量的自述——上面第 3 条正是「用实现验证实现」的产物。
 """
 
 import importlib.machinery
@@ -204,6 +204,51 @@ class TestDocNumbersMatchCode:
             rf"and \*\*{domains}\*\* domains", text)
         assert bullet, f"README.en.md 要点列表口径不符（应 {total}/{usable}/{domains}）"
         assert prose, f"README.en.md 正文口径不符（应 {total}/{usable}/{domains}）"
+
+    def test_translated_readmes_numbers_match_catalog(self):
+        """es/ja/ko 的正文数字必须与搜索源文档一致（与中/英一致）。
+
+        此前检查只覆盖中文（test_engine_counts_agree_with_catalog，第 184 行
+        写死 ("SKILL.md","README.md")）与英文：es/ja/ko 的 220 fuentes /
+        89 dominios / 185 sin clave 三个数字全错，而同页徽章（受 test_badge_
+        numbers_match_truth 管）写的是正确的——检查全部通过，漂移只能靠人工发现。
+        语言变体是同一份对外承诺，必须同源同校。
+
+        反向检查用「数字 + 量词」的形式（如 `220 fuentes`）而非单个数字：
+        历史条目里的 `218 → 220 fuentes`（发布说明）是当时的真实数字，
+        必须留着，不能被误伤。
+        """
+        total, usable = _catalog_counts()
+        domains = str(len(_domains()))
+        patterns = {
+            "README.es.md": (f"{total} fuentes", f"{usable} sin clave",
+                             f"{domains} dominios"),
+            "README.ja.md": (f"{total} ソース", f"{usable} 無設定",
+                             f"{domains} ドメイン"),
+            "README.ko.md": (f"{total} 소스", f"{usable} 무설정",
+                             f"{domains} 도메인"),
+        }
+        stale_forms = {
+            "README.es.md": ("220 fuentes", "185 sin clave", "89 dominios"),
+            "README.ja.md": ("220 ソース", "185 無設定", "89 ドメイン"),
+            "README.ko.md": ("220 소스", "185 무설정", "89 도메인"),
+        }
+        problems = []
+        for rel, pats in patterns.items():
+            text = (SKILL_DIR / rel).read_text(encoding="utf-8")
+            for pat in pats:
+                if pat not in text:
+                    problems.append(f"{rel}: 未写当前数字「{pat}」")
+            for line in text.splitlines():
+                # 历史条目里的数字是当时的真实值，必须留着：`168 → 218 fuentes`
+                # （演变写法）与 `| **v2.8.7** | ... 89 dominios`（发布日志行）
+                # 都不算「现状声称」，跳过。只拦不看上下文的现状行。
+                if "→" in line or re.match(r"\s*\|?\s*\*\*v2\.\d", line):
+                    continue
+                for old in stale_forms[rel]:
+                    if old in line:
+                        problems.append(f"{rel}: 现状描述里仍是过时的数字「{old}」")
+        assert not problems, "翻译版 README 数字不一致：\n  " + "\n  ".join(problems)
 
     def test_badge_numbers_match_truth(self):
         """README 徽章数字必须与真源一致（中英之外的四语种此前只写 150+）。"""

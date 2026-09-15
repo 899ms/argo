@@ -50,7 +50,7 @@ def test_zhihu_global_tfidf_profile():
 
     zhihu_global 是 cost_tier=api 的密钥引擎（env 就绪才 routable），
     不参与免密钥场景的 TF-IDF 语义路由，documents 为空是设计使然；
-    断言条目存在即可（保证注册表派生一致）。
+    检查条目存在即可（保证注册表派生一致）。
     """
     import json
     from pathlib import Path

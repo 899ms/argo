@@ -56,7 +56,7 @@ TOOLS = [
     },
     {
         "name": "argo_local_read",
-        "description": "读取白名单内的本地文本文件（预览，非全文）：用于分析本地数据/笔记/研究成果。白名单目录由 ARGO_LOCAL_READ_DIRS 配置（逗号分隔），未配置或路径越权时拒绝（fail-closed）。",
+        "description": "读取白名单内的本地文本文件（预览，非全文）：用于分析本地数据/笔记/研究成果。白名单目录由 ARGO_LOCAL_READ_DIRS 配置（逗号分隔），未配置或路径越权时拒绝（默认拒绝）。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -70,7 +70,7 @@ TOOLS = [
     },
     {
         "name": "argo_recompute",
-        "description": "fail-closed 可复算执行器：在受限子进程中运行计算脚本（只读白名单输入、断网、超时硬杀、内存软限），验证本地数据重算出的数值。用于结论承重要重算数字时；默认拒绝，需显式授权。",
+        "description": "可复算执行器（默认拒绝）：在受限子进程中运行计算脚本（只读白名单输入、断网、超时硬杀、内存软限），验证本地数据重算出的数值。用于结论承重要重算数字时；默认拒绝，需显式授权。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -78,7 +78,7 @@ TOOLS = [
                 "file_inputs": {"type": "string", "description": "白名单输入文件 JSON 数组：[{\"path\":\"...\",\"role\":\"原始数据\"}]"},
                 "timeout_s": {"type": "integer", "description": "超时秒数", "default": 30, "minimum": 1, "maximum": 120},
                 "max_mem_mb": {"type": "integer", "description": "内存上限 MB（尽力而为）", "default": 512},
-                "allow_exec": {"type": "boolean", "description": "是否授权运行（fail-closed，默认拒绝；未授权时返回 skipped_reason）", "default": False},
+                "allow_exec": {"type": "boolean", "description": "是否授权运行（不授权就不执行；未授权时返回 skipped_reason）", "default": False},
             },
             "required": ["script"],
         },
@@ -97,7 +97,7 @@ TOOLS = [
                 "depth": {"type": "string", "enum": ["fast", "balanced", "deep"], "description": "搜索深度", "default": "balanced"},
                 "mode": {"type": "string", "enum": ["fast", "auto", "deep", "budget", "social-sentiment"], "description": "预算/模式；社交舆情用 social-sentiment", "default": "auto"},
                 "work_packages": {"type": "string", "description": "工作包 JSON 数组：id, question, query?, file_inputs?(本地一手数据, 白名单制), recompute?({script,budget{timeout_s,max_mem_mb}}), depends_on?。有则跳过扩词，按依赖分阶段取证"},
-                "allow_recompute": {"type": "boolean", "description": "授权执行工作包 recompute 计算脚本（fail-closed，默认拒绝；未授权时 recompute 跳过并触发 recompute_skipped 门禁）", "default": False},
+                "allow_recompute": {"type": "boolean", "description": "授权执行工作包 recompute 计算脚本（不授权就不执行；未授权时 recompute 跳过并触发 recompute_skipped 门禁）", "default": False},
                 "platforms": {"type": "string", "description": "social-sentiment 平台列表，逗号分隔"},
                 "summary": {"type": "boolean", "description": "精简研究包，省 token", "default": True},
             },

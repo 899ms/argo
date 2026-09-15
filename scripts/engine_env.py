@@ -130,11 +130,32 @@ OPTIONAL_ENV_ENGINES: set[str] = {
 }
 
 
+def _name_variants(name: str) -> list[str]:
+    """单个名字展开为候选链：原名 + 前缀规范名（去重保序）。
+
+    密钥有两套写法：推荐名 `ARGO_<NAME>` 与历史裸名 `<NAME>`，用户只写其中
+    一套是常态（文档推 ARGO_ 名、老集成留裸名）。所以「单名」入口必须两套
+    都认——否则同一把 key 会出现「一部分读得到、一部分读不到」的分裂：
+    `get_env("TINYFISH_API_KEY")` 只查裸名，而 config.yaml / ENGINE_CATALOG
+    都要求配 `ARGO_TINYFISH_API_KEY`，实测结果是 fetch 渲染层被悄悄关掉
+    （`_api_key()` 拿到空串）而 search 三引擎正常。
+    """
+    if not name:
+        return []
+    if name.startswith("ARGO_"):
+        return [name, name[len("ARGO_"):]]
+    return [name, f"ARGO_{name}"]
+
+
 def get_env(names: str | list[str], default: str = "") -> str:
     """按优先级读取第一个非空环境变量；os.environ 优先，~/.config/argo/env
-    热读兜底（改文件即生效，无需重启）。"""
+    热读兜底（改文件即生效，无需重启）。
+
+    单名字符串会展开为「原名 + 前缀变体」候选链（见 _name_variants）；显式
+    列表按调用方给定顺序与内容原样使用（调用方已写全两个名字时不做二次展开，
+    保持既有优先级语义）。"""
     if isinstance(names, str):
-        names = [names]
+        names = _name_variants(names)
     for name in names:
         if not name:
             continue
@@ -152,6 +173,35 @@ def get_env(names: str | list[str], default: str = "") -> str:
         if val is not None and str(val).strip() != "":
             return str(val)
     return default
+
+
+# 布尔开关的「关」值集合（统一定义在这一处，见 env_flag）
+_FALSY_VALUES = frozenset({
+    "0", "false", "no", "off", "n", "disable", "disabled", "none",
+})
+
+
+def env_flag(name: str, default: bool = True) -> bool:
+    """布尔环境开关的统一解析（全仓只有这一处）。
+
+    此前全仓有四套互不兼容的判断规则，同一写法在不同开关上行为不同：
+      - `not in ("0","false","False")`      → 不认 no/off（ARGO_FETCH_PARALLEL、
+                                               ARGO_TELEMETRY）
+      - `not in ("0","false","False","no")` → 不认 off（fetch_v3 的四个开关、
+                                               引擎 HTTP、robots、tinyfish、search 两处）
+      - `not in {"","0","false","off","no"}` → 空串算关（recompute，语义不同）
+    用户写 `ARGO_FETCH_JINA=off` 关得掉，写 `ARGO_FETCH_PARALLEL=off` 却关不掉
+    ——「开关看着生效、其实没生效」是最难查的一类问题。
+
+    判定规则：忽略大小写与首尾空白，以下算关：0/false/no/off/n/disable/disabled/none。
+    未设置或值为空 → default。读取走 get_env：os.environ 优先，随后
+    ~/.config/argo/env 热读——此前这些开关只认 os.environ，把开关写进 env
+    文件（密钥的规范位置）是不生效的。
+    """
+    raw = get_env(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() not in _FALSY_VALUES
 
 
 def sync_envfile_to_environ() -> list[str]:

@@ -93,7 +93,7 @@ class TestLoaderIsCentralized:
 class TestLoaderChoice:
     def test_prefers_c_loader_when_available(self):
         import yaml
-        assert hasattr(yaml, "CSafeLoader"), "本环境无 libyaml，本断言无意义"
+        assert hasattr(yaml, "CSafeLoader"), "本环境无 libyaml，这条检查无意义"
         assert yaml_load.safe_loader() is yaml.CSafeLoader
 
     def test_falls_back_when_c_loader_missing(self, monkeypatch):
@@ -217,11 +217,18 @@ class TestArgoInterpreterCache:
         assert written == [], "显式覆盖被写进了缓存，会遮蔽后续的覆盖"
 
     def test_cheap_check_code_is_version_and_dep_gated(self, argo_bin):
-        """廉价校验必须同时卡版本与依赖存在性，否则缓存会放行坏环境。"""
+        """廉价校验必须同时卡版本与依赖存在性，否则缓存会放行坏环境。
+
+        依赖只卡 PyYAML：它是 argo 唯一的必需第三方依赖（install.sh 装它）。
+        此前这里检查必须含 requests——那是幽灵依赖（全仓无 `import requests`，
+        真实可选增强是 curl_cffi）。要求一个不存在的包会让每台新机器的解释器
+        探测全部失败、缓存永不命中，恰好害了它想保护的东西。
+        """
         code = argo_bin._PY_CHEAP_CHECK
         flat = code.replace(" ", "")
         assert "version_info" in code and "(3,10)" in flat
-        assert "find_spec" in code and "yaml" in code and "requests" in code
+        assert "find_spec" in code and "yaml" in code
+        assert "requests" not in code, "幽灵依赖：仓库里没有任何 import requests"
         # 不能真 import（那正是要省掉的成本）
         assert "import yaml" not in code and "import requests" not in code
 

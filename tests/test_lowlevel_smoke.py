@@ -14,7 +14,7 @@
      `text`/`imgs`——不带 `--json` 必崩。
 
 本文件给三条链路各补一条最小冒烟：后端/构建器用 mock 走到字段映射那行，
-断言结果非空且字段落位。名字没接上时这些断言必然失败。
+检查结果非空且字段落位。名字没接上时这些检查必然失败。
 全部 mock，不发真实请求。
 """
 
@@ -68,7 +68,7 @@ class TestJobBackends:
         out = self._run(monkeypatch, job._search_byted, {
             "Result": {"WebResults": [{"Title": "T3", "Url": "https://u3",
                                        "Snippet": "摘要"}]}})
-        # byted 的单平台失败被 except 吞掉——本断言曾因 get_env NameError
+        # byted 的单平台失败被 except 吞掉——这条检查曾因 get_env NameError
         # 被静默吞而恒空，是唯一能抓住该后端静默死亡的形态
         assert out and out[0]["url"] == "https://u3"
 

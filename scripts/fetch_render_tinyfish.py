@@ -41,8 +41,12 @@ def _result(url: str, *, success: bool, error: str | None = None,
 
 def enabled() -> bool:
     """渲染层开关：ARGO_FETCH_TINYFISH=0 关闭，默认开启。"""
-    return os.environ.get("ARGO_FETCH_TINYFISH", "1").strip() not in (
-        "0", "false", "False", "no")
+    try:
+        from engine_env import env_flag
+        return env_flag("ARGO_FETCH_TINYFISH")
+    except ImportError:
+        return os.environ.get("ARGO_FETCH_TINYFISH", "1").strip().lower() not in (
+            "0", "false", "no", "off")
 
 
 def _api_key() -> str:
@@ -53,7 +57,11 @@ def _api_key() -> str:
         from engine_env import get_env
         return get_env("TINYFISH_API_KEY")
     except ImportError:
-        return os.environ.get("TINYFISH_API_KEY", "")
+        # engine_env 不可达时仍要认两套名字（推荐名 ARGO_ 前缀 / 历史裸名），
+        # 与 engine_env._name_variants 判断一致——否则这条兜底会把「悄悄关掉」
+        # 从「env 文件」搬到「os.environ」再演一次。
+        return (os.environ.get("ARGO_TINYFISH_API_KEY")
+                or os.environ.get("TINYFISH_API_KEY", ""))
 
 
 def fetch(url: str, max_chars: int = 8000, timeout: float = 8.0) -> dict:

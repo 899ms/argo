@@ -1,20 +1,35 @@
-#!/bin/zsh
-# argo MCP 启动器 — 保证任何客户端、任何启动上下文都拿到引擎密钥。
+#!/bin/sh
+# argo MCP 启动器 —— 保证任何客户端、任何启动上下文都拿到引擎密钥。
 #
 # 背景（2026-08-29）：各客户端 server 的密钥来自「宿主 app 启动时的环境」，
 # 上下文不同密钥就不同（有的 8 个全有、有的全无），且 launchctl setenv
 # 重启即失效。此启动器把密钥收敛到唯一真源文件，启动时注入：
 #   1. ~/.config/argo/env（chmod 600，勿入库勿分享）——唯一真源
-#   2. launchctl getenv 兜底（该文件缺失时仍可能从系统域拿到）
+#   2. 系统域兜底：macOS 走 launchctl getenv，其它平台无此层、直接跳过
 # 提前恢复配额/换 key：改 env 文件后重启对应客户端即可，零配置分散维护。
+#
+# 跨平台（2026-09-15）：原版是 `#!/bin/zsh` + `dscl` + `${(P)k}` + `${0:A:h}`
+# + 写死 `/opt/homebrew/bin/python3`，只在装了 Homebrew 的 macOS 上成立。
+# 而 `mcp_setup.py` 把本脚本路径写成 MCP 客户端的 command（10 处引用），
+# 于是 Linux / Windows-WSL 用户接 MCP 的第一步就是
+# `bad interpreter: /bin/zsh`——不是配置错，是脚本根本起不来。
+# 改用 POSIX sh + 解释器探测后，macOS 本机行为不变（同一个 env 文件、同一层
+# launchctl 兜底、同一批透传名单），其余平台从「拉不起来」变成「能起」。
 
 set -a
+
 # 某些宿主（如 dsh web）以净化环境 spawn MCP，HOME 可能缺失——先兜底
 if [ -z "$HOME" ]; then
-  export HOME="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  if command -v dscl >/dev/null 2>&1; then                 # macOS
+    HOME="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  elif command -v getent >/dev/null 2>&1; then             # Linux
+    HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+  fi
+  [ -n "$HOME" ] && export HOME
 fi
+
 ENV_FILE="${HOME}/.config/argo/env"
-[ -f "$ENV_FILE" ] && source "$ENV_FILE"
+[ -f "$ENV_FILE" ] && . "$ENV_FILE"
 
 for k in ALL_PROXY ANYSEARCH_API_KEY ARGO_ANYSEARCH_API_KEY ARGO_BOCHA_API_KEY\
          ARGO_BRAVE_API_KEY ARGO_BYTED_API_KEY ARGO_EASTMONEY_APIKEY\
@@ -28,12 +43,34 @@ for k in ALL_PROXY ANYSEARCH_API_KEY ARGO_ANYSEARCH_API_KEY ARGO_BOCHA_API_KEY\
          METASO_API_KEY NO_PROXY OCTEN_API_KEY QWEATHER_KEY\
          TAVILY_API_KEY WEB_SEARCH_API_KEY WEREAD_API_KEY\
          WOLFRAM_APPID ZHIHU_ACCESS_SECRET; do
-  if [ -z "${(P)k}" ]; then
-    v=$(launchctl getenv "$k" 2>/dev/null)
+  # POSIX 间接展开（zsh 的 ${(P)k} 在 sh 下不存在，eval 是等价写法）
+  eval "cur=\${$k}"
+  if [ -z "$cur" ] && command -v launchctl >/dev/null 2>&1; then
+    v="$(launchctl getenv "$k" 2>/dev/null)"
     [ -n "$v" ] && export "$k=$v"
   fi
 done
 set +a
 
-SCRIPT_DIR="${0:A:h}"
-exec "${ARGO_PYTHON:-/opt/homebrew/bin/python3}" -u "${SCRIPT_DIR}/mcp_server.py" "$@"
+# 脚本所在目录的绝对路径（POSIX 写法，替代 zsh 的 ${0:A:h}）
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
+# 解释器：ARGO_PYTHON 显式指定优先（客户端配置可覆盖）；否则按版本探测，取
+# 第一个 ≥3.10 的——脚本用了 `X | None`，3.9 会在 import 期抛 TypeError，
+# 而报错发生在客户端日志里，用户看到的是「MCP server 未就绪」。
+# 全都不达标时回落 python3：宁可让错误信息可读，也不抛「找不到解释器」。
+if [ -n "$ARGO_PYTHON" ] && command -v "$ARGO_PYTHON" >/dev/null 2>&1; then
+  PY="$ARGO_PYTHON"
+else
+  PY=""
+  for c in python3 python3.14 python3.13 python3.12 python3.11 python3.10 python; do
+    p="$(command -v "$c" 2>/dev/null)" || continue
+    if "$p" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+      PY="$p"
+      break
+    fi
+  done
+  [ -n "$PY" ] || PY="python3"
+fi
+
+exec "$PY" -u "${SCRIPT_DIR}/mcp_server.py" "$@"

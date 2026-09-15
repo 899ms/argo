@@ -246,14 +246,14 @@ class TestEnvDeclarationConsistency:
         `engine_status.engine_detail()` 内部会触达 **adaptive learner 单例**
         （`_runtime_status` → `get_learner().get_score()`），而该单例是跨用例
         共享的全局状态。实测：本测试若调用 `engine_detail()`，会改变后续
-        `test_envsync_anysearch_0907` 的 zhihu 路由断言结果（combo 从
+        `test_envsync_anysearch_0907` 的 zhihu 路由检查结果（combo 从
         ['zhihu','zhihu_global'] 变成 ['anysearch','local_bing']）——纯属测试
         间污染，产品行为本身正确（直接调 route_query 结果正确）。
 
         而「状态会不会误报」的**充分条件**就是「声明的密钥是否真的缺失」
         （状态机 `missing_key` 分支只由 `missing_env` 非空触发，
         见 engine_status.engine_detail 的 status 判定链）。
-        故断言 missing_env_for 等价且无副作用。
+        故检查 missing_env_for 等价且无副作用。
         """
         cfg = load_config()
         for engine_id, secret in (("you", "YDC_API_KEY"),

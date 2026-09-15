@@ -188,7 +188,7 @@ class TestShowFields:
     def test_duration_comes_from_episodes_not_show_field(self, monkeypatch):
         """陷阱守卫：节目对象的 trackTimeMillis=9258 不是时长。
 
-        若实现误读上游该字段，换算结果是 0 分（9258ms）而非 124 分——本断言即失败。
+        若实现误读上游该字段，换算结果是 0 分（9258ms）而非 124 分——这条检查即失败。
         """
         _patch(monkeypatch, search_payload=_SHOW, lookup_payload=_LOOKUP_EPS)
         r = _engine()("播客 张小珺 商业访谈录", n=3)[0]

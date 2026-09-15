@@ -104,7 +104,7 @@ class TestEnvFileHotRead(unittest.TestCase):
         self.tmp = Path(self._td.name)
         # 双重隔离：HOME 重定向（env 文件路径）+ 清掉宿主 shell 的同名密钥。
         # 只 patch HOME 不够——get_env 的 os.environ 优先级高于 env 文件，
-        # 宿主已 export ZHIHU_ACCESS_SECRET 等密钥时断言必然落空。
+        # 宿主已 export ZHIHU_ACCESS_SECRET 等密钥时检查必然落空。
         env_keys = [k for k in os.environ
                     if k.startswith("ARGO_")
                     or k in ("ZHIHU_ACCESS_SECRET", "BOCHA_API_KEY",

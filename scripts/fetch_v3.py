@@ -60,6 +60,7 @@ import fetch_quality as _quality
 # 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
+from engine_env import env_flag  # 布尔开关统一判断（见 env_flag 的说明）
 
 
 # ─── 内容提取器（复用 fetch.py 的逻辑，增强版）──────────────────────────────
@@ -169,8 +170,7 @@ def _needs_browser(result: dict) -> bool:
 
 def _impersonate_enabled() -> bool:
     """TLS 指纹伪造层开关：ARGO_FETCH_IMPERSONATE=0 关闭，默认开启。"""
-    return os.environ.get("ARGO_FETCH_IMPERSONATE", "1").strip() not in (
-        "0", "false", "False", "no")
+    return env_flag("ARGO_FETCH_IMPERSONATE")
 
 
 # ─── 第零级：AI 友好变体探测（{url}.md 直出）────────────────────────────────
@@ -185,8 +185,7 @@ _MD_SNIFF_HTML = re.compile(r"<\s*(!doctype|html|head|body|div|script)\b",
 
 def _md_variant_enabled() -> bool:
     """.md 变体探测开关：ARGO_FETCH_MD_VARIANT=0 关闭，默认开启。"""
-    return os.environ.get("ARGO_FETCH_MD_VARIANT", "1").strip() not in (
-        "0", "false", "False", "no")
+    return env_flag("ARGO_FETCH_MD_VARIANT")
 
 
 def _tinyfish_enabled() -> bool:
@@ -316,8 +315,7 @@ _MOBILE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
 
 def _mobile_branch_enabled() -> bool:
     """移动端 UA 分支开关：ARGO_FETCH_MOBILE=0 关闭，默认开启。"""
-    return os.environ.get("ARGO_FETCH_MOBILE", "1").strip() not in (
-        "0", "false", "False", "no")
+    return env_flag("ARGO_FETCH_MOBILE")
 
 
 # 客户端形态分流已知站点：这些站对真机 UA 直接返回 SSR 数据，而桌面 UA 首发
@@ -596,8 +594,7 @@ _JINA_PRIVATE_HOST = re.compile(
 
 def _jina_enabled() -> bool:
     """r.jina.ai 阅读器级开关：ARGO_FETCH_JINA=0 关闭，默认开启。"""
-    return os.environ.get("ARGO_FETCH_JINA", "1").strip() not in (
-        "0", "false", "False", "no")
+    return env_flag("ARGO_FETCH_JINA")
 
 
 def _is_public_host(host: str) -> bool:
@@ -659,7 +656,7 @@ _PARALLEL_MCP_URL = "https://search.parallel.ai/mcp"
 
 
 def _parallel_mcp_enabled() -> bool:
-    return os.environ.get("ARGO_FETCH_PARALLEL", "1") not in ("0", "false", "False")
+    return env_flag("ARGO_FETCH_PARALLEL")
 
 
 def _parallel_session_id() -> str:

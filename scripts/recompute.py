@@ -3,7 +3,7 @@
 
 设计（P0-2，对齐「结论可重算」）：
 
-fail-closed：
+默认拒绝：
   - 默认拒绝运行，需显式 `--allow-exec` 或环境 ARGO_ALLOW_RECOMPUTE=1
   - 输入文件白名单（仅工作包 file_inputs 声明的路径可读，通过
     --inputs JSON 传入）
@@ -41,7 +41,7 @@ def _kill_process_group(proc: subprocess.Popen) -> None:
     （含子进程），避免仅杀父进程留下孤儿子任务。
     Windows：无 killpg/getpgid（POSIX-only），os.kill 也只能杀单进程，
     taskkill /T 才可递归，但依赖外部命令；此处退化为 proc.kill()，仍保证
-    「父进程被杀、communicate 退出」的 fail-closed 语义（子进程虽可能残留，
+    「父进程被杀、communicate 退出」的默认拒绝语义（子进程虽可能残留，
     但由独立 temp 工作目录 + 断网防护兜底，不扩散）。
     """
     try:
@@ -109,8 +109,10 @@ def _allowed_paths(inputs: list[dict[str, Any]]) -> list[str]:
 
 
 def _env_allowed() -> bool:
-    raw = (os.environ.get("ARGO_ALLOW_RECOMPUTE") or "").strip().lower()
-    return raw not in {"", "0", "false", "off", "no"}
+    # 默认关（该开关是授权语义，不是能力开关）：未设置或为空 → 不放行。
+    # 统一走 env_flag，与全仓其他布尔开关同一口径（0/false/no/off 都算关）。
+    from engine_env import env_flag
+    return env_flag("ARGO_ALLOW_RECOMPUTE", default=False)
 
 
 def run_recompute(
@@ -128,7 +130,7 @@ def run_recompute(
     if not (allow_exec or _env_allowed()):
         return {
             "ok": False,
-            "skipped_reason": "fail-closed：未显式授权（--allow-exec / "
+            "skipped_reason": "默认拒绝：未显式授权（--allow-exec / "
                               "ARGO_ALLOW_RECOMPUTE=1）",
         }
     allowed = _allowed_paths(inputs or [])
@@ -282,7 +284,7 @@ def extract_values(text: str) -> list[float]:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="可复算执行器（fail-closed）")
+    parser = argparse.ArgumentParser(description="可复算执行器（不授权就不执行）")
     parser.add_argument("--script", required=True, help="计算代码（Python）")
     parser.add_argument("--inputs", default="[]",
                         help="file_inputs JSON 数组（白名单输入）")

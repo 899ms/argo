@@ -116,7 +116,7 @@ def _build_engine_names() -> dict[str, str]:
 # 兼容：历史上 _ENGINE_NAMES 是模块级公开名字，外部（含测试）会
 # `from route import _ENGINE_NAMES` 直接引用。此处**故意不在模块级绑定**
 # _ENGINE_NAMES，配合 PEP 562 模块级 __getattr__：外部首次访问时惰性构建，
-# 语义与旧的全量字典完全一致；若模块级绑了 None 哨兵，__getattr__ 不会触发，
+# 语义与旧的全量字典完全一致；若模块级绑定的是 None 占位值，__getattr__ 不会触发，
 # 外部拿到的就是 None（埋雷）。
 _ENGINE_NAMES_CACHE: dict[str, str] | None = None
 

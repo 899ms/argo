@@ -32,7 +32,7 @@
   1. `TestComboExecutableWidth`    宽度：组合至少 2 个引擎（预算内能跑两条）；
   2. `TestMeasuredFailuresStayFixed` 具名锚点：实测 0 结果的域不许回退；
   3. `TestDeclarationDebtIsTracked` 债务清单：前 2 位无通用/本地兜底的域
-     逐个登记。清单是「断言当前已知集合」而非「断言它们都对」——新增域若
+     逐个登记。清单是「检查当前已知集合」而非「检查它们都对」——新增域若
      落进来，必须显式决定是改组合还是登记，不允许静默增长。
 
 新增域的处理路径：先跑 `python3 scripts/search.py "<该域典型查询>"` 看能否

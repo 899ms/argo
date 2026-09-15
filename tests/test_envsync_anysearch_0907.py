@@ -105,7 +105,7 @@ class TestMultilingualAnysearchInjection(unittest.TestCase):
 class TestQuotaProfilesAligned(unittest.TestCase):
     """对齐服务商面板真实口径（2026-09-06）：知乎搜索 5000/天、AnySearch
     2000/天、知乎全网搜 5000/天。修复前 zhihu=1000 会在本地提前封禁
-    （浪费 80% 额度）、anysearch=null 裸奔无保护。"""
+    （浪费 80% 额度）、anysearch=null 则完全没有次数限制保护。"""
 
     def setUp(self):
         self.qm = QuotaManager()
@@ -136,7 +136,7 @@ class TestQuotaProfilesAligned(unittest.TestCase):
 
 
 class _AllowAllBreaker:
-    """隔离共享熔断/配额状态：combo 断言只验路由语义，不验运行时健康。"""
+    """隔离共享熔断/配额状态：combo 检查只验路由语义，不验运行时健康。"""
 
     def allow(self, eng):
         return True, "closed"
@@ -162,7 +162,7 @@ class _AllowAllBreaker:
 
 def _isolated_route(query: str, **kwargs):
     """route_query 但打桩熔断器与配额（并发 live 评测会写共享状态文件，
-    直连真实单例会让 combo 断言偶发抖动）。"""
+    直连真实单例会让 combo 检查偶发抖动）。"""
     from unittest.mock import MagicMock
     with patch("circuit_breaker.get_breaker",
                return_value=_AllowAllBreaker()), \

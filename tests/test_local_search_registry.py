@@ -66,7 +66,7 @@ def _table_rows(md: str) -> list[str]:
 
 class TestDocMatchesRegistry(unittest.TestCase):
     def test_registry_not_empty(self):
-        """扫描面不能为空——读法失效时全部断言会静默通过。"""
+        """扫描面不能为空——读法失效时全部检查会静默通过。"""
         self.assertGreaterEqual(len(_ls_engines()), 20,
                                 "子技能 config.yaml 读不到引擎或数量异常")
 

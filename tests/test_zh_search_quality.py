@@ -52,7 +52,7 @@ class TestLangAwareComboOrder(unittest.TestCase):
         out = _lang_aware_combo_order(combo, self.FEATURES_ZH, "social",
                                       {"local_bing", "anysearch"})
         self.assertEqual(out[0], "local_bing", "social+zh：通用中文 web 源应置首")
-        # 硬断言：纯英文源全部位于中文可用源之后
+        # 硬检查：纯英文源全部位于中文可用源之后
         first_en = min(i for i, e in enumerate(out)
                        if e in {"hackernews", "twitter", "reddit"})
         for i, e in enumerate(out):

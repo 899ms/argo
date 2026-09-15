@@ -273,7 +273,7 @@ def rewrite_query(query: str, min_confidence: float = 0.7) -> dict[str, Any]:
                 "npm", "pip", "git", "ssh", "rest", "graphql", "grpc",
                 "react", "vue", "node", "python", "java", "rust", "go",
                 "docker", "kubernetes", "linux", "nginx", "redis",
-                "async", "await", "thread", "process", "async",
+                "async", "await", "thread", "process",
             }
             for t in eng_terms
         )

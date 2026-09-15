@@ -60,7 +60,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--allow-recompute", action="store_true",
-        help="授权执行工作包 recompute 计算脚本（fail-closed，默认拒绝）",
+        help="授权执行工作包 recompute 计算脚本（默认拒绝：没明确授权就不执行）",
     )
     parser.add_argument(
         "--search-archive", metavar="主题词",

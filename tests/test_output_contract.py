@@ -34,9 +34,10 @@
 
 1. 纯函数契约：`build_limitations`（零依赖）
 2. 档位裁剪契约：`_strip_for_agent` 的字段白名单（纯函数）
-3. 静态结构断言：局限声明的生成必须与 `if envelope:` 解耦（ast 解析源码）
+3. 静态结构检查：局限声明的生成必须与 `if envelope:` 解耦（ast 解析源码）
 
-每层各带变异验证，确保门禁本身有牙齿、不是恒真的摆设。
+每层都配了一个自检用例：先故意写坏一处，确认检查会失败。少了这一步，
+检查很容易写成「永远通过」的摆设。
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ def _scan_envelope_gating(src: str) -> tuple[list[str], bool]:
 
     正确形态 = `if envelope:` 的 else 分支（或同级语句）里生成局限声明。
     这是根因级保护：limitations 原本就长在 `if envelope:` 里，编码时顺手把
-    它挪回去太容易了，只有静态断言拦得住这种「改回去」。
+    它挪回去太容易了，只有静态检查拦得住这种「改回去」。
     """
     offenders: list[str] = []
     has_non_envelope_path = False
@@ -135,7 +136,7 @@ class TestLimitationsSingleSource(unittest.TestCase):
                       "attach_envelope 未复用 build_limitations（口径会漂移）")
 
     def test_gate_has_teeth(self):
-        """变异：抹掉基线警告，必须被上面的断言抓住。"""
+        """故意造错：抹掉基线警告，必须被上面的检查抓住。"""
         original = candidate_envelope.build_limitations
 
         def broken(search_result, extra_limitations=None, candidates=None):
@@ -144,7 +145,7 @@ class TestLimitationsSingleSource(unittest.TestCase):
         candidate_envelope.build_limitations = broken
         try:
             self.assertEqual(candidate_envelope.build_limitations({}), [],
-                             "变异未生效，测试本身失效")
+                             "造错没生效，测试本身有问题")
             with self.assertRaises(AssertionError):
                 self.assertIn("engagement metrics",
                               " ".join(candidate_envelope.build_limitations({})))
@@ -156,7 +157,7 @@ class TestAgentTierKeepsQualitySignals(unittest.TestCase):
     """--fields agent：剥遥测可以，剥质量信号不行。"""
 
     def _payload(self) -> dict:
-        """构造字段齐全的搜索输出（含遥测，供反向断言用）。"""
+        """构造字段齐全的搜索输出（含遥测，供反向检查用）。"""
         payload: dict = {
             "query": "q", "status": "completed", "count": 1,
             "results": [{"title": "t", "url": "u", "snippet": "s"}],
@@ -177,20 +178,20 @@ class TestAgentTierKeepsQualitySignals(unittest.TestCase):
             + ", ".join(missing))
 
     def test_limitations_specifically_survive(self):
-        """独立断言 limitations——本次修复的核心，值得单独钉住。"""
+        """独立检查 limitations——本次修复的核心，值得单独钉住。"""
         out = search._strip_for_agent(self._payload())
         self.assertIn("limitations", out, "--fields agent 丢了 limitations")
         self.assertEqual(out["limitations"], ["daily tier: direct search"])
 
     def test_telemetry_still_stripped(self):
-        """反向断言：不能矫枉过正，遥测该剥还得剥。"""
+        """反向检查：不能矫枉过正，遥测该剥还得剥。"""
         out = search._strip_for_agent(self._payload())
         for k in ("tfidf_scores", "engine_outcomes", "elapsed_ms",
                   "route_reason", "cached"):
             self.assertNotIn(k, out, f"--fields agent 未剥掉遥测字段 {k}")
 
     def test_gate_has_teeth(self):
-        """变异：让 _strip_for_agent 丢掉 limitations，断言必须报红。"""
+        """故意造错：让 _strip_for_agent 丢掉 limitations，检查必须报红。"""
         original = search._strip_for_agent
 
         def broken(payload):
@@ -201,7 +202,7 @@ class TestAgentTierKeepsQualitySignals(unittest.TestCase):
         search._strip_for_agent = broken
         try:
             out = search._strip_for_agent(self._payload())
-            self.assertNotIn("limitations", out, "变异未生效，测试本身失效")
+            self.assertNotIn("limitations", out, "造错没生效，测试本身有问题")
             with self.assertRaises(AssertionError):
                 self.assertIn("limitations", out)
         finally:
@@ -209,7 +210,7 @@ class TestAgentTierKeepsQualitySignals(unittest.TestCase):
 
 
 class TestLimitationsNotGatedByEnvelope(unittest.TestCase):
-    """静态结构断言：局限声明必须与归档开关解耦。"""
+    """静态结构检查：局限声明必须与归档开关解耦。"""
 
     def test_not_gated_in_real_source(self):
         src = (SCRIPTS / "search.py").read_text(encoding="utf-8")
@@ -222,7 +223,7 @@ class TestLimitationsNotGatedByEnvelope(unittest.TestCase):
             "局限声明可能又回到只跟 envelope 走的状态（精简档将再次丢失它）")
 
     def test_gate_has_teeth(self):
-        """变异：构造把调用关回 `if envelope:` 的源码，扫描必须报红。"""
+        """故意造错：构造把调用关回 `if envelope:` 的源码，扫描必须报红。"""
         bad_src = (
             "def _fake():\n"
             "    if envelope:\n"
@@ -230,8 +231,8 @@ class TestLimitationsNotGatedByEnvelope(unittest.TestCase):
             "    return result\n"
         )
         offenders, ok = _scan_envelope_gating(bad_src)
-        self.assertTrue(offenders, "变异样本未被抓住，静态断言失效")
-        self.assertFalse(ok, "变异样本被误判为正确形态")
+        self.assertTrue(offenders, "造错样本没被抓住，静态检查失效")
+        self.assertFalse(ok, "造错样本被误判为正确")
 
     def test_scanner_accepts_correct_shape(self):
         """反向验证：正确形态必须被识别为「有非 envelope 路径」。"""

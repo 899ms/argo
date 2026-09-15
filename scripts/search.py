@@ -16,14 +16,13 @@ from __future__ import annotations
 
 import argparse
 
-from engine_env import get_env
+from engine_env import env_flag, get_env
 import json
 import os
 import re
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
@@ -667,7 +666,7 @@ def minhash_dedupe(
     返回 (deduped, removed_count)，每条被移除的结果记 `_near_dup=True`。
     """
     if enabled is None:
-        enabled = os.environ.get("ARGO_MINHASH_DEDUPE", "1").strip() not in ("0", "false", "False", "no")
+        enabled = env_flag("ARGO_MINHASH_DEDUPE")
     if not enabled or not results or len(results) <= 1:
         return results, 0
     try:
@@ -1131,6 +1130,20 @@ def _align_facts_safe(merged: list[dict[str, Any]], mode: str,
 
 # ── 执行层 ─────────────────────────────────────────────────────────────────────
 
+# 失败原因分类（engine_failure.py 的类别全集）→ 引擎结果 status 的对照表。
+# 未列出的类别经 .get(cat, "error") 归为 error：以后新增失败类别时默认可见，
+# 不必再回来补白名单。文本里出现超时特征时再细分为 timeout（见 _run_one）。
+_NOTE_STATUS = {
+    "auth": "auth-failed",          # 凭证失效/未登录
+    "rate_limited": "rate-limited",  # 源端限流
+    "blocked": "blocked",           # 反爬/拦截页
+    "dependency": "error",          # 缺后端命令（requires 未满足）
+    "upstream": "error",            # 上游改版/页面结构变化
+    "network": "error",             # 连接失败/超时（超时再细分）
+    "unknown": "error",             # 信息不足（含非 200 状态码）
+}
+
+
 def _classify_engine_outcome(eng: str, res: list[dict[str, Any]],
                              latency_ms: int, status_hint: str | None = None
                              ) -> dict[str, Any]:
@@ -1180,8 +1193,17 @@ def _classify_engine_outcome(eng: str, res: list[dict[str, Any]],
 # fast 单发总墙钟预算（秒）。引擎级超时收紧（≥8s 源 cap 6s、half_open 2s）之外
 # 的整条路径兜底：实测引擎 P95 跨度 1.5-8.5s，6s 预算覆盖绝大多数快引擎，
 # 只砍 github 类拖尾——「等待剩余时间」与「是否再起新引擎」都受它约束。
-# 仅 fast 模式生效；auto/budget/deep 宁可等待不截断（研究场景语义）。
 _FAST_TOTAL_BUDGET_S = 6.0
+
+# auto/budget 的总墙钟预算（秒）。auto 是默认模式，此前**没有**预算
+# （deadline=inf），于是 race 窗口退化成 `_eff_timeout + 2`：timeout 默认 10s
+# → 单查询最坏 2s(grace) + 12s(race) = 14s。2026-09-15 实测 "claude 5 release
+# date" 冷查询 13.4s，期间无任何信号说明在等什么，用户体感就是「卡住了」。
+#
+# 取 10.0 = 用户明确的体感阈值，也 ≥ execution.default_timeout(8s)，不截断
+# 正常查询（实测中位 4s、p75 8s，绝大多数早已 early-stop 完成），只砍极端尾部。
+# deep 仍不设预算：研究场景宁可等待，截断会丢证据（与 fast 的成本优先相反）。
+_AUTO_TOTAL_BUDGET_S = 10.0
 
 # primary 独享启动宽限窗（秒）：主引擎在这个时间内完成且合格就免掉 hedge，
 # 只付 1 次调用；窗口未完成才补发次引擎并行 race。实测引擎 P95 1.5-8.5s，
@@ -1512,21 +1534,30 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 r.setdefault("_elapsed", lat / 1000.0)
 
         outcome = _classify_engine_outcome(eng, res, lat)
-        # 归因寄存器合入：引擎内的静默失败路径（反爬命中/HTTP 状态码）没有
-        # error 文本，outcome 会落成 no-results；归因寄存器把它们还原成
-        # blocked / rate-limited 等真实状态，供熔断与 --json 可观测面使用。
+        # 失败原因合入：引擎内部那些不报错的失败路径（反爬命中/HTTP 状态码/网络异常）
+        # 没有 error 文本，结果会落成 no-results；失败原因记录把它们还原成
+        # 真实状态，供熔断与 --json 可观测面使用。
+        #
+        # 改用「类别对照表 + 文本细分」而不是 if-elif 白名单：白名单只认
+        # blocked/rate_limited/auth，engine_failure.py 类别全集里的
+        # network（超时/连接失败）、upstream（上游改版）、unknown（非 200
+        # 状态码）、dependency（缺后端命令）会被当成 no-results——
+        # 2026-09-15 实测：`--engine you` 的 SSL 超时上报成
+        # `status=completed, count=0, errors=[]`，调用方（Agent）据此判定
+        # 「网上没有这个信息」，而引擎实际坏了；熔断还按 empty 记账
+        # （不累计 opens、负缓存用 EMPTY_NEGATIVE_TTL 45s 而非 30s）。
         _note = pop_failure_note(eng)
         _attr: dict[str, Any] | None = None
         if _note and outcome["status"] in ("no-results", "error", "auth-failed"):
-            if _note.get("category") == "blocked":
-                outcome["status"] = "blocked"
-            elif _note.get("category") == "rate_limited":
-                outcome["status"] = "rate-limited"
-            elif _note.get("category") == "auth" and outcome["status"] == "no-results":
-                outcome["status"] = "auth-failed"
-            outcome["detail"] = (
-                f"{_note.get('reason', '')} {_note.get('detail', '')}".strip()
-                or outcome.get("detail"))
+            _text = f"{_note.get('reason', '')} {_note.get('detail', '')}".strip()
+            _mapped = _NOTE_STATUS.get(str(_note.get("category") or ""), "error")
+            if _mapped == "error" and (
+                    "timeout" in _text.lower() or "timed out" in _text.lower()):
+                _mapped = "timeout"
+            # auth 只在引擎确实无输出时升级：已有明确 error 时不改写（原语义）
+            if not (_mapped == "auth-failed" and outcome["status"] != "no-results"):
+                outcome["status"] = _mapped
+            outcome["detail"] = _text or outcome.get("detail")
         if _note:
             # 归因随熔断状态一起持久化：「为什么坏」必须在失败现场写下来，
             # 事后只能看到 kind 粗标签（把 kind 当响应文本再归类只会得到 unknown）
@@ -1596,9 +1627,100 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     allow_early = mode in ("fast", "auto", "budget") and depth != "deep"
 
     # fast 总墙钟预算：deadline 之后不再起新引擎、不再等待慢线程
-    _deadline = t0 + (_FAST_TOTAL_BUDGET_S if mode == "fast" else float("inf"))
+    # 总墙钟预算：deadline 之后不再起新引擎、不再等待慢线程。
+    # fast 6s（成本优先）/ auto·budget 10s（质量优先但有界）/ deep 不设预算。
+    _BUDGET_S = {"fast": _FAST_TOTAL_BUDGET_S,
+                 "auto": _AUTO_TOTAL_BUDGET_S,
+                 "budget": _AUTO_TOTAL_BUDGET_S}.get(mode)
+    _deadline = t0 + (_BUDGET_S if _BUDGET_S is not None else float("inf"))
 
     early_min = decision.get("early_stop_min_results")
+    no_early = bool(decision.get("no_early_stop", False))
+
+    def _daemon_start(eng: str):
+        """daemon 线程跑 _run_one：弃置线程不阻塞进程退出。"""
+        holder: dict[str, Any] = {"t0": time.time()}
+
+        def _work() -> None:
+            try:
+                holder["r"] = _run_one(eng)
+            except Exception as exc:
+                holder["r"] = (
+                    eng,
+                    [{"error": str(exc), "source": eng}],
+                    _classify_engine_outcome(
+                        eng, [{"error": str(exc), "source": eng}], 0),
+                    0,
+                )
+        t = threading.Thread(target=_work, daemon=True)
+        t.start()
+        return holder, t
+
+    def _ingest_holder(holder: dict[str, Any]) -> None:
+        r = holder.get("r")
+        if r:
+            _ingest(r[0], r[1], r[2], r[3])
+
+    def _holder_goods(holder: dict[str, Any]) -> list[dict[str, Any]]:
+        r = holder.get("r")
+        if not r:
+            return []
+        return [x for x in r[1] if isinstance(x, dict) and "error" not in x]
+
+    def _settle_pending(pending: list[tuple[dict[str, Any], Any, str]]) -> None:
+        """收尾一组待定线程：仍活的标 timeout（daemon 自行结束，不阻塞退出），
+        恰在末次轮询后完成的照常入账——否则它既不 ingest 也不标 timeout，
+        结果会悄悄丢掉。latency 用真实等待时长（原 timeout 参数×1000 是假值）。"""
+        for holder, th, eng in pending:
+            lat_ms = int((time.time() - holder.get("t0", time.time())) * 1000)
+            if th.is_alive():
+                raw_results[eng] = [{"error": "timeout", "source": eng}]
+                engine_outcomes.append(_classify_engine_outcome(
+                    eng, raw_results[eng], lat_ms, "timeout"))
+                nonlocal_wasted[0] += lat_ms
+            else:
+                _ingest_holder(holder)
+
+    def _run_engines_bounded(engs: list[str], wait_s: float,
+                             check_sufficient: bool = False) -> bool:
+        """并发跑一组引擎（≤3 并发），等待上限 wait_s 秒；返回是否已「够用」。
+
+        为什么不用 ThreadPoolExecutor：它的 `with` 退出会
+        `shutdown(wait=True)` 并 join 所有已提交任务，把「超时即返回」的语义
+        架空——上面每个预算判断都以为自己已经止损，进程却还在等一个卡住的
+        HTTP 读（models.dev 全量 API 超时 15s，实测单查询被拖到 76s，而
+        w2_wait / deadline 早已到期）。daemon 线程 + 轮询才真正有界：
+        早停后弃置线程既不阻塞函数返回，也不阻塞进程退出——与 wave-1 的
+        # 与上面的 hedged 分支共用同一套并发执行方式。
+        """
+        if not engs:
+            return False
+        queue = list(engs)
+        pending: list[tuple[dict[str, Any], Any, str]] = []
+        deadline = time.time() + max(0.0, wait_s)
+        while (queue or pending) and time.time() < deadline:
+            while queue and len(pending) < 3:
+                eng = queue.pop(0)
+                holder, th = _daemon_start(eng)
+                pending.append((holder, th, eng))
+            progressed = False
+            for item in list(pending):
+                holder, th, eng = item
+                if th.is_alive():
+                    continue
+                _ingest_holder(holder)
+                pending.remove(item)
+                progressed = True
+                if check_sufficient and not no_early and _cumulative_sufficient(
+                        raw_results, mode=mode, min_results=early_min,
+                        query=query):
+                    _settle_pending(pending)
+                    return True
+            if not progressed:
+                time.sleep(0.02)
+        _settle_pending(pending)
+        return False
+
     if parallel and to_run and allow_early and len(to_run) > 1:
         # Wave-1 race（2026-09-06）：primary 与次引擎并行起跑，先完成且结果
         # 合格者赢——原「primary 先行」串行等待下，primary 慢则整体慢（实测
@@ -1608,7 +1730,6 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         # 成本语义：fast+parallel 域固定 2 次引擎调用（原 1 次），fast 的
         # combo 以免费通用引擎为主，增量可忽略；结果质量仍由充分性判定+
         # 覆盖守卫把关，先到不等于放行。
-        no_early = bool(decision.get("no_early_stop", False))
         primary, rest = to_run[0], to_run[1:]
         # 首发 + 分岔 hedged：先只发 primary，grace 宽限窗内完成且合格 → 只付
         # 1 次调用（成本回退消除）；窗内未完成 → 补发次引擎并行 race，先合格者
@@ -1619,36 +1740,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         if time.time() + grace > _deadline:
             grace = max(0.0, _deadline - time.time())
 
-        def _daemon_start(eng: str):
-            """daemon 线程跑 _run_one：弃置线程不阻塞进程退出。"""
-            holder: dict[str, Any] = {"t0": time.time()}
-
-            def _work() -> None:
-                try:
-                    holder["r"] = _run_one(eng)
-                except Exception as exc:
-                    holder["r"] = (
-                        eng,
-                        [{"error": str(exc), "source": eng}],
-                        _classify_engine_outcome(
-                            eng, [{"error": str(exc), "source": eng}], 0),
-                        0,
-                    )
-            t = threading.Thread(target=_work, daemon=True)
-            t.start()
-            return holder, t
-
-        def _ingest_holder(holder: dict[str, Any]) -> None:
-            r = holder.get("r")
-            if r:
-                _ingest(r[0], r[1], r[2], r[3])
-
-        def _holder_goods(holder: dict[str, Any]) -> list[dict[str, Any]]:
-            r = holder.get("r")
-            if not r:
-                return []
-            return [x for x in r[1] if isinstance(x, dict) and "error" not in x]
-
+        # (helper _daemon_start / _ingest_holder / _holder_goods / _settle_pending
+        #  / _run_engines_bounded 定义在本分支之前，wave-1 与 wave-2 共用一套
+        #  有界并发实现)
         ph, pt = _daemon_start(primary)
         pt.join(grace)
         if not pt.is_alive():
@@ -1699,78 +1793,19 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                     else:
                         _ingest_holder(holder)
         if (not early_stopped and rest
-                and not (mode == "fast" and time.time() >= _deadline)):
-            # fast 预算收口（与串行路径 `time.time() >= _deadline` 同语义）：
+                and not (_BUDGET_S is not None and time.time() >= _deadline)):
+            # 预算检查（与串行路径 `time.time() >= _deadline` 同语义）：
             # deadline 已过不再起新引擎；等待窗口也不越过 deadline——
-            # 「fast 总墙钟预算」对并行路径同样成立
+            # 「总墙钟预算」对并行路径同样成立
             w2_wait = min(_eff_timeout + 2,
                           max(0.1, _deadline - time.time()))
-            t_w2 = time.time()
-            with ThreadPoolExecutor(max_workers=min(len(rest), 3)) as ex:
-                futures = {ex.submit(_run_one, eng): eng for eng in rest}
-                try:
-                    for fut in as_completed(futures, timeout=w2_wait):
-                        eng = futures[fut]
-                        try:
-                            e2, res2, outcome2, lat2 = fut.result()
-                            _ingest(e2, res2, outcome2, lat2)
-                        except Exception as exc:
-                            raw_results[eng] = [{"error": str(exc), "source": eng}]
-                            engine_outcomes.append(_classify_engine_outcome(
-                                eng, raw_results[eng], 0,
-                            ))
-                        # 累计结果已足够 → 提前终止剩余 wave-2（不白等慢源拖尾）
-                        if not no_early and _cumulative_sufficient(
-                                raw_results, mode=mode, min_results=early_min,
-                                query=query):
-                            for fut2 in futures:
-                                if not fut2.done():
-                                    fut2.cancel()
-                            early_stopped = True
-                            break
-                except TimeoutError:
-                    lat_ms = int((time.time() - t_w2) * 1000)
-                    for fut, eng in futures.items():
-                        if not fut.done():
-                            fut.cancel()
-                            raw_results[eng] = [{"error": "timeout", "source": eng}]
-                            engine_outcomes.append(_classify_engine_outcome(
-                                eng, raw_results[eng], lat_ms, "timeout",
-                            ))
-                            nonlocal_wasted[0] += lat_ms
-                for fut in futures:
-                    if not fut.done():
-                        fut.cancel()
+            if _run_engines_bounded(rest, w2_wait, check_sufficient=True):
+                early_stopped = True
     elif parallel and to_run:
-        with ThreadPoolExecutor(max_workers=min(len(to_run), 3)) as ex:
-            futures = {ex.submit(_run_one, eng): eng for eng in to_run}
-            try:
-                for fut in as_completed(futures, timeout=_eff_timeout + 2):
-                    eng = futures[fut]
-                    try:
-                        e, res, outcome, lat = fut.result()
-                        _ingest(e, res, outcome, lat)
-                    except Exception as e:
-                        raw_results[eng] = [{"error": str(e), "source": eng}]
-                        engine_outcomes.append(_classify_engine_outcome(
-                            eng, raw_results[eng], 0,
-                        ))
-            except TimeoutError:
-                for fut, eng in futures.items():
-                    if not fut.done():
-                        fut.cancel()
-                        raw_results[eng] = [{"error": "timeout", "source": eng}]
-                        engine_outcomes.append(_classify_engine_outcome(
-                            eng, raw_results[eng], timeout * 1000, "timeout",
-                        ))
-                        nonlocal_wasted[0] += timeout * 1000
-            for fut in futures:
-                if not fut.done():
-                    fut.cancel()
+        _run_engines_bounded(to_run, _eff_timeout + 2)
     else:
         # no_early_stop 域在串行路径同样生效：平台引擎「有结果」不等于「结果可用」，
         # fast 模式 parallel=False 必走本分支，此前曾在此被噪声结果短路
-        no_early = bool(decision.get("no_early_stop", False))
         for eng in to_run:
             if time.time() >= _deadline:
                 break  # fast 预算耗尽：止损不再起新引擎
@@ -2044,7 +2079,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 f"错误恢复跳过: {type(e).__name__}")
 
     # Reranker：ARGO_LOCAL_RERANK 开关（0 关闭本地五维兜底；默认 1 开启）
-    local_rerank_on = os.environ.get("ARGO_LOCAL_RERANK", "1").strip() not in ("0", "false", "False", "no")
+    local_rerank_on = env_flag("ARGO_LOCAL_RERANK")
     reranker_status = "skipped_short"
     rank_method = "none"
     if mode == "fast" or depth == "fast":
@@ -2174,7 +2209,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         "route_reason": decision.get("reason"),
         "results": out_results,
         "count": len(out_results), "engines_used": list(raw_results.keys()),
-        "errors": _collect_errors(raw_results),
+        "errors": _collect_errors(raw_results, engine_outcomes),
         "engine_outcomes": engine_outcomes,
         # 多语言噪声门：被剔除的引擎及原因（可观测，便于定位「为什么少了几个源」）
         "noise_dropped": _noise_dropped,
@@ -2238,12 +2273,46 @@ def filter_results_by_domains(
     return kept, note
 
 
-def _collect_errors(raw_results: dict[str, list[dict[str, Any]]]) -> list[str]:
-    errors = []
+# 不算失败的 outcome 状态：这些情况「引擎跑了、没问题」，不该出现在 errors[]
+_NON_ERROR_OUTCOME = frozenset({
+    "ok", "ok-cached", "partial", "no-results", "no-results-cached",
+})
+
+
+def _collect_errors(raw_results: dict[str, list[dict[str, Any]]],
+                    engine_outcomes: list[dict[str, Any]] | None = None
+                    ) -> list[str]:
+    """收集失败文本，两个来源缺一不可。
+
+    1. raw_results 里的 error 条目——引擎把失败**当成结果**返回（异常被
+       `_exec_engine` 捕获后塞进列表）。
+    2. engine_outcomes 里带 detail 的失败 outcome——引擎内部**吞掉**异常，
+       只把失败原因写进记录（engines_base.note_failure），列表是空的。
+
+    只收第 1 类时，`--engine you` 的 SSL 超时会上报成
+    `status=completed, count=0, errors=[]`：调用方（Agent）据此判定「网上
+    没有这个信息」并停止追问，而真相是引擎连不上（2026-09-15 实测）。
+    去重按整行，避免同一失败既来自 error 条目又来自 outcome detail。
+    """
+    errors: list[str] = []
+    seen: set[str] = set()
+
+    def _add(line: str) -> None:
+        if line and line not in seen:
+            seen.add(line)
+            errors.append(line)
+
     for eng, res in raw_results.items():
         for r in res:
             if isinstance(r, dict) and "error" in r:
-                errors.append(f"{eng}: {r['error']}")
+                _add(f"{eng}: {r['error']}")
+    for o in (engine_outcomes or []):
+        if not isinstance(o, dict):
+            continue
+        detail = str(o.get("detail") or "").strip()
+        if not detail or str(o.get("status") or "") in _NON_ERROR_OUTCOME:
+            continue
+        _add(f"{o.get('engine')}: {detail}")
     return errors
 
 

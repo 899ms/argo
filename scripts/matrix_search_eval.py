@@ -288,7 +288,7 @@ ROUTE_MATRIX: list[dict[str, Any]] = [
      "lang": "en", "domain": None, "forbid": ["pypi", "npm", "crates", "docker_hub"],
      "scenario": "tech"},
     {"id": "R_en_model_diffuse", "q": "DeepSeek Harness DSH 插件开发",
-     # 拉丁实体词主导，语言检测判 en（同 R_zh_package 口径）；守卫只断言
+     # 拉丁实体词主导，语言检测判 en（同 R_zh_package 口径）；守卫只检查
      # 域让位：ai_model/models_dev 不得锁死通用开发意图
      "lang": "en", "domain": None, "forbid": ["models_dev", "huggingface"],
      "scenario": "tech"},
@@ -442,7 +442,7 @@ def run_offline_route(c: Checker) -> None:
 
     # 离线金标验的是「路由语义」，不是运行时健康——真实熔断/配额状态
     # 会随 live 探测漂移（bocha 曾被连续失败自动禁用致金标误报），
-    # 与单测「路由断言须打桩」同一教训。2026-09-07。
+    # 与单测「路由检查须打桩」同一教训。2026-09-07。
     class _AllowAll:
         def allow(self, eng):
             return True, "closed"

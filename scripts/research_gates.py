@@ -61,7 +61,7 @@ def evaluate_dossier_gates(dossier: dict[str, Any]) -> dict[str, Any]:
 
     # ── recompute 门禁（P0-2）：可复算闭环 ──
     rec = dossier.get("recomputed_values") or []
-    # 1) 声明可复算但未执行（授权门 fail-closed 拦截）→ 结论上限 medium
+    # 1) 声明可复算但未执行（授权检查默认拒绝拦下）→ 结论上限 medium
     if dossier.get("recompute_expected") and not rec:
         warnings.append({
             "id": "recompute_skipped",

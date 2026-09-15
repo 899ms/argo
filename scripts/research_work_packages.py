@@ -26,7 +26,7 @@ _EXT_KIND = {
 def normalize_recompute(raw: Any) -> dict[str, Any] | None:
     """校验工作包 recompute 契约：{script 必填, budget 可选}。
 
-    不在此处执行（fail-closed 由 recompute.run_recompute 授权门负责）。
+    不在此处执行（由 recompute.run_recompute 的授权检查负责，默认拒绝）。
     """
     if raw is None:
         return None
@@ -49,7 +49,7 @@ def normalize_recompute(raw: Any) -> dict[str, Any] | None:
 
 
 def normalize_file_inputs(items: Any) -> list[dict[str, Any]]:
-    """校验并规范化工作包的 file_inputs（fail-closed）。
+    """校验并规范化工作包的 file_inputs（默认拒绝）。
 
     白名单 = 工作包显式声明：每条必须有非空 path；文件必须存在、
     是普通文件、可读；kind 未给时按扩展名推断，不在白名单扩展名内拒绝。

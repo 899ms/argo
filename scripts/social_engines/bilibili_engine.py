@@ -10,6 +10,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# 出口调度唯一入口（issue #13 同类修复）：urlopen 原生只认标准 HTTP(S)_PROXY
+# 环境变量，**不认** config.yaml 的 network.proxy —— 裸用会在「必须经代理才能
+# 出网」的环境里整源连不上。本文件在 scripts/ 子目录，父目录不在 sys.path 上。
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from net_proxy import open_url  # noqa: E402
+
 
 def _http_get_with_retry(url: str, headers: dict, timeout: int = 10, max_retries: int = 2):
     """带重试的 HTTP GET，尊重 429 + Retry-After。
@@ -20,7 +28,7 @@ def _http_get_with_retry(url: str, headers: dict, timeout: int = 10, max_retries
     for attempt in range(max_retries + 1):
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with open_url(req, timeout=timeout) as resp:
                 return resp.read(), resp.status
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < max_retries:

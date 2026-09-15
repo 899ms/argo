@@ -9,8 +9,8 @@
 |------|------|
 | `argo_search` | 统一网络搜索（多引擎融合、时间/域名过滤） |
 | `argo_local_search` | 本机文件/记录搜索（非联网） |
-| `argo_local_read` | 白名单本地文本预览（`ARGO_LOCAL_READ_DIRS`，fail-closed） |
-| `argo_recompute` | fail-closed 可复算执行器（受限子进程重算数值） |
+| `argo_local_read` | 白名单本地文本预览（`ARGO_LOCAL_READ_DIRS`；没配置就不放行） |
+| `argo_recompute` | 可复算执行器（受限子进程重算数值；没明确授权就不执行） |
 | `argo_research` | 深度研究取证（含 social-sentiment） |
 | `argo_evidence` | 来源可信度评估（Selection×Absorption） |
 | `argo_clarify` | 意图消歧 |
@@ -81,7 +81,7 @@ export TINYFISH_API_KEY="sk-tinyfish-..."   # 去 agent.tinyfish.ai/api-keys 申
 ## 本地打通（三通道）
 
 - **搜索体验**：`python3 scripts/search.py "查询" --include-local` —— 联网结果尾部并入本机文件命中（file:// 带行号，source=local_files，不参与融合评分）
-- **本地分析**：MCP `argo_local_read`（白名单预览，`ARGO_LOCAL_READ_DIRS=~/data,~/notes` 配置；worker 侧在 wide_research 默认工具白名单）；数据计算走工作包 `recompute`（fail-closed 授权）
+- **本地分析**：MCP `argo_local_read`（白名单预览，`ARGO_LOCAL_READ_DIRS=~/data,~/notes` 配置；worker 侧在 wide_research 默认工具白名单）；数据计算走工作包 `recompute`（不授权就不执行）
 - **插件 wide_research 接入**：`file_inputs`（本地一手数据，登记血缘 sha256/路径，内容不入账）+ `recompute`（可复算契约，编排器侧受限执行，产出 `recomputed_values`）+ `include_local`（worker 搜索并入本机命中）；门禁 `recompute_skipped` / `recompute_conflict` 对齐核心，本地一手计入一手命中（防 no_source 假阴性）
 - **成果复用**：`python3 scripts/research.py --search-archive "主题词" [--archive-since 日期]` —— 检索历史研究/搜索归档（`数据/argo-search-archive/runs/`），按主题词 + 时间窗列出历史 run 与来源统计
 

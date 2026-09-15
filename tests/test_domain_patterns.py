@@ -48,7 +48,7 @@ class TestDomainPatternsCompile(unittest.TestCase):
         self.domains = [d for d in (self.cfg.get("domains") or []) if isinstance(d, dict)]
 
     def test_domains_exist(self):
-        """扫描面不能为空——读法失效时其余断言会静默全过。"""
+        """扫描面不能为空——读法失效时其余检查会静默全过。"""
         self.assertGreaterEqual(len(self.domains), 70,
                                 f"只读到 {len(self.domains)} 个域，配置加载可能失效")
 

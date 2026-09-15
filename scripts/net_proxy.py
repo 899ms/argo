@@ -113,7 +113,8 @@ def open_url(req: Any, timeout: float = 10.0):
     把预算耗光后返回空（issue #13 的形态：抓 GitHub 挂到 deadline_exhausted）。
 
     issue #13 修复时只覆盖了 `http_open`（引擎侧），其余脚本里的 urlopen
-    仍在裸奔；本函数把这条通道收成单一真源，供所有 urllib 出口复用。
+    仍直接调用、不认这项配置；本函数把这条通道统一到一处，供所有 urllib
+    出口复用。
 
     失败语义与 `urlopen` 完全一致：原样抛出，调用方既有的 `except` 分支
     （含 `urllib.error.HTTPError` / `URLError`）不受影响。

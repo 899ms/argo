@@ -103,7 +103,7 @@ def main():
     d = route_query(q, mode="fast")
     check("e2e_route_not_em", d["engine"] != "eastmoney", d["engine"])
 
-    # 冷启动强制 miss → 写缓存 → 热命中（避免旧 L2 污染 reranker/early_stopped 断言）
+    # 冷启动强制 miss → 写缓存 → 热命中（避免旧 L2 污染 reranker/early_stopped 检查）
     t0 = time.time()
     r1 = super_search(q, n=3, mode="fast", depth="fast", skip_cache=True, timeout=12)
     cold = int((time.time() - t0) * 1000)

@@ -78,7 +78,7 @@ class TestTfidfScoresEmission(unittest.TestCase):
         d = route_query("zzz qqx unrelated tokens 2026", mode="auto",
                         depth="fast")
         if d.get("reason", "").startswith("TF-IDF 语义路由"):
-            self.skipTest("查询意外命中 TF-IDF 主导路径，跳过兜底断言")
+            self.skipTest("查询意外命中 TF-IDF 主导路径，跳过兜底检查")
         self.assertEqual(d.get("tfidf_scores"), [])
         self.assertTrue(d.get("reason"))
 

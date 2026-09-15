@@ -48,11 +48,22 @@ class CircuitBreaker:
     def _load(self) -> None:
         try:
             if os.path.exists(self._path):
-                data = json.loads(open(self._path, encoding="utf-8").read())
+                # with 关闭句柄：原 open(...).read() 靠 CPython 引用计数兜住，
+                # 在别的解释器实现上会泄漏 fd（SIM115）
+                with open(self._path, encoding="utf-8") as f:
+                    data = json.loads(f.read())
                 self._engines = data.get("engines") or {}
                 # 负缓存仅进程内有效，不从磁盘恢复（避免长期脏状态）
-        except Exception:
-            self._engines = {}
+        except Exception as e:
+            # 解析失败**不清空**已有记忆：清空 = 已被判死的源重新进路由、
+            # auto-disable 全部重置，而且没有任何提示（用户看到的是「今天
+            # 网络又不行了」）。与 quota.py 的处理方式保持一致——那边
+            # 明确「损坏不清空，保留旧状态」，这里此前相反：坏文件一出现就悄悄清零。
+            # 首次加载（_engines 为空）时保留空态是安全的：没有记忆可丢。
+            import sys as _sys
+            print(f"[circuit-breaker] 状态文件不可解析（{type(e).__name__}），"
+                  f"保留内存态 {len(self._engines)} 条：{self._path}",
+                  file=_sys.stderr)
 
     def _save(self) -> None:
         try:

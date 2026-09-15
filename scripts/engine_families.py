@@ -6,7 +6,7 @@ engine_families.py — 搜索源能力族分类（第一性原理重构）
   旧：每个搜索源是独立个体，type/cost/coverage 散落，路由靠 domain 手写 combo，
       同类源（如 byted/bocha/duckduckgo 都是全网搜索）无法互换、无法统一测试。
   新：搜索源按「检索能力」归族（MECE），同族源共享统一调用契约——
-      任意组合、标准化输入输出、golden set 按 family 断言、A/B 可替换。
+      任意组合、标准化输入输出、金标集按族检查、A/B 可替换。
 
 能力族（MECE，互斥且穷尽）：
   web_general      全网网页检索（多语言）    byted / bocha / duckduckgo / tavily / anysearch / octen / exa
@@ -33,7 +33,7 @@ engine_families.py — 搜索源能力族分类（第一性原理重构）
 用途：
   - route 层组合时按 family 去重（同族至多 N 个，避免同质源堆叠）
   - 去重腾出的槽位用互补能力族引擎回填（complement_refill）
-  - golden set 断言按 family 而非引擎名（源可替换不破坏测试）
+  - 金标集按族检查而非按引擎名（源可替换不破坏测试）
   - engine_status / list-engines 展示按族分组
   - research profile 的 vertical_engines 可按 family 扩展
 """

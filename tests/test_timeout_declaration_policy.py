@@ -31,7 +31,7 @@
 ## 本文件锁定
 
   1. 有内部重试的引擎必须声明 timeout（防叠乘）
-  2. 无内部重试的引擎**不得**被误声明（防成功率下降）—— 以断言文档化意图
+  2. 无内部重试的引擎**不得**被误声明（防成功率下降）—— 以用检查把意图写下来
   3. `execution.per_engine_budget_s` 可配置、非法值安全回落
   4. 预算常量与 default_timeout 的合理关系
 """
@@ -72,7 +72,7 @@ def _engine_source(engine_id: str) -> str:
     **从 config 的 cmd 字段取路径**（local_search 这类引擎的实现在
     sub-skills/ 下，不在 scripts/，硬编码候选路径会解析不到 →
     测试空转、给虚假安全感。实测教训：首版漏了第三条路径，
-    local_search 的源码长度为 0、该断言被静默跳过）。
+    local_search 的源码长度为 0、这条检查被静默跳过）。
     """
     candidates = [
         ROOT / "scripts" / "social_engines" / f"{engine_id}_engine.py",
@@ -114,11 +114,11 @@ class TestRetryPolicyConsistency:
     def test_no_retry_group_really_has_no_retry(self):
         for eng in NO_INTERNAL_RETRY:
             src = _engine_source(eng)
-            # 不再「找不到就跳过」——那会让断言空转、给出虚假安全感。
+            # 不再「找不到就跳过」——那会让检查空转、给出虚假安全感。
             # 找不到源码说明分组或路径解析过时，必须显式失败。
             assert src, (
                 f"{eng} 源码未解析到（分组过时或路径解析失效）——"
-                f"本断言不可静默跳过")
+                f"这条检查不可静默跳过")
             assert not _has_internal_retry(src), (
                 f"{eng} 被列为「无内部重试」但源码出现重试特征；"
                 f"若已加重试，应声明 timeout 消除叠乘")
@@ -149,7 +149,7 @@ class TestTimeoutDeclaration:
     def test_no_retry_engines_not_declared(self):
         """无内部重试的引擎不得声明 ≥8s timeout（否则失去外层重试）。
 
-        这是**意图文档化**断言：若将来给它们加了内部重试，应同时移入
+        这是**意图文档化**检查：若将来给它们加了内部重试，应同时移入
         HAS_INTERNAL_RETRY 并声明 timeout。
         """
         cfg = load_config(force=True)

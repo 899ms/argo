@@ -60,7 +60,7 @@
 4. **무료 오픈 생태계로 충분.** 정부·학술·표준·보안 공개 API와 키리스 엔진이 대부분 도메인을 커버 (무설정 184개).
 5. **품질은 측정 가능.** 랭킹 골든 플로어, 융합 이득 어블레이션 게이트, 음의 라우팅 제어.
 
-> v2.8.8은 이 모두를 구현: 220 소스 / 89 도메인 / 185 무설정.
+> v2.8.8은 이 모두를 구현: 222 소스 / 90 도메인 / 187 무설정.
 
 ---
 
@@ -337,7 +337,7 @@ python3 scripts/search.py --list-engines
 - **MCP 한 줄 주입 (v2.8.4 신규)**: `argo mcp inject`로 Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (원자 쓰기 + 백업 + 가역; 진원 `mcp/clients.yaml`)
 - **구조화 검색 강화 (v2.8.4 신규)**: 쿼리 정규화 + 변체 + 복잡도 게이트; 소셜 문법 우선; TF-IDF는 중국어 엔진을 버린 뒤에도 후보를 봄; `--include-local`
 - **Keenable (v2.8.4 신규)**: 일반 웹 검색 엔진 추가 (L1 선언적 HTTP, 무료 체험, `ARGO_KEENABLE_API_KEY`)
-- **220 소스, 89 도메인** (185개 무설정): 일반 웹 + 금융 / 매크로 / 영화 / 스포츠 / 지리 / 조직 / 미디어 / 화학 / 학술 / 코드 (진원: `config.yaml`)
+- **222 소스, 90 도메인** (187개 무설정): 일반 웹 + 금융 / 매크로 / 영화 / 스포츠 / 지리 / 조직 / 미디어 / 화학 / 학술 / 코드 (진원: `config.yaml`)
 - **MCP 도구 12개**: search, research, evidence, clarify, fetch, screenshot, PDF, social, local files, crawl, local preview, recompute
 - **다국어 검색**: 중국어, 영어, 일본어, 한국어, 키릴, 태국어, 아랍어, 히브리어, 그리스어, 데바나가리, …; 라우팅과 엔진 파라미터가 언어를 따름; 비중국어 쿼리는 중국어 전용 소스 회피 (Zhihu / Sogou WeChat / A주 스냅샷 등)
 - **수직 복구 게이트**: 빈 결과 복구 시 영화·스포츠에 pypi / npm / 속보 등이 「새지」 않음

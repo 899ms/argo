@@ -61,9 +61,9 @@ def profile(monkeypatch):
 class TestProfileAvailable:
     """画像可用性与过期策略。
 
-    **本类必须 hermetic**：原先直接断言 `lc.available() is True`，而
+    **本类必须不依赖外部状态**：原先直接检查 `lc.available()` 是否为 True，而
     `available()` 取决于真实画像文件的 mtime 与 `MAX_AGE_S=30 天`。
-    画像随 C 阶段实测更新（最近一次 2026-09-10），于是该断言会在
+    画像随 C 阶段实测更新（最近一次 2026-09-10），于是这条检查会在
     2026-10-10 之后必然变红——与代码对错无关。已知的定时炸弹：
     测试挂掉的日子由数据生成日期决定，不由缺陷决定。
 
@@ -88,7 +88,7 @@ class TestProfileAvailable:
         """画像文件本身必须存在且形状正确（与有效期解耦）。
 
         读文件内容而非 `_load()`：`_load()` 会被过期策略返回 None，
-        把「文件缺失」和「文件过期」两种故障混成一个断言。
+        把「文件缺失」和「文件过期」两种故障混成同一条检查。
         """
         monkeypatch.setattr(lc, "MAX_AGE_S", 10 ** 9)
         lc.reload()

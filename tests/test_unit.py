@@ -456,17 +456,29 @@ class TestLocalSearchHealthCheck(unittest.TestCase):
 
 
 class TestLocalSearchSmartRouter(unittest.TestCase):
+    """路由映射规则：检查与引擎「此刻是否可达」解耦。
+
+    前三条此前用默认 require_available=True，于是读本地健康缓存
+    （local_search_health.json）——arXiv 一被墙 / ratelimit 一次，路由就跳过
+    它，测试变红，而它想守护的「学术查询映射到学术族」这条规则并没有坏
+    （2026-09-15 实测：arxiv consecutive_failures=1 → available=false → 红）。
+    测规则就只用规则：可用性过滤由 pick_engines 的调用方决定。
+    """
+
     def test_route_academic(self):
-        decision = local_route_query("transformer attention paper")
+        decision = local_route_query("transformer attention paper",
+                                     require_available=False)
         self.assertIn("local_arxiv", decision["engines"])
         self.assertEqual(decision["domain"], "academic")
 
     def test_route_code(self):
-        decision = local_route_query("python list comprehension stackoverflow")
+        decision = local_route_query("python list comprehension stackoverflow",
+                                     require_available=False)
         self.assertIn("local_stackoverflow", decision["engines"])
 
     def test_route_reference(self):
-        decision = local_route_query("what is the capital of France wikipedia")
+        decision = local_route_query("what is the capital of France wikipedia",
+                                     require_available=False)
         self.assertIn("local_wikipedia", decision["engines"])
 
     def test_preferred_engines_override(self):

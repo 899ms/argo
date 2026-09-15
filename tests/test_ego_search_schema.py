@@ -110,7 +110,7 @@ def test_act_engine_in_js_and_url(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
-    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 测试必须不依赖外部状态：_pick_runtime 会真探测 ego-browser 二进制，
     # 缺失即 sys.exit（BUG-5，2026-09-13）
     monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(
@@ -144,7 +144,7 @@ def test_search_schema_with_mock(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
-    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 测试必须不依赖外部状态：_pick_runtime 会真探测 ego-browser 二进制，
     # 缺失即 sys.exit（BUG-5，2026-09-13）
     monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(
@@ -173,7 +173,7 @@ def test_fetch_schema_with_mock(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
-    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 测试必须不依赖外部状态：_pick_runtime 会真探测 ego-browser 二进制，
     # 缺失即 sys.exit（BUG-5，2026-09-13）
     monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(
@@ -201,7 +201,7 @@ def test_api_schema_with_mock(monkeypatch, capsys):
         }
 
     monkeypatch.setattr(ego_search, "run_ego", fake_run)
-    # 测试必须 hermetic：_pick_runtime 会真探测 ego-browser 二进制，
+    # 测试必须不依赖外部状态：_pick_runtime 会真探测 ego-browser 二进制，
     # 缺失即 sys.exit（BUG-5，2026-09-13）
     monkeypatch.setattr(ego_search, "_pick_runtime", lambda args: "ego")
     args = SimpleNamespace(

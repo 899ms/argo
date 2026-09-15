@@ -35,10 +35,10 @@ python3 scripts/search.py "查询词" \
 |------|------|-------------|
 | `results` | **答案用这个**：融合+精排后的条目（含 `score`/`rerank_dims`/`consensus_engines`/`fetch_suggested`/`image_url`/`full_text_url`） | 2.4 KB |
 | `sources` | **引用用这个**：底部相关链接形态的稳定 5 字段投影 | 1.0 KB |
-| `candidates` | **归档/策展才要**：provenance 封套（`candidate_id`/`canonical_url`/`platform`/`verification`/`metrics`/`limitations`） | 4.9 KB |
+| `candidates` | **归档/整理素材才要**：完整候选记录，带来源追溯字段（`candidate_id`/`canonical_url`/`platform`/`verification`/`metrics`/`limitations`） | 4.9 KB |
 
-- **Agent 消费默认加 `--no-envelope --fields agent`**：前者去候选封套与 sources 投影（sources 是 results 的 URL 全重投影，envelope 模式才生成）；后者再剥遥测字段，实测 -n2 输出 1.3 KB（full --json ≈ 14.9 KB）。`fetch_required` 在两档都保留；只有做归档
-  （`--archive`）或需要 provenance 时才保留（`--archive` 会强制保留）。
+- **Agent 消费默认加 `--no-envelope --fields agent`**：前者去掉完整候选记录与 sources 投影（sources 是 results 里 URL 的重投影，只在 envelope 模式生成）；后者再剥掉遥测字段，实测 -n2 输出 1.3 KB（full --json ≈ 14.9 KB）。`fetch_required` 在两档都保留；只有做归档
+  （`--archive`）或需要来源追溯时才保留（`--archive` 会强制保留）。
 - 另有一批诊断字段（`tfidf_scores`/`engine_outcomes`/`coverage`/`routes`/`limitations`/
   `lang_pref`）体积不大但通常无用，别把它们当结果读。
 - 结果级字段：`fetch_suggested`（是否建议核验）、`has_fetched_evidence`（已核验）、

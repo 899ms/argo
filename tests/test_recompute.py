@@ -31,7 +31,7 @@ class TestRunRecompute(unittest.TestCase):
     def test_unauthorized_skipped(self):
         r = run_recompute("print(1)", [{"path": self.f}])
         self.assertFalse(r["ok"])
-        self.assertIn("fail-closed", r.get("skipped_reason", ""))
+        self.assertIn("未显式授权", r.get("skipped_reason", ""))
 
     def test_authorized_computes(self):
         code = (

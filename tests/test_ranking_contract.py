@@ -15,8 +15,8 @@ argo 的融合层（rrf_merge）与精排层（local_five_dim_rerank）此前各
 结构性偏爱「啰嗦的长网页」——实测一条 3 引擎共识条目被单源长文本条目反超。
 
 **为什么既有测试没抓到**：`test_unit.py::test_consensus_engines` 与
-`test_content_security.py::test_rrf_weighted_ranking` 都只断言 `rrf_merge`
-**返回值内部**的顺序，没有任何一条断言「这个顺序能活着走到最终输出」。
+`test_content_security.py::test_rrf_weighted_ranking` 都只检查 `rrf_merge`
+**返回值内部**的顺序，没有任何一条检查「这个顺序能活着走到最终输出」。
 本文件补的就是这层端到端契约。
 
 ## 三条不变式

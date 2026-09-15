@@ -200,7 +200,7 @@ def collect_issues(engines: dict[str, dict[str, Any]],
 
     只比引擎名是不够的：名字都在、值被手改（firecrawl.qps 1→99）同样会让
     派生件与真源脱钩，而限流/配额恰恰是靠这些值生效的。第一版校验只比名字，
-    变异测试（把 qps 改成 99）直接漏报。
+    把 qps 手改成 99 试一次，它直接漏报。
     """
     issues = []
     config_names = set(engines.keys())

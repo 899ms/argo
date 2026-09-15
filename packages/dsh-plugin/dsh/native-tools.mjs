@@ -156,7 +156,7 @@ export const NATIVE_TOOLS = {
     ]
   },
   "argo_local_read": {
-    "description": "读取白名单内的本地文本文件（预览，非全文）：用于分析本地数据/笔记/研究成果。白名单目录由 ARGO_LOCAL_READ_DIRS 配置（逗号分隔），未配置或路径越权时拒绝（fail-closed）。",
+    "description": "读取白名单内的本地文本文件（预览，非全文）：用于分析本地数据/笔记/研究成果。白名单目录由 ARGO_LOCAL_READ_DIRS 配置（逗号分隔），未配置或路径越权时拒绝（默认拒绝）。",
     "parameters": {
       "type": "object",
       "properties": {
@@ -194,7 +194,7 @@ export const NATIVE_TOOLS = {
     ]
   },
   "argo_recompute": {
-    "description": "fail-closed 可复算执行器：在受限子进程中运行计算脚本（只读白名单输入、断网、超时硬杀、内存软限），验证本地数据重算出的数值。用于结论承重要重算数字时；默认拒绝，需显式授权。",
+    "description": "可复算执行器（默认拒绝）：在受限子进程中运行计算脚本（只读白名单输入、断网、超时硬杀、内存软限），验证本地数据重算出的数值。用于结论承重要重算数字时；默认拒绝，需显式授权。",
     "parameters": {
       "type": "object",
       "properties": {
@@ -220,7 +220,7 @@ export const NATIVE_TOOLS = {
         },
         "allow_exec": {
           "type": "boolean",
-          "description": "是否授权运行（fail-closed，默认拒绝；未授权时返回 skipped_reason）",
+          "description": "是否授权运行（不授权就不执行；未授权时返回 skipped_reason）",
           "default": false
         }
       },

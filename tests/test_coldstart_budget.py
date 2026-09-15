@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""冷启动预算门禁（功能性断言，非计时，不会在慢机器上抖动）。
+"""冷启动预算门禁（功能性检查，非计时，不会在慢机器上抖动）。
 
 背景（2026-09-15 实测）：`import search` 曾要 ~2.1s，其中 ~1.9s 是纯浪费——
   1. cache.py 模块级 DEFAULT_DB_PATH = argo_paths.db_path()
@@ -11,7 +11,7 @@
 修复后 `import search` ≈ 0.55s（约 4×）。这两个 import 若回潮，每一次
 CLI/MCP 调用（Agent 场景 = 每次都起新进程）都要白付这笔钱。
 
-门禁思路：不断言耗时（慢机器/沙箱会误伤），断言**状态**——
+门禁思路：不检查耗时（慢机器/沙箱会误伤），检查**状态**——
 import 完成后 config.load_config 不得被触发过（_config_cache 仍为 None）。
 """
 

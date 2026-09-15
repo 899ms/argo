@@ -7,7 +7,7 @@
 显示 ready 的。本次把它们收口到 `engines_base.http_open`。
 
 这些门禁从真实入口取事实（AST 扫真实源码、调用真实函数、走真实熔断持久化），
-不做「断言自己」式的同义反复：
+不做「用实现验证实现」式的同义反复：
 
   1. builder 文件里不得再出现直连 urlopen（否则归因又成盲区）。
   2. `http_open` 必须是一个**等价替换**：成功时字节流与响应对象原样透传，
@@ -108,20 +108,26 @@ class TestNoDirectUrlopenRepoWide:
 
     issue #13 的修复只覆盖了 `http_open` 所在的引擎路径，于是 fetch_v3（正是
     该 issue 报的文件）、job、health_check、pdf_extract、readability_extract、
-    train、wx、search 里的 13 处 `urlopen` 继续裸奔——在「必须经代理才能出网」
+    train、wx、search 里的 13 处 `urlopen` 仍然直接调用——在「必须经代理才能出网」
     的环境里那些出口一律连不上。上面那条 builder 门禁的作用域写死在
     BUILDER_FILES 上，所以看不见它们。
 
-    本门禁把作用域放宽到全部 scripts/*.py：唯一允许直调 urlopen 的是
-    net_proxy.py 自己（open_url 的本体）。新增出口请走 net_proxy.open_url
-    或 engines_base.http_open。
+    这项检查把范围放宽到全部 scripts/**/*.py（含子目录）：唯一允许直调
+    urlopen 的是 net_proxy.py 自己（open_url 的本体）。新增出口请走
+    net_proxy.open_url 或 engines_base.http_open。
+
+    作用域必须是递归的：第一版写的是 `glob("*.py")`（只看 scripts/ 顶层），
+    于是 scripts/social_engines/*（7 个）与 scripts/redskill/*（1 个）里同样
+    直接调用的 urlopen 一个都没被拦住——28 项检查全绿而缺陷在场。子目录正是
+    社交/技能这类「按域分家」的引擎自然落脚处，漏了子目录等于漏了新增出口
+    的默认位置。记录相对路径，同名文件不再互相覆盖。
     """
 
     def test_no_module_bypasses_egress_dispatch(self):
         offenders = {}
         assert (SCRIPTS_DIR / "net_proxy.py").is_file(), "net_proxy.py 不见了，门禁前提失效"
-        for path in sorted(SCRIPTS_DIR.glob("*.py")):
-            if path.name in _EGRESS_SOURCE:
+        for path in sorted(SCRIPTS_DIR.rglob("*.py")):
+            if path.name in _EGRESS_SOURCE or "__pycache__" in path.parts:
                 continue
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -134,7 +140,7 @@ class TestNoDirectUrlopenRepoWide:
                 and node.func.attr == "urlopen"
             ]
             if hits:
-                offenders[path.name] = hits
+                offenders[str(path.relative_to(SCRIPTS_DIR))] = hits
         assert not offenders, (
             "这些文件绕开了出口调度（不认 config.yaml 的 network.proxy，"
             "在必须走代理的环境里会连不上）："
@@ -142,7 +148,7 @@ class TestNoDirectUrlopenRepoWide:
         )
 
     def test_gate_has_teeth(self):
-        """变异验证：往一个原本干净的脚本里塞一处 urlopen，门禁必须报红。"""
+        """故意造错验证：往一个原本干净的脚本里塞一处 urlopen，门禁必须报红。"""
         target = SCRIPTS_DIR / "wx.py"
         src = target.read_text(encoding="utf-8")
         patched = src.replace(
@@ -151,7 +157,7 @@ class TestNoDirectUrlopenRepoWide:
             "\n\ndef _mutant_egress(req):\n"
             "    import urllib.request\n"
             "    return urllib.request.urlopen(req, timeout=1)\n")
-        assert patched != src, "变异源未生效，测试本身失效"
+        assert patched != src, "造错样本没生效，测试本身失效"
         target.write_text(patched, encoding="utf-8")
         try:
             tree = ast.parse(target.read_text(encoding="utf-8"))
@@ -160,7 +166,7 @@ class TestNoDirectUrlopenRepoWide:
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                 and n.func.attr == "urlopen"
             ]
-            assert found, "变异后门禁未捕获——门禁无牙"
+            assert found, "造错之后检查没抓住——等于没检查"
         finally:
             target.write_text(src, encoding="utf-8")
 

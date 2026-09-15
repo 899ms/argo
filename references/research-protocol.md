@@ -60,7 +60,7 @@
 }
 ```
 
-规则（fail-closed）：
+规则（默认拒绝：没明确允许就不放行）：
 - `path` 必填；文件必须存在、普通文件、可读；类型白名单 csv/tsv/xlsx/xls/parquet/json/md/txt/pdf（kind 未给时按扩展名推断）
 - 文件内容不入库：dossier `local_sources` 只登记路径、sha256、大小、mtime、kind、role（引用时标注路径与行号）
 - `no_primary_sources` 门禁把已入账的本地文件计为一手命中
@@ -84,7 +84,7 @@
 }
 ```
 
-- **授权门 fail-closed**：默认拒绝执行；`--allow-recompute`（CLI）/ `ARGO_ALLOW_RECOMPUTE=1` 显式放行；未执行时门禁 `recompute_skipped`（结论上限 medium）
+- **授权检查默认拒绝**：不显式授权就不执行；`--allow-recompute`（CLI）/ `ARGO_ALLOW_RECOMPUTE=1` 显式放行；未执行时门禁 `recompute_skipped`（结论上限 medium）
 - 执行防护：Python 层断网（socket/getaddrinfo 拦截）、文件白名单强制（open/io.open 包装，越权即 PermissionError）、超时硬杀进程组、内存软限
 - 数值契约：`extract_values` 从 stdout 提取数值；与检索来源数字无交集时门禁 `recompute_conflict`（以重算为准，人工核对）
 - 脚本里读输入用 `open(_ALLOWED[0], ...)`（白名单在 `_ALLOWED` 列表中，按 file_inputs 顺序）

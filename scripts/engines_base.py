@@ -466,9 +466,8 @@ def _http_get_raw(url: str, headers: dict, timeout: float,
     失败时按状态码写入归因寄存器：限流（429）、封锁（403+拦截特征）、
     网络（连接层）。归因供聚合层区分「引擎坏」与「被挡住」。
     """
-    use_client = os.environ.get("ARGO_ENGINE_HTTP_CLIENT", "1").strip() not in (
-        "0", "false", "False", "no"
-    )
+    from engine_env import env_flag
+    use_client = env_flag("ARGO_ENGINE_HTTP_CLIENT")
     if use_client:
         try:
             from http_client import HttpClient
@@ -563,7 +562,7 @@ def http_open(req: Any, timeout: float = 10.0, engine: str = ""):
     # 出口调度（issue #13）：统一走 net_proxy.open_url——代理解析（argo 级
     # rules / ARGO_PROXY / config url + 标准环境变量）的唯一真源。此前这里
     # 自带一份 opener 拼装，与 fetch/job 等处的 urlopen 各写一份，于是 issue
-    # #13 只修了本函数覆盖的引擎路径，其余出口仍在裸奔。
+    # #13 只修了本函数覆盖的引擎路径，其余出口仍然直接调用。
     from net_proxy import open_url
     try:
         resp = open_url(req, timeout=timeout)

@@ -41,7 +41,7 @@ class TestEndToEnd(unittest.TestCase):
 
     def test_routes_stock_to_sina(self):
         # v2.5.1 起 stock 域 combo 有意缩短（sina_quote + tencent_quote），
-        # eastmoney 不再必然出现在日常 combo 中；断言主源与域即可。
+        # eastmoney 不再必然出现在日常 combo 中；检查主源与域即可。
         data = self.run_search("贵州茅台股价")
         self.assertEqual(data.get("engine"), "sina_quote")
         self.assertEqual(data.get("domain"), "stock_query")

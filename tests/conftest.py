@@ -2,7 +2,7 @@
 """pytest 全局配置。
 
 存量测试大量 mock urllib.request.urlopen 验证引擎 URL 构造（setlang/lang 等），
-HttpClient 接入后这些 mock 不再生效。默认回退 urllib 路径，保证存量断言行为
+HttpClient 接入后这些 mock 不再生效。默认回退 urllib 路径，保证存量检查行为
 不变；HttpClient 新行为的专项测试显式 monkeypatch.setenv 开启。
 
 另：把 argo 状态目录隔离到临时目录。部分模块（如 v2ex_nodes 的节点表缓存）

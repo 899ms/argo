@@ -245,7 +245,7 @@ class TestWave1Hedged(unittest.TestCase):
         子进程内跑 execute_search（fast+parallel，primary 睡 8s、backup 0.02s），
         backup 赢、primary 弃置。若弃置线程非 daemon（如原 shutdown(wait=False)
         的 ThreadPoolExecutor），进程退出会被 atexit join 拖到 8s；daemon 化后
-        进程在 ~grace+backup 内退出。断言子进程在 5s 内返回，即证明「假快」已修。
+        进程在 ~grace+backup 内退出。确认子进程在 5s 内返回，即证明「假快」已修。
         """
         script = f"""
 import sys, time

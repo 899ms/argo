@@ -103,17 +103,17 @@ class TestIsattyIsNotAStdinPredicate:
             f"也不是 tty）。请改用 cli_io.stdin_is_piped()：{offenders}")
 
     def test_gate_has_teeth(self, tmp_path):
-        """变异验证：在别处塞一处 isatty，门禁扫描必须报红。"""
+        """故意造错验证：在别处塞一处 isatty，门禁扫描必须报红。"""
         target = SCRIPTS / "wx.py"
         src = target.read_text(encoding="utf-8")
         target.write_text(src + "\n\ndef _m():\n    import sys\n    return sys.stdin.isatty()\n",
                           encoding="utf-8")
         try:
             s = target.read_text(encoding="utf-8")
-            assert "isatty" in s, "变异源未生效"
+            assert "isatty" in s, "造错样本没生效"
             # 复刻门禁的扫描逻辑
             found = [l for l in s.splitlines() if "isatty" in l]
-            assert found, "变异后门禁未捕获——门禁无牙"
+            assert found, "造错之后检查没抓住——等于没检查"
         finally:
             target.write_text(src, encoding="utf-8")
 

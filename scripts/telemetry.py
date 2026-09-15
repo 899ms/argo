@@ -22,6 +22,7 @@ from typing import Any
 
 # 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
+from engine_env import env_flag  # 布尔开关统一判断（见 env_flag 的说明）
 
 _STREAM_VERSION = 1
 
@@ -35,7 +36,7 @@ def _telemetry_dir() -> Path:
 
 
 def _enabled() -> bool:
-    return os.environ.get("ARGO_TELEMETRY", "1").strip() not in ("0", "false", "False")
+    return env_flag("ARGO_TELEMETRY")
 
 
 def emit(stream: str, record: dict[str, Any]) -> bool:

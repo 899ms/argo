@@ -20,8 +20,8 @@ blocked）时，这类「跨层结论不一致」不会被发现。
 
 ## 判据
 
-对每个「声明了待接入新专源」的域，断言该源落在**本模式预算之内**
-（即它确实会参与自动路由）。同时断言既有源不被挤掉——这是用 must_keep
+对每个「声明了待接入新专源」的域，检查该源落在**本模式预算之内**
+（即它确实会参与自动路由）。同时检查既有源不被挤掉——这是用 must_keep
 顶位的反例（实测会把 douban_movie/musicbrainz 挤出，属净回归）。
 """
 
@@ -71,7 +71,7 @@ def _enabled(name: str) -> set[str]:
 
 @pytest.fixture(scope="module")
 def new_sources():
-    """模块级 NEW_SOURCES 的镜像，便于断言真源未被清空。"""
+    """模块级 NEW_SOURCES 的镜像，便于检查真源未被清空。"""
     return _new_sources()
 
 
@@ -151,7 +151,7 @@ class TestVerticalKeepMapConsistency:
     def test_route_table_is_the_single_source(self, new_sources):
         """本文件的判据必须来自 route 的真源，且真源非空。
 
-        旧版用 `inspect.getsource(route)` 子串断言冒充一致性校验：把
+        旧版用 `inspect.getsource(route)` 子串检查冒充一致性校验：把
         `_VERTICAL_NEW_SOURCE` 整段删掉，只要域名字还出现在注释里就照样通过。
         现在直接读真源对象，删表即失败。
         """

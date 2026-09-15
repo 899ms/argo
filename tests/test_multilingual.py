@@ -402,7 +402,7 @@ class TestCrossLangRecovery(unittest.TestCase):
             "hello world", ["duckduckgo"], ["wikipedia"], mode="auto")
         strategies = [s.strategy for s in plan if s.level == "L4"]
         # 系统 locale 含 zh 或习惯含 zh 时出现；无 zh 时可不出现
-        # 这里只断言：中文查询有 cross_lang、英文查询无 cross_lang
+        # 这里只检查：中文查询有 cross_lang、英文查询无 cross_lang
         self.assertNotIn("cross_lang", strategies)
 
 
@@ -483,7 +483,7 @@ class TestLangPref(unittest.TestCase):
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestEngineLangParamWiring(unittest.TestCase):
-    """P2-2：URL 级语言参数注入断言。
+    """P2-2：URL 级语言参数注入检查。
 
     覆盖 engines_base 两处 `_lang_param` 注入点：
       - _build_html_engine（~393 行，HTML 抓取引擎）

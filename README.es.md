@@ -57,10 +57,10 @@
 1. **De enlaces a evidencia.** Los agentes necesitan material estructurado, verificable y compacto — Argo devuelve JSON con desglose de credibilidad.
 2. **El contexto es el primer coste.** Argo perfil agente: ~3,7KB por llamada, con presupuestos de bytes fijados por gates.
 3. **Los sitios preparan contenido para IA.** llms.txt y `.md` se extienden — la cadena de fetch los sondea en el nivel 0, con lector r.jina.ai como respaldo.
-4. **El ecosistema libre basta.** APIs abiertas de gobiernos/academia/estándares/seguridad + motores sin clave cubren la mayoría de dominios (185 sin configuración).
+4. **El ecosistema libre basta.** APIs abiertas de gobiernos/academia/estándares/seguridad + motores sin clave cubren la mayoría de dominios (187 sin configuración).
 5. **Calidad medible.** Pisos golden de ranking, gates de ablación de fusión y controles negativos de enrutamiento.
 
-> v2.8.8 lo implementa todo: 220 fuentes, 89 dominios, 185 sin clave.
+> v2.8.8 lo implementa todo: 222 fuentes, 90 dominios, 187 sin clave.
 
 ---
 
@@ -337,7 +337,7 @@ python3 scripts/search.py --list-engines
 - **Inyección MCP de un comando (nuevo en v2.8.4)**: `argo mcp inject` para Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (escritura atómica + backup + deshacer; fuente `mcp/clients.yaml`)
 - **Mejoras de búsqueda estructurada (nuevo en v2.8.4)**: normalización + variantes + puerta de complejidad; sintaxis social primero; TF-IDF sigue mirando tras descartar un motor chino; `--include-local`
 - **Keenable (nuevo en v2.8.4)**: motor web general extra (HTTP declarativo L1, prueba gratis, `ARGO_KEENABLE_API_KEY`)
-- **220 fuentes, 89 dominios** (185 sin configuración): web general + finanzas / macro / cine / deportes / geo / orgs / media / química / academia / código (fuente de verdad: `config.yaml`)
+- **222 fuentes, 90 dominios** (187 sin configuración): web general + finanzas / macro / cine / deportes / geo / orgs / media / química / academia / código (fuente de verdad: `config.yaml`)
 - **12 herramientas MCP**: search, research, evidence, clarify, fetch, screenshot, PDF, social, archivos locales, crawl, preview local, recompute
 - **Búsqueda multilingüe**: chino, inglés, japonés, coreano, cirílico, tailandés, árabe, hebreo, griego, devanagari, …; el enrutamiento y los params de motor siguen el idioma; consultas no chinas evitan fuentes solo en chino (Zhihu / Sogou WeChat / snapshots A-share, etc.)
 - **Compuertas de recuperación vertical**: la recuperación de vacío no «filtra» pypi / npm / flash news a cine o deportes

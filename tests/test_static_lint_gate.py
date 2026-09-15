@@ -30,7 +30,7 @@
 | F823 | 局部变量引用前赋值 |
 | F811 | 重定义（静默覆盖前一个） |
 | F601 | 字典字面量重复键（静默覆盖） |
-| F631 | `assert` 一个元组（恒为真，断言形同虚设） |
+| F631 | `assert` 一个元组（恒为真，等于没检查） |
 | F632 | 用 `==` 比较字面量（多为 `is` 笔误） |
 | F701 / F702 | `break` / `continue` 在循环外 |
 | F704 / F706 / F707 | `yield` / `return` / `except` 位置非法 |
@@ -53,10 +53,10 @@
 - **内建 ast**（零依赖）：**总会跑**，至少覆盖字典重复键。
 
 两者都跑，任一报红即失败。内建引擎的意义是：即便在没装 ruff 的机器上，
-门禁也不是形同虚设——它仍有牙齿，只是牙口浅一些。
+检查也仍然有效——只是覆盖的规则少一些。
 
-两个引擎各自带变异验证（`test_gate_has_teeth_*`）：故意造一个坏样本，
-断言检测逻辑确实抓得住。没有变异验证的门禁很容易写成恒真的摆设。
+两个引擎各自配了自检用例（`test_gate_has_teeth_*`）：先故意写一个坏样本，
+确认检查真的抓得住。少了这一步，检查很容易变成永远通过的摆设。
 
 静态源码扫描，无网络。
 """
@@ -156,22 +156,45 @@ def _duplicate_dict_keys(paths: list[Path]) -> list[str]:
             problems.append(f"{path.name}:{e.lineno} 语法错误：{e.msg}")
             continue
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
+            # 字典重复键与集合重复元素是同一类问题：后者不会被覆盖（集合自动去重），
+            # 但「同一个字面量里写了两遍」通常是复制粘贴留下的意图不明处，
+            # 与 F601 是同一类漏检（F601 只管字典）。两者共用一套查重逻辑。
+            if isinstance(node, ast.Dict):
+                literals = node.keys
+                kind = "字典重复键"
+                consequence = "后者会覆盖前者，只生效一个"
+            elif isinstance(node, ast.Set):
+                literals = node.elts
+                kind = "集合重复元素"
+                consequence = "被自动去重，通常意味着这里想写的东西没写进去"
+            else:
                 continue
             seen: set[object] = set()
-            for key in node.keys:
+            for key in literals:
                 if not isinstance(key, ast.Constant):
                     continue
                 if key.value in seen:
                     problems.append(
-                        f"{path.name}:{node.lineno} 字典重复键 {key.value!r}"
-                        f"（后者静默覆盖前者）")
+                        f"{_rel(path)}:{node.lineno} {kind} {key.value!r}"
+                        f"（{consequence}）")
                 seen.add(key.value)
     return problems
 
 
+def _rel(path: Path) -> str:
+    """相对仓库根的路径：子目录递归后 path.name 会与顶层同名文件混淆。"""
+    try:
+        return str(path.resolve().relative_to(ROOT.resolve()))
+    except ValueError:
+        return str(path)
+
+
 def _iter_target_files() -> list[Path]:
-    files = sorted(SCRIPTS.glob("*.py")) + sorted(TESTS.glob("*.py"))
+    # rglob 而非 glob：子目录（social_engines/、redskill/ 等）是「按域分家」的
+    # 引擎自然落脚处，只扫顶层等于漏掉新增出口/新增模块的默认位置——本轮
+    # 就是这样漏掉了 8 处绕开出口调度的 urlopen。
+    files = [p for p in sorted(SCRIPTS.rglob("*.py")) if "__pycache__" not in p.parts]
+    files += [p for p in sorted(TESTS.rglob("*.py")) if "__pycache__" not in p.parts]
     if BIN.is_file():
         files.append(BIN)
     return files
@@ -197,7 +220,7 @@ class TestStaticLintGate(unittest.TestCase):
             findings, [],
             "静态缺陷（会让代码跑错或静默失效）：\n  " + "\n  ".join(findings))
 
-    # ── 变异验证：证明两个引擎都不是恒真的摆设 ────────────────────────────
+    # ── 故意造错验证：证明两个引擎都不是恒真的摆设 ────────────────────────────
 
     def test_gate_has_teeth_ast_engine(self):
         """造一个含重复键的样本，ast 引擎必须抓住。"""
@@ -211,7 +234,7 @@ class TestStaticLintGate(unittest.TestCase):
                 "}\n",
                 encoding="utf-8")
             problems = _duplicate_dict_keys([bad])
-        self.assertEqual(len(problems), 1, f"变异样本未被抓住：{problems}")
+        self.assertEqual(len(problems), 1, f"造错样本没被抓住：{problems}")
         self.assertIn("alpha", problems[0])
 
     def test_gate_has_teeth_ruff_engine(self):
@@ -229,7 +252,7 @@ class TestStaticLintGate(unittest.TestCase):
         self.assertIsNotNone(findings)
         self.assertTrue(
             any("F821" in ln for ln in findings),
-            f"变异样本未被抓住（应报 F821）：{findings}")
+            f"造错样本没被抓住（应报 F821）：{findings}")
 
 
 if __name__ == "__main__":

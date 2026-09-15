@@ -99,9 +99,17 @@ if __name__ == '__main__':
     p.add_argument('--strategy', default='bfs', choices=['sitemap','bfs'])
     p.add_argument('--max-pages', type=int, default=10)
     p.add_argument('--max-depth', type=int, default=2)
+    # bin/argo 的 usage 承诺了 Common flags「--json」，此前 crawl/extract 的
+    # parser 里没有它，Agent 照文档传参直接撞墙（error: unrecognized
+    # arguments，exit 2）。这里接住该开关并给出真实语义：默认仍是截断预览
+    # （防上下文膨胀），--json 输出完整可解析 JSON——截断的 JSON 不是合法
+    # JSON，调用方 json.loads 必失败，等于「拿不到数据还得自己猜」。
+    p.add_argument('--json', action='store_true',
+                   help='输出完整 JSON（默认为 2000 字符截断预览）')
     args = p.parse_args()
     if args.strategy == 'sitemap':
         r = crawl_sitemap(args.url, args.max_pages)
     else:
         r = crawl_bfs(args.url, args.max_pages, args.max_depth)
-    print(json.dumps(r, ensure_ascii=False, indent=2)[:2000])
+    out = json.dumps(r, ensure_ascii=False, indent=2)
+    print(out if args.json else out[:2000])

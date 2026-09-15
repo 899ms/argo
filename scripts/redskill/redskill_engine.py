@@ -38,6 +38,7 @@ _SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent)
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 import argo_paths  # noqa: E402
+from net_proxy import open_url  # noqa: E402  出口调度唯一入口（issue #13 同类修复）
 
 DATA_URL = "https://cowork.xiaohongshu.com/s/redskill-rank/data.json"
 PAGE_URL = "https://cowork.xiaohongshu.com/s/redskill-rank/"
@@ -72,7 +73,7 @@ def _log(msg: str) -> None:
 
 def _http_get(url: str, timeout: int = DOWNLOAD_TIMEOUT) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with open_url(req, timeout=timeout) as resp:
         return resp.read()
 
 

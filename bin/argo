@@ -18,28 +18,35 @@ ARGO_HOME = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 SCRIPTS = os.path.join(ARGO_HOME, "scripts")
 
 
-# 解释器探测结果缓存。探测必须在子进程里真 import yaml+requests 才敢用，
-# 实测一次约 80–170 ms（其中 requests 一项就占 ~80 ms），而这是**每次** argo
-# 调用都要付的固定成本。缓存命中时只做一次「版本 + 依赖存在性」的廉价校验
-# （find_spec 不 import，约 15 ms），用它挡住解释器被删/降级/换版本的情况。
+# 解释器探测结果缓存。探测必须在子进程里真 import 依赖才敢用，
+# 实测一次约 80–170 ms，而这是**每次** argo 调用都要付的固定成本。缓存命中时
+# 只做一次「版本 + 依赖存在性」的廉价校验（find_spec 不 import，约 15 ms），
+# 用它挡住解释器被删/降级/换版本的情况。
+#
+# 探测的依赖只认 PyYAML（argo 唯一的必需第三方依赖，install.sh 装它）。
+# 此前还要求 requests——那是历史误留下的幽灵依赖：全仓没有任何
+# `import requests`（真实的可选增强是 curl_cffi，TLS 指纹用，缺了只是降级）。
+# 后果是新机器（照 install.sh 装完）里 6 个候选解释器全部探测失败、缓存
+# 永远不命中，每次调用白付一遍探测；若系统 python3 是 3.9 还会被选中后崩在
+# `X | None` 语法上。
 _PY_CACHE = os.path.join(
     os.environ.get("ARGO_STATE_DIR", "").strip()
     or os.path.expanduser("~/.cache/unified-search"),
     ".argo_python",
 )
 
-# 廉价校验：版本 ≥ 3.10（脚本用了 `X | None` 语法）且 yaml/requests 可被定位。
-# 用 find_spec 而非 import——存在性足以挡住缓存失效，而 import requests 正是
-# 探测成本的大头。
+# 廉价校验：版本 ≥ 3.10（脚本用了 `X | None` 语法）且 PyYAML 可被定位。
+# 用 find_spec 而非 import——存在性足以挡住缓存失效，而 import 正是探测成本
+# 的大头。
 _PY_CHEAP_CHECK = (
     "import sys, importlib.util as u; sys.exit(0 if sys.version_info >= (3, 10) "
-    "and u.find_spec('yaml') is not None and u.find_spec('requests') is not None else 1)"
+    "and u.find_spec('yaml') is not None else 1)"
 )
 
 
 def _probe_python(p: str, strict: bool) -> bool:
     """strict=True 真 import 依赖（首次探测）；False 只做廉价存在性校验。"""
-    code = "import yaml, requests" if strict else _PY_CHEAP_CHECK
+    code = "import yaml" if strict else _PY_CHEAP_CHECK
     try:
         r = subprocess.run([p, "-c", code], capture_output=True, timeout=10)
         return r.returncode == 0
@@ -247,7 +254,11 @@ def main():
     path = os.path.join(SCRIPTS, script)
 
     # evidence: auto search → evidence pipeline (when no stdin data)
-    if sub == "evidence":
+    # 用法查询（-h/--help）不走这条管道判定：它既没有查询词也没有 stdin，
+    # 会被当成「用错了」报错并 exit 1——查用法却拿到失败码，脚本里
+    # `argo evidence --help || fallback` 会走错分支（2026-09-15 实测）。
+    # 交给通用执行路径，由 evidence.py 自己的 argparse 输出帮助并 exit 0。
+    if sub == "evidence" and not any(a in ("-h", "--help") for a in rest):
         # 判据必须是 fd 类型而非 isatty()：非交互环境（脚本/CI/cron/agent）的
         # 空 stdin 也不是 tty，用 isatty 会把「无数据」判成「有数据」，让
         # `argo evidence "query"` 走进读管道分支后崩在 json.load 上。
@@ -292,10 +303,15 @@ def main():
         # 原地执行：省一次解释器启动，并复用本进程已 import 的模块。
         # runpy 会正确设置 __file__ / __name__，目标脚本的
         # `if __name__ == "__main__"` 分支照常触发，sys.exit 照常传播。
+        #
+        # run_module 而非 run_path：run_path 把源文件当「无名脚本」执行，每次
+        # 重新编译（实测 search.py 113KB ≈ 13ms），`__pycache__` 永不命中；
+        # run_module 走 importlib 的缓存校验，同一份源码只在首次或改动后编译。
+        # SCRIPTS 已在 sys.path 首位，模块名即去掉 .py 的文件名。
         sys.argv = [path] + args
         sys.path.insert(0, SCRIPTS)
         import runpy
-        runpy.run_path(path, run_name="__main__")
+        runpy.run_module(script[:-3], run_name="__main__")
         return
     os.execv(py, [py, path] + args)
 
