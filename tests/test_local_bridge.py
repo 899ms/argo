@@ -70,6 +70,26 @@ class TestLocalReadPreview(unittest.TestCase):
             self.assertIn("line 10", content)
             self.assertNotIn("line 20", content)
             self.assertEqual(meta["lines"], 3)
+            # total_lines 是整个文件的总行数，不是窗口内行数（历史 bug：
+            # 曾从切片后的 content 数换行，把「共 50 行」报成「共 3 行」）
+            self.assertEqual(meta["total_lines"], 50)
+
+    def test_total_lines_full_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._dir_env(tmp)
+            f = Path(tmp) / "full.txt"
+            f.write_text("a\nb\nc\n", encoding="utf-8")
+            _, meta = _local_read_preview(str(f), max_chars=4000)
+            # 以换行结尾的 3 行文件就是 3 行，不能多报 1 行
+            self.assertEqual(meta["total_lines"], 3)
+
+    def test_total_lines_no_trailing_newline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._dir_env(tmp)
+            f = Path(tmp) / "partial.txt"
+            f.write_text("a\nb\nc", encoding="utf-8")
+            _, meta = _local_read_preview(str(f), max_chars=4000)
+            self.assertEqual(meta["total_lines"], 3)
 
 
 class TestRunLocalSeek(unittest.TestCase):

@@ -86,20 +86,24 @@ def _local_read_preview(
         raise PermissionError("文件超过 4MB，拒绝预览（请缩小范围或改用搜索）")
 
     with open(root, encoding="utf-8", errors="replace") as f:
-        if line_start is not None or line_end is not None:
-            start = max(1, int(line_start or 1))
-            end = int(line_end) if line_end else start + 200
-            lines = f.readlines()[(start - 1): end]
-            content = "".join(lines)
-            lines_slice = (start, start + len(lines) - 1)
-        else:
-            content = f.read()
-            lines_slice = None
+        full = f.read()
+    # total_lines 语义是「整个文件的总行数」，必须从全文计——历史上曾从
+    # 切片/截断后的 content 数换行，行窗口分支会把「共 50 行」报成「共 3 行」。
+    # 注意尾巴：文件以换行结尾时不能再 +1，否则 50 行会被报成 51 行。
+    total_lines = full.count("\n") + (1 if full and not full.endswith("\n") else 0)
+    if line_start is not None or line_end is not None:
+        start = max(1, int(line_start or 1))
+        end = int(line_end) if line_end else start + 200
+        lines = full.splitlines(keepends=True)[(start - 1): end]
+        content = "".join(lines)
+        lines_slice = (start, start + len(lines) - 1)
+    else:
+        content = full
+        lines_slice = None
 
     truncated = len(content) > max_chars
     if truncated:
         content = content[:max_chars]
-    total_lines = content.count("\n") + 1
     return content, {
         "path": root,
         "chars": len(content),

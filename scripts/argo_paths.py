@@ -39,12 +39,15 @@ def _config_db_path() -> str | None:
 
     config 模块本身可能不可用（PyYAML 缺失 / 配置文件损坏），
     此处必须 fail-open，否则路径派生会连带崩溃。
+
+    走 peek_cache_db_path() 轻量读取：get_cache_config() 会触发 load_config()
+    合并全部外置引擎 spec（约 1.7s），而 import cache 时就会调到本函数——
+    为一个标量付出冷启动大头不值得（2026-09-15 实测 import search 1.8s 中
+    1.7s 在这条链上）。
     """
     try:
-        from config import get_cache_config
-        cfg = get_cache_config()
-        db_path = cfg.get("db_path")
-        return str(db_path) if db_path else None
+        from config import peek_cache_db_path
+        return peek_cache_db_path()
     except Exception:
         return None
 

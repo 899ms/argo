@@ -108,7 +108,36 @@ def _build_engine_names() -> dict[str, str]:
     return {name: spec.get("label") or name for name, spec in engines.items()}
 
 
-_ENGINE_NAMES = _build_engine_names()
+# 惰性初始化：模块级立即调用 get_engines() 会触发 config 全量加载
+# （合并全部外置引擎 spec，实测约 1.7s），让「import route」为一张显示名表
+# 付出冷启动大头。改为首次使用时构建（_engine_display 是内部唯一读取入口）。
+# config 内部有 mtime 缓存，进程内第二次起零成本。
+#
+# 兼容：历史上 _ENGINE_NAMES 是模块级公开名字，外部（含测试）会
+# `from route import _ENGINE_NAMES` 直接引用。此处**故意不在模块级绑定**
+# _ENGINE_NAMES，配合 PEP 562 模块级 __getattr__：外部首次访问时惰性构建，
+# 语义与旧的全量字典完全一致；若模块级绑了 None 哨兵，__getattr__ 不会触发，
+# 外部拿到的就是 None（埋雷）。
+_ENGINE_NAMES_CACHE: dict[str, str] | None = None
+
+
+def _engine_names_map() -> dict[str, str]:
+    global _ENGINE_NAMES_CACHE
+    if _ENGINE_NAMES_CACHE is None:
+        _ENGINE_NAMES_CACHE = _build_engine_names()
+    return _ENGINE_NAMES_CACHE
+
+
+def _engine_display(name: str) -> str:
+    """引擎显示名（label 优先），惰性构建映射表。"""
+    return _engine_names_map().get(name, name)
+
+
+def __getattr__(name: str):
+    # PEP 562：仅在常规模块属性查找失败时触发。
+    if name == "_ENGINE_NAMES":
+        return _engine_names_map()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def extract_features(query: str) -> dict[str, Any]:
@@ -1671,7 +1700,7 @@ def route_query(query: str, engine_override: str = "auto",
                 + (f" [TF-IDF→{tfidf_best}]" if tfidf_best else "")
                 + (f" [TF-IDF覆写catch-all]" if is_catch_all and tfidf_best and tfidf_best_score > 0.15 and tfidf_best in engines_combo else "")
                 + (f" [boost={engines_boost}]" if engines_boost else "")
-                + f" → {_ENGINE_NAMES.get(engines_combo[0], engines_combo[0])}"
+                + f" → {_engine_display(engines_combo[0])}"
             ),
             confidence=confidence, features=features,
             domain=domain.get("name"), parallel=parallel,
@@ -1735,7 +1764,7 @@ def route_query(query: str, engine_override: str = "auto",
             engines=engines_combo,
             engines_combo=engines_combo,
             reason=(
-                f"TF-IDF 语义路由 → {_ENGINE_NAMES.get(engines_combo[0], engines_combo[0])}"
+                f"TF-IDF 语义路由 → {_engine_display(engines_combo[0])}"
                 f" (score={tfidf_best_score:.3f}, 正则未命中)"
                 + (f" [boost={engines_boost}]" if engines_boost else "")
             ),
@@ -1783,9 +1812,9 @@ def route_query(query: str, engine_override: str = "auto",
 
     low = tfidf_scores and all(s[1] < TFIDF_MIN_SCORE for s in tfidf_scores)
     reason = (
-        f"TF-IDF 低分回退通用引擎 → {_ENGINE_NAMES.get(fallback_combo[0], fallback_combo[0])}"
+        f"TF-IDF 低分回退通用引擎 → {_engine_display(fallback_combo[0])}"
         if low else
-        f"无匹配域，回退 {_ENGINE_NAMES.get(fallback_combo[0], fallback_combo[0])}"
+        f"无匹配域，回退 {_engine_display(fallback_combo[0])}"
     )
 
     return _done(

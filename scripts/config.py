@@ -338,6 +338,34 @@ def get_domains(config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     return cfg.get("domains", [])
 
 
+def peek_cache_db_path() -> str | None:
+    """轻量读取 config.yaml 的 cache.db_path，**不合并外置引擎 spec**。
+
+    专用场景：import 期的路径派生（argo_paths._config_db_path → cache.py 的
+    DEFAULT_DB_PATH）。load_config() 会合并 engines/*.yaml 的全部外置声明
+    （实测约 1.7s，是 CLI 冷启动大头），而这里只需要一个标量。
+    语义与 get_cache_config() 的 db_path 字段保持一致：用户未配置返回 None
+    （由调用方回退 state_path）；~ 展开由调用方做（与 load_config 链路相同，
+    _resolve_relative_paths 不触碰 db_path，故此处无需复制该步骤）。
+    PyYAML 缺失 / 配置损坏时 fail-open 返回 None，与 _config_db_path 契约一致。
+    """
+    try:
+        text = CONFIG_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        parsed = _load_yaml(text)
+    except (ImportError, ValueError):
+        return None
+    if not parsed:
+        return None
+    cache_cfg = parsed.get("cache")
+    if not isinstance(cache_cfg, dict):
+        return None
+    db_path = cache_cfg.get("db_path")
+    return str(db_path) if db_path else None
+
+
 def get_cache_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
     cfg = config if config is not None else load_config()
     return cfg.get("cache", DEFAULT_CONFIG["cache"])
