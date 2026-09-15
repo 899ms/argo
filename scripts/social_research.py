@@ -14,8 +14,9 @@ social_research.py — 社交舆情研究模块（从 research.py 拆分）
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+
+from bounded_run import run_bounded, TaskError
 
 
 def social_sentiment_research(query: str, platforms: list[str] | None = None,
@@ -38,14 +39,24 @@ def social_sentiment_research(query: str, platforms: list[str] | None = None,
         except Exception:
             return platform, [], set()
 
-    # 并行抓取各平台（串行时 3 平台 × 秒级延迟累积；并行取最慢平台耗时）
-    with ThreadPoolExecutor(max_workers=min(len(platforms), 4)) as ex:
-        futures = {ex.submit(_one, p): p for p in platforms}
-        for fut in as_completed(futures, timeout=90):
-            platform, results, used = fut.result()
-            platform_results[platform] = results
-            all_results.extend(results)
-            engines_used.update(used)
+    # 并行抓取各平台（串行时 3 平台 × 秒级延迟累积；并行取最慢平台耗时）。
+    # 总时限 90s：到点就拿已完成部分返回，没完成的平台记空结果，不再被卡住的
+    # 平台拖住、也不会因超时异常中断整次调用。
+    social_errors: list[str] = []
+    finished, unfinished = run_bounded(
+        platforms, _one, 90.0, max_workers=min(max(len(platforms), 1), 4))
+    for platform, value in finished:
+        if isinstance(value, TaskError):
+            platform_results[platform] = []
+            social_errors.append(f"{platform}: {type(value.exc).__name__}")
+            continue
+        _platform, results, used = value
+        platform_results[_platform] = results
+        all_results.extend(results)
+        engines_used.update(used)
+    for platform in unfinished:
+        platform_results[platform] = []
+        social_errors.append(f"{platform}: timeout (>90s)")
 
     # 互动数据聚合
     engagement_totals = {"likes": 0, "comments": 0, "shares": 0, "views": 0}
@@ -86,6 +97,7 @@ def social_sentiment_research(query: str, platforms: list[str] | None = None,
             for r in all_results[:15]
         ],
         "engines_used": sorted(engines_used),
+        "errors": social_errors,
         "elapsed_ms": elapsed,
     }
 

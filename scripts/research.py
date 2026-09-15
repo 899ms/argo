@@ -12,7 +12,7 @@ import os
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from bounded_run import run_bounded, TaskError
 from typing import Any
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -192,44 +192,37 @@ def collect_sources(sub_queries: list[dict[str, str]], max_results: int = 5,
             "budget_limit": budget,
         }
 
-    with ThreadPoolExecutor(max_workers=min(len(active_queries), 4)) as ex:
-        futures = {
-            ex.submit(_search_one, sq, i): sq
-            for i, sq in enumerate(active_queries)
+    def _fail_sub(sq: dict, message: str) -> dict:
+        fail = {
+            "sub_query": sq["query"],
+            "intent": sq["intent"],
+            "strategy": sq["strategy"],
+            "results": [],
+            "engines_used": [],
+            "error": message,
+            "elapsed_ms": 0,
         }
-        all_futures = list(futures.keys())
-        try:
-            for fut in as_completed(futures, timeout=timeout * 2 + 5):
-                try:
-                    sr = fut.result()
-                    sub_results.append(sr)
-                    all_results.extend(sr["results"])
-                    engines_used.update(sr["engines_used"])
-                except Exception as e:
-                    sq = futures[fut]
-                    fail = {
-                        "sub_query": sq["query"],
-                        "intent": sq["intent"],
-                        "strategy": sq["strategy"],
-                        "results": [],
-                        "engines_used": [],
-                        "error": str(e),
-                        "elapsed_ms": 0,
-                    }
-                    if sq.get("package_id"):
-                        fail["package_id"] = sq["package_id"]
-                    sub_results.append(fail)
-        except Exception:
-            for fut in all_futures:
-                if fut.done() and not fut.cancelled():
-                    try:
-                        sr = fut.result()
-                        if sr not in sub_results:
-                            sub_results.append(sr)
-                            all_results.extend(sr["results"])
-                            engines_used.update(sr["engines_used"])
-                    except Exception:
-                        pass
+        if sq.get("package_id"):
+            fail["package_id"] = sq["package_id"]
+        return fail
+
+    # 总时限 timeout*2+5 秒：到点就用已完成的子查询继续，没完成的记失败占位，
+    # 不再被卡住的子查询拖住——原先 with ThreadPoolExecutor 退出时会 join 全部慢
+    # 线程，as_completed 的超时形同虚设，单个卡住的子查询能拖垮整次研究。
+    items = list(enumerate(active_queries))
+    bound_s = timeout * 2 + 5
+    finished, unfinished = run_bounded(
+        items, lambda pair: _search_one(pair[1], pair[0]),
+        bound_s, max_workers=min(len(items), 4))
+    for (_i, sq), value in finished:
+        if isinstance(value, TaskError):
+            sub_results.append(_fail_sub(sq, str(value.exc)))
+            continue
+        sub_results.append(value)
+        all_results.extend(value["results"])
+        engines_used.update(value["engines_used"])
+    for _i, sq in unfinished:
+        sub_results.append(_fail_sub(sq, f"timeout (>{bound_s:.0f}s)"))
 
     result_lists = [sr["results"] for sr in sub_results if sr["results"]]
     if len(result_lists) > 1:

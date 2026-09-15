@@ -7,11 +7,9 @@ fetch.py — 轻量页面抓取（纯标准库）
 
 from __future__ import annotations
 
-import re
 import urllib.request
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urlparse
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 
@@ -101,17 +99,23 @@ def fetch_page(url: str, max_chars: int = 3000, timeout: int = 8,
 
 def fetch_pages_parallel(urls: list[str], max_chars: int = 3000,
                          timeout: int = 8, max_workers: int = 3) -> list[dict[str, Any]]:
-    """并行抓取多个页面。"""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    """并行抓取多个页面。总时限 timeout+3 秒，到点未完成的页面以失败结果占位返回。"""
+    from bounded_run import run_bounded, TaskError
 
+    if not urls:
+        return []
+
+    def _fail(url: str) -> dict:
+        return {"url": url, "content": "", "length": 0, "success": False}
+
+    finished, unfinished = run_bounded(
+        urls, lambda u: fetch_page(u, max_chars, timeout),
+        timeout + 3, max_workers=min(len(urls), max_workers))
     results = []
-    with ThreadPoolExecutor(max_workers=min(len(urls), max_workers)) as ex:
-        futures = {ex.submit(fetch_page, url, max_chars, timeout): url for url in urls}
-        for fut in as_completed(futures, timeout=timeout + 3):
-            try:
-                results.append(fut.result())
-            except Exception:
-                results.append({"url": futures[fut], "content": "", "length": 0, "success": False})
+    for url, page in finished:
+        results.append(_fail(url) if isinstance(page, TaskError) else page)
+    for url in unfinished:
+        results.append(_fail(url))
     return results
 
 

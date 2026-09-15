@@ -320,6 +320,39 @@ test('makeNativeTool: render clips to nativeMaxChars and tolerates raw stdout', 
   assert.ok(raw.output.render({}, { stdout: 'plain text!' })[0].text.length <= 5)
 })
 
+test('makeNativeTool: prefers persistent MCP connection and passes picked args object', async () => {
+  const seen = []
+  // mcpCall 收到的是参数对象（不是 JSON 字符串），与 stdio tools/call 的 arguments 对齐
+  const mcpCall = async (config, kind, argsObj, timeoutMs) => {
+    seen.push({ kind, argsObj, timeoutMs })
+    return JSON.stringify({ content: [{ type: 'text', text: 'via-persistent' }] })
+  }
+  // 常驻连接可用时，单发 runner 不应被调用
+  const run = async () => { throw new Error('should not spawn when persistent MCP works') }
+  const tool = makeNativeTool(
+    { nativeTimeoutMs: 1234 }, 'argo_search', { mcpCall, run })
+  const value = await tool.execute({ query: 'q', engine: '', bogus: 1 })
+  assert.deepEqual(seen[0].argsObj, { query: 'q' })
+  assert.equal(seen[0].kind, 'argo_search')
+  assert.equal(seen[0].timeoutMs, 1234)
+  assert.equal(tool.output.render({}, value)[0].text, 'via-persistent')
+})
+
+test('makeNativeTool: falls back to single-shot spawn when persistent connection fails', async () => {
+  const spawned = []
+  const mcpCall = async () => { throw new Error('connection closed') }
+  const run = async (spawnSpec) => {
+    spawned.push(spawnSpec)
+    return JSON.stringify({ content: [{ type: 'text', text: 'via-spawn' }] })
+  }
+  const tool = makeNativeTool(
+    { searchCommand: 'python3', searchArgs: ['/opt/argo/scripts/mcp_server.py'] },
+    'argo_fetch', { mcpCall, run })
+  const value = await tool.execute({ url: 'https://x' })
+  assert.equal(spawned.length, 1, '连接失败后应回退单发一次')
+  assert.equal(tool.output.render({}, value)[0].text, 'via-spawn')
+})
+
 test('makeNativeTool: unknown tool name fails loudly', () => {
   assert.throws(() => makeNativeTool({}, 'argo_nope'), /unknown native tool/)
 })

@@ -97,7 +97,14 @@ def self_exec() -> bool:
 
 class HotFile:
     """单文件 mtime+size 监视器：changed() 首次调用建立基线返回 False，
-    之后签名变化返回 True（供调用方重读）。线程安全。"""
+    之后签名变化返回 True（供调用方重读）。线程安全。
+
+    这里有意不做按时间的节流：配额/密钥要求「另一个进程改写后，本进程下一次
+    带锁访问立刻可见」（test_hot_state 锁定了这条语义）。要察觉外部改写只能
+    重新 stat，缓存会推迟可见性，因此每次访问都取最新签名。单次只是两个 inode
+    stat，本地盘由操作系统缓存，代价很小；真正昂贵的目录遍历类重复探测在
+    config / engine_admission 侧另行消除。
+    """
 
     def __init__(self, path: Path):
         self._path = Path(path)

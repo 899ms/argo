@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """crawl.py — 站点级爬取（fetch_v3 降级链：增强 HTTP → TLS 指纹 → Wayback）"""
-import json, re, sys, time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import json, re, time
 from urllib.parse import urljoin, urlparse
+from bounded_run import run_bounded, TaskError
 # fetch_v3 而非裸 urllib fetch：UA 轮换 + Cookie 积累 + curl_cffi 指纹伪造，
 # 反爬站（CF 保护等）从必然失败到大概率成功。批量场景禁浏览器降级
 # （BFS 可能爬几十页，每页启动 Chrome CDP 会拖慢整体）。
@@ -43,14 +43,14 @@ def crawl_sitemap(url, max_pages=20, timeout=10):
     urls = re.findall(r'<loc>\s*(.*?)\s*</loc>', html)
     urls = urls[:max_pages]
     pages = []
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        futures = {ex.submit(_crawl_fetch, u, 2000, timeout): u for u in urls}
-        for fut in as_completed(futures, timeout=timeout*2):
-            try:
-                r = fut.result()
-                if r['success']:
-                    pages.append({'url': r['url'], 'content': r['content'][:500], 'depth': 0})
-            except: pass
+    # 总时限 timeout*2：到点未抓到的站点跳过，不再被卡住的单个 URL 拖住，也不会
+    # 因超时异常中断整次 sitemap 爬取。
+    finished, _unfinished = run_bounded(
+        urls, lambda u: _crawl_fetch(u, 2000, timeout), timeout * 2, max_workers=5)
+    for _u, r in finished:
+        if isinstance(r, TaskError) or not r.get('success'):
+            continue
+        pages.append({'url': r['url'], 'content': r['content'][:500], 'depth': 0})
     return {'url': url, 'pages': pages, 'total': len(pages), 'elapsed_ms': int((time.monotonic() - t0) * 1000)}
 
 def crawl_bfs(url, max_pages=10, max_depth=2, timeout=8):
@@ -70,27 +70,23 @@ def crawl_bfs(url, max_pages=10, max_depth=2, timeout=8):
             frontier.append((u, d))
         if not frontier:
             break
-        with ThreadPoolExecutor(max_workers=min(len(frontier), 5)) as ex:
-            futs = {ex.submit(_crawl_fetch, u, 2000, timeout): (u, d)
-                    for u, d in frontier}
-            for fut in as_completed(futs, timeout=timeout * 2):
-                u, d = futs[fut]
-                try:
-                    result = fut.result()
-                except Exception:
-                    continue
-                if not result.get('success'):
-                    continue
-                pages.append({'url': u, 'content': result['content'][:500], 'depth': d})
-                if len(pages) >= max_pages:
-                    break
-                html = result.get('html') or result.get('content') or ''
-                links = re.findall(r'href=["\']([^"\'#]+)', html)
-                for link in links[:5]:
-                    full = urljoin(u, link)
-                    if (urlparse(full).netloc == urlparse(url).netloc
-                            and full not in visited):
-                        queue.append((full, d + 1))
+        # 一层最多 5 个，总时限 timeout*2；到点未完成的 URL 跳过，不被单个慢站拖住。
+        finished, _unfinished = run_bounded(
+            frontier, lambda ud: _crawl_fetch(ud[0], 2000, timeout),
+            timeout * 2, max_workers=min(len(frontier), 5))
+        for (u, d), result in finished:
+            if isinstance(result, TaskError) or not result.get('success'):
+                continue
+            pages.append({'url': u, 'content': result['content'][:500], 'depth': d})
+            if len(pages) >= max_pages:
+                break
+            html = result.get('html') or result.get('content') or ''
+            links = re.findall(r'href=["\']([^"\'#]+)', html)
+            for link in links[:5]:
+                full = urljoin(u, link)
+                if (urlparse(full).netloc == urlparse(url).netloc
+                        and full not in visited):
+                    queue.append((full, d + 1))
     return {'url': url, 'pages': pages, 'total': len(pages)}
 if __name__ == '__main__':
     import argparse

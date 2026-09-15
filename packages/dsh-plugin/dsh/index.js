@@ -952,6 +952,34 @@ function runNativeCall({ command, args }, timeoutMs) {
   })
 }
 
+function resolveEntry(config) {
+  // 常驻 stdio MCP 入口（与 web_search seam 同一条），本机模式是 mcp_server.py
+  // 路径，npx 模式是包默认的 MCP 入口；两种模式都能直接讲 NDJSON 的 stdio 协议。
+  const command = typeof config.searchCommand === 'string' && config.searchCommand !== ''
+    ? config.searchCommand
+    : DEFAULTS.searchCommand
+  const args = Array.isArray(config.searchArgs) && config.searchArgs.length > 0
+    ? config.searchArgs
+    : DEFAULTS.searchArgs
+  return { command, args }
+}
+
+// 走共享的常驻 MCP 连接调用原生工具，避免每次调用都新起一个 python 进程
+// （冷启动 + 重新加载配置/引擎表的开销在高频调用下很可观）。返回与单发形态一致的
+// MCP 信封 JSON 字符串，让 makeNativeTool 的 render 无需区分两条路径。
+async function nativeViaSharedMcp(config, kind, argsObj, timeoutMs) {
+  const { command, args } = resolveEntry(config)
+  const conn = await getSharedMcp({
+    command, args, idleMs: config.searchIdleMs ?? DEFAULTS.searchIdleMs,
+  })
+  const result = await conn.request('tools/call', { name: kind, arguments: argsObj }, timeoutMs)
+  if (result?.isError) {
+    const body = result?.content?.[0]?.text
+    throw new Error(typeof body === 'string' && body !== '' ? body : `argo tool ${kind} returned an error`)
+  }
+  return JSON.stringify(result ?? {})
+}
+
 function pickArgs(args, allowed) {
   const out = {}
   for (const [key, value] of Object.entries(args ?? {})) {
@@ -967,7 +995,12 @@ export function makeNativeTool(config, kind, deps = {}) {
   if (!spec) {
     throw new Error(`argo-dsh: unknown native tool "${kind}" (known: ${Object.keys(NATIVE_TOOL_SPECS).join(', ')})`)
   }
-  const run = deps.run ?? runNativeCall
+  const spawnRun = deps.run ?? runNativeCall
+  const mcpCall = deps.mcpCall ?? nativeViaSharedMcp
+  // 只注入单发 runner（单测/定制）时直接走单发、保持确定性；生产环境两条都在，
+  // 优先复用常驻连接，连接异常再回退单发。
+  const forceSpawn = deps.run !== undefined && deps.mcpCall === undefined
+  const nativeTimeoutMs = config.nativeTimeoutMs ?? DEFAULTS.nativeTimeoutMs
   return {
     name: kind,
     description: spec.description,
@@ -989,9 +1022,17 @@ export function makeNativeTool(config, kind, deps = {}) {
       },
     },
     async execute(args) {
-      const payload = JSON.stringify(pickArgs(args, spec.allowed))
+      const argsObj = pickArgs(args, spec.allowed)
+      const payload = JSON.stringify(argsObj)
+      if (!forceSpawn) {
+        try {
+          return { stdout: await mcpCall(config, kind, argsObj, nativeTimeoutMs) }
+        } catch {
+          // 常驻连接不可用（进程崩溃 / 入口不支持 stdio）→ 回退单发，保证功能不丢
+        }
+      }
       const spawnSpec = resolveNativeSpawn(config, kind, payload)
-      const stdout = await run(spawnSpec, config.nativeTimeoutMs)
+      const stdout = await spawnRun(spawnSpec, nativeTimeoutMs)
       return { stdout }
     },
   }
