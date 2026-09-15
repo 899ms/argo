@@ -48,6 +48,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 from typing import Optional
+from engine_env import get_env  # 密钥别名唯一真源（漏 import 曾令全部后端 NameError）
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 # ── 平台白名单 ──────────────────────────────────────────────────────────

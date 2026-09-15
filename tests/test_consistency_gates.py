@@ -78,6 +78,15 @@ class TestCliEntrypoint:
         assert "NameError" not in r.stderr
         assert "Traceback" not in r.stderr
 
+    def test_version_flag_reports_package_version(self):
+        # --version 曾不存在（落进 Unknown subcommand）；报出版本须与
+        # package.json 一致，防止入口侧再长出独立的版本常量
+        pkg = json.loads((SKILL_DIR / "package.json").read_text(encoding="utf-8"))
+        r = subprocess.run([sys.executable, str(BIN_ARGO), "--version"],
+                           capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0
+        assert pkg["version"] in r.stdout, f"--version 输出缺 {pkg['version']}: {r.stdout!r}"
+
     def test_help_header_count_matches_declared(self, argo_cli):
         """--help 里的收录数必须等于声明总数（曾报启用数，还对不上文档）。"""
         from config import load_config
@@ -242,7 +251,14 @@ class TestDocNumbersMatchCode:
         m = re.search(r"^version:\s*(\S+)", skill, re.M)
         assert m, "SKILL.md 缺 version"
         assert pkg["version"] == m.group(1) == plug["version"], \
-            f"版本不一致: package={pkg['version']} skill={m.group(1)} plugin={plug['version']}"# ── 4. 派生件与运行时真源一致 ────────────────────────────────────────────────
+            f"版本不一致: package={pkg['version']} skill={m.group(1)} plugin={plug['version']}"
+        # mcp_transport.ARGO_MCP_VERSION 自称版本真源之一，此前发布升版漏改
+        # （2.8.8 发布时仍停在 2.8.6）——纳入对账，正则读取避免 import 副作用
+        mt = (SKILL_DIR / "scripts/mcp_transport.py").read_text(encoding="utf-8")
+        mm = re.search(r'^ARGO_MCP_VERSION\s*=\s*"(\S+)"', mt, re.M)
+        assert mm, "mcp_transport.py 缺 ARGO_MCP_VERSION"
+        assert mm.group(1) == pkg["version"], \
+            f"版本不一致: mcp_transport={mm.group(1)} package={pkg['version']}"# ── 4. 派生件与运行时真源一致 ────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
 def sb():

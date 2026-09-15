@@ -18,7 +18,7 @@ from typing import Any
 
 from engines_base import (
     safe_search, _run, _resolve, _get_path, _coerce_field, _detect_anti_bot,
-    http_open,
+    http_open, rank_score,
 )
 
 logger = logging.getLogger("unified_search.engines")
@@ -114,10 +114,11 @@ def _build_fred_engine(spec: dict[str, Any]) -> Any:
                 continue
         if not rows:
             return []
-        # 近 N 期各为一条结果（url 带日期锚点防去重合并），RRF 分数累计上浮
+        # 近 N 期各为一条结果（url 带日期锚点防去重合并），RRF 分数累计上浮；
+        # 反转使最新一期 rank 0（首条=最新值+趋势方向），旧写法最旧一条排首
         label = _FRED_LABELS.get(series_id, f"FRED {series_id}")
         results = []
-        for _rk, (date, val) in enumerate(rows[-min(n, 5):]):
+        for _rk, (date, val) in enumerate(reversed(rows[-min(n, 5):])):
             results.append({
                 "title": f"{label} · {date} = {val:g}",
                 "url": f"https://fred.stlouisfed.org/series/{series_id}?obs={date}",

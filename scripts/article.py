@@ -124,10 +124,10 @@ def main():
         print(f"作者: {out['author']}  时间: {out['publish_time']}  "
               f"正文 {out['char_count']} 字 / {out['image_count']} 图")
         print("---")
-        print(text)
-        if imgs:
+        print(out["content"])
+        if out["images"]:
             print("---")
-            for i, u in enumerate(imgs):
+            for i, u in enumerate(out["images"], 1):
                 print(f"[图{i}] {u}")
 
 

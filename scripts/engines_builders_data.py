@@ -2858,7 +2858,7 @@ def _build_un_comtrade_engine(spec: dict[str, Any]) -> Any:
             value_str = f"{float(value):,.0f} USD" if value else "金额未披露"
             # title/url 均带伙伴维度：融合层按 title+url 去重，同一伙伴维度
             # 才算重复；URL 带 PartnerAreas 使每条结果可独立核验
-            partner_url = f"{web}&PartnerAreas={partner}" if False else (
+            partner_url = (
                 "https://comtradeplus.un.org/TradeFlow?Frequency=A&Classification=HS"
                 f"&Commodities={cmd}&Flow={flow}&Reporters={reporter}"
                 f"&PartnerAreas={partner}&Period={period}")

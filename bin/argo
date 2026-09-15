@@ -125,6 +125,21 @@ def _engine_count():
         return None
 
 
+def _version():
+    """版本号：唯一真源是 package.json（本文件不存副本，防再添一处漂移点）。
+
+    此前 `argo --version` 落进「Unknown subcommand」——连「报版本」这个最
+    基础的环境探针都没有。只在本分支读 package.json（一次性小文件），不碰
+    scripts/ 里的重模块。
+    """
+    try:
+        import json
+        with open(os.path.join(ARGO_HOME, "package.json")) as f:
+            return "argo " + str(json.load(f).get("version") or "unknown")
+    except Exception:
+        return "argo unknown（package.json 不可读）"
+
+
 def _usage() -> str:
     n = _engine_count()
     head = f"{n} 个源" if n else "多源"
@@ -141,6 +156,8 @@ Usage:
   argo crawl     "url"            站点爬取（sitemap/BFS，多页抓取）
   argo extract   "url"            结构化提取（表格/Meta/JSON-LD）
   argo article   "url"            微信公众号文章全文抓取（标题/正文/图片）
+  argo screenshot "url"           网页截图（--full-page 整页 / --output 指定路径）
+  argo pdf       "url"            PDF 正文提取（--pages 1-5 / --password 口令）
   argo answer    "query"          直答（Seltz 带引用合成答案，置信口径=引用计数）
   argo watch     {{add|check|list|remove}}  观察模式（网页快照与变化检测，cron 可用）
   argo job       "query"          招聘岗位多平台聚合（BOSS/猎聘/智联/前程无忧/597/今日招聘）
@@ -158,6 +175,10 @@ def main():
         print(_usage())
         # 帮助不是错误：--help/help 正常退出（0），无参数调用才是用法错误（1）
         sys.exit(0 if len(sys.argv) >= 2 else 1)
+
+    if sys.argv[1] in ("--version", "-v", "version"):
+        print(_version())
+        sys.exit(0)
 
     sub = sys.argv[1]
     rest = sys.argv[2:]
@@ -184,6 +205,10 @@ def main():
         "crawl":     ("crawl.py",      []),
         "extract":   ("extract.py",    []),
         "article":   ("article.py",    ["--json"]),
+        # screenshot/pdf 对应 MCP 的 argo_screenshot / argo_pdf：CLI 与 MCP 工具面
+        # 保持一一对应，少一个入口就意味着该能力只能靠 MCP（默认关）够得着
+        "screenshot": ("screenshot.py", []),
+        "pdf":        ("pdf_extract.py", []),
         # answer/watch：CLI 子命令（不进 MCP 工具面，工具数门禁口径不变）
         "answer":    ("answer.py",     ["--json"]),
         "watch":     ("watch.py",      []),

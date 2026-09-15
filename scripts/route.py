@@ -513,8 +513,7 @@ def _expand_local_search(engine_list: list[str], features: dict | None = None) -
     if _get_registry is None:
         return engine_list
 
-    registry = _get_registry()
-    sub_engines = _enabled_local_engines()
+    sub_engines = _enabled_local_engines()  # 内部自取注册表，此处不再重复加载
     if not sub_engines:
         return engine_list
 

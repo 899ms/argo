@@ -642,6 +642,21 @@ def _content_sig(r: dict[str, Any]) -> str:
     return f"{r.get('title', '') or ''} {r.get('snippet', '') or ''}".strip()
 
 
+def _distinct_data_rows(ka: str, kb: str) -> bool:
+    """两条结果的规范 URL 是否「同文档、不同查询」——即同一资源的不同数据行。
+
+    时序/截面类数据引擎（fred/worldbank/eurostat/comtrade…）按观测期逐行发
+    条目，URL 以查询参数承载内容身份（?obs=…&PartnerAreas=…），文本彼此仅
+    差日期与数值，minhash 相似度恒过阈值。查询参数不同即内容不同，不做
+    近重复折叠；跨站同质网页（不同 host/path）不受影响，仍按原文折叠。
+    """
+    from urllib.parse import urlparse
+    pa, pb = urlparse(ka), urlparse(kb)
+    if (pa.netloc, pa.path) != (pb.netloc, pb.path):
+        return False
+    return pa.query != pb.query
+
+
 def minhash_dedupe(
     results: list[dict[str, Any]], threshold: float = 0.85, enabled: bool | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -667,17 +682,20 @@ def minhash_dedupe(
     )
     kept: list[dict[str, Any]] = []
     kept_sigs: list[str] = []
+    kept_urlkeys: list[str] = []
     removed = 0
     for r in pool:
         sig = _content_sig(r)
+        rkey = _canonical_url(r.get("url", ""))
         is_dup = False
-        for ks in kept_sigs:
-            if _content_similarity(sig, ks) >= threshold:
+        for ks, ku in zip(kept_sigs, kept_urlkeys):
+            if _content_similarity(sig, ks) >= threshold and not _distinct_data_rows(rkey, ku):
                 is_dup = True
                 break
         if not is_dup:
             kept.append(r)
             kept_sigs.append(sig)
+            kept_urlkeys.append(rkey)
         else:
             removed += 1
             r["_near_dup"] = True
