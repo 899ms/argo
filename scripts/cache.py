@@ -12,6 +12,7 @@ cache.py — Unified Search v2 双层缓存引擎
 from __future__ import annotations
 
 import copy
+import functools
 import gzip
 import hashlib
 import json
@@ -188,21 +189,37 @@ def _hash_token(t: str, seed: int) -> int:
     return h
 
 
+@functools.lru_cache(maxsize=512)
+def _signature(s: str) -> tuple[int, ...]:
+    """查询的 minhash 签名：每个置换下全部 n-gram 的最小哈希。
+
+    这是「查询 → 签名」的纯函数，按查询串记忆化。提出来的意义在于：
+    `query_similarity(q1, q2)` 会被拿去和缓存里**多条**候选比对，旧写法每次
+    都重算两边的签名——一次搜索实测 28,552 次 `_hash_token` 调用，绝大多数
+    是同一批 token 的重复置换。签名化后每条查询的签名全进程只算一次，
+    且比对本身从 O(K × |tokens|) 降到 O(K)（K=置换数=8）。
+    长驻进程（MCP server）里同一查询反复比对时收益为常数级。
+    """
+    grams = _ngrams(s)
+    if not grams:
+        return ()
+    return tuple(min(_hash_token(t, seed) for t in grams)
+                 for seed in range(_MINHASH_PERM))
+
+
 def query_similarity(q1: str, q2: str) -> float:
     """两查询的字符 n-gram minhash 近似 Jaccard 相似度（0-1）。
 
     中文「苹果 2025 营收」vs「苹果 2025 年营收」这类近重复查询
     会得到高相似度（>0.7），用于语义缓存软命中。
+
+    实现 = 两个签名逐位置相等的比例（minhash 估计 Jaccard 的标准做法）。
     """
-    a = _ngrams(q1)
-    b = _ngrams(q2)
+    a = _signature(q1)
+    b = _signature(q2)
     if not a or not b:
         return 0.0
-    # minhash 估计 Jaccard：各置换下两集合最小哈希相等的比例
-    hits = 0
-    for seed in range(_MINHASH_PERM):
-        if min(_hash_token(t, seed) for t in a) == min(_hash_token(t, seed) for t in b):
-            hits += 1
+    hits = sum(1 for x, y in zip(a, b) if x == y)
     return hits / _MINHASH_PERM
 
 

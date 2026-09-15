@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -243,13 +244,39 @@ def _external_engines_mtime() -> float:
     return latest
 
 
+_stamp_cache: tuple[float, float] | None = None  # (monotonic 时刻, stamp)
+
+
+def _stamp_ttl() -> float:
+    """stamp 记忆化的 TTL（秒）。每次读，便于测试与现场调参。"""
+    try:
+        return float(os.environ.get("ARGO_CONFIG_STAMP_TTL_S") or 1.0)
+    except ValueError:
+        return 1.0
+
+
 def config_stamp() -> float:
-    """config.yaml + 外置引擎声明的综合 mtime（供 registry 等热加载判断）。"""
+    """config.yaml + 外置引擎声明的综合 mtime（供 registry 等热加载判断）。
+
+    按 TTL 记忆化（默认 1 s，`ARGO_CONFIG_STAMP_TTL_S` 可调，设 0 即关闭）：
+    取值要 stat 全部 63 个外置声明文件，而 `engines.get_registry()` **每访问
+    一次**注册表就会调它一次——实测一次搜索触发 28 次调用 = 1764 次 stat，
+    99% 是重复劳动。热加载不要求亚秒级感知（配置改动晚 1 秒生效无实际影响），
+    故折叠到 TTL 内一次。
+    """
+    global _stamp_cache
+    ttl = _stamp_ttl()
+    now = time.monotonic()
+    if ttl > 0 and _stamp_cache is not None and now - _stamp_cache[0] < ttl:
+        return _stamp_cache[1]
     try:
         combined = CONFIG_PATH.stat().st_mtime
     except OSError:
         combined = 0.0
-    return max(combined, _external_engines_mtime())
+    stamp = max(combined, _external_engines_mtime())
+    if ttl > 0:
+        _stamp_cache = (now, stamp)
+    return stamp
 
 
 def load_config(force: bool = False) -> dict[str, Any]:

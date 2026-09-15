@@ -202,10 +202,18 @@ def main():
 
     # evidence: auto search → evidence pipeline (when no stdin data)
     if sub == "evidence":
-        stdin_has_data = not sys.stdin.isatty()
+        # 判据必须是 fd 类型而非 isatty()：非交互环境（脚本/CI/cron/agent）的
+        # 空 stdin 也不是 tty，用 isatty 会把「无数据」判成「有数据」，让
+        # `argo evidence "query"` 走进读管道分支后崩在 json.load 上。
+        sys.path.insert(0, SCRIPTS)
+        try:
+            from cli_io import read_stdin_if_piped
+        except ImportError:  # 脚本目录不可导入时按「无管道数据」处理，不猜
+            read_stdin_if_piped = lambda: ""  # type: ignore[assignment]
+        stdin_text = read_stdin_if_piped()
         query = rest[0] if rest and not rest[0].startswith("-") else ""
 
-        if not stdin_has_data and query:
+        if not stdin_text.strip() and query:
             # 自动搜索 → 管道 → evidence
             search_path = os.path.join(SCRIPTS, "search.py")
             search_cmd = [py, search_path, query, "--json",
@@ -214,23 +222,20 @@ def main():
             if result.returncode != 0:
                 print(result.stderr, file=sys.stderr)
                 sys.exit(result.returncode)
+            stdin_text = result.stdout
 
-            evidence_cmd = [py, path, query, "--stdin", "--json"]
-            proc = subprocess.run(evidence_cmd, input=result.stdout,
+        if stdin_text.strip():
+            # 管道模式：stdin → evidence（内容已读出，用 input= 转发给子进程）
+            evidence_args = defaults + rest
+            proc = subprocess.run([py, path] + evidence_args, input=stdin_text,
                                   capture_output=True, text=True, timeout=60)
             print(proc.stdout, end="")
             if proc.stderr:
                 print(proc.stderr, file=sys.stderr)
             sys.exit(proc.returncode)
 
-        elif stdin_has_data:
-            # 管道模式：stdin → evidence
-            evidence_args = defaults + rest
-            cmd = [py, path] + evidence_args
-            os.execv(py, cmd)
-        else:
-            print("evidence 需要查询词。用法：argo evidence \"query\"", file=sys.stderr)
-            sys.exit(1)
+        print("evidence 需要查询词。用法：argo evidence \"query\"", file=sys.stderr)
+        sys.exit(1)
 
     # --explain 与 --json 冲突（explain 输出纯文本干扰 JSON），自动去 --json
     if "--explain" in rest and "--json" in defaults:

@@ -73,10 +73,17 @@ def extract_jsonld(html):
 if __name__ == '__main__':
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument('--url', required=True)
+    # 位置参数与 --url 等价：bin/argo 的 usage 写的是 `argo extract "url"`，
+    # 而入口原先只认 --url —— 照文档敲直接报「--url required」（2026-09-15
+    # 实测）。保留 --url 兼容既有调用，两者都接受。
+    p.add_argument('target', nargs='?', metavar='URL')
+    p.add_argument('--url')
     p.add_argument('--mode', default='all', choices=['tables','metadata','jsonld','all'])
     args = p.parse_args()
-    result = _extract_fetch(args.url, 50000, 15)
+    url = args.url or args.target
+    if not url:
+        p.error('需要 URL：argo extract <url>，或 --url <url>')
+    result = _extract_fetch(url, 50000, 15)
     if not result['success']: print(json.dumps({'error': result.get('error')})); sys.exit(1)
     html = result.get('html') or result.get('content') or ''
     output = {}

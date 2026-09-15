@@ -222,9 +222,9 @@ def main() -> int:
             line.strip() for line in p.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.strip().startswith("#"))
     if not urls:
-        if not sys.stdin.isatty():
-            urls = [line.strip() for line in sys.stdin.read().splitlines()
-                    if line.strip()]
+        from cli_io import read_stdin_if_piped
+        urls = [line.strip() for line in read_stdin_if_piped().splitlines()
+                if line.strip()]
     if not urls:
         ap.print_help()
         return 1
