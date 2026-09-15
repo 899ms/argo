@@ -231,37 +231,45 @@ def _merge_external_engines(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-_ext_scan_cache: tuple[float, tuple[float, int, int, int]] | None = None  # (monotonic 时刻, 指纹)
+_ext_scan_cache: tuple[float, tuple[float, int, int, str]] | None = None  # (monotonic 时刻, 指纹)
 
 
-def _external_engines_scan_uncached() -> tuple[float, int, int, int]:
-    """扫一遍外置声明目录 → (最新 mtime, 文件数, 总字节数, 最新 ctime_ns)。
+def _external_engines_scan_uncached() -> tuple[float, int, int, str]:
+    """扫一遍外置声明目录 → (最新 mtime, 文件数, 总字节, 声明集摘要)。
 
     为什么不能只报 mtime：**max 对「删除」与「回填旧时间」是盲的**——删掉一个
     不是最新的声明（engines/specs/train.yaml 之类），max 不变；`cp -p` 拷进来
     一个新声明（mtime 被保留成旧值），max 也不变。两者都会让落盘配置缓存继续
-    命中，表现为「引擎删了还在 / 加了不生效」（审计实测）。文件数与总字节数对
-    集合变化敏感；ctime 覆盖「等长改写 + 还原 mtime」这种 mtime 被伪造的写法。
-    这些字段本来就在同一次 stat 里拿到，不额外扫盘。
+    命中，表现为「引擎删了还在 / 加了不生效」（审计实测）。文件数与总字节对
+    集合变化敏感；摘要按**每个文件**的 (相对路径, 大小, mtime_ns, ctime_ns)
+    聚合成一个值，能识别「总量不变但换了文件」这类集合替换。
+
+    这里刻意**不读文件内容**：65 个声明逐个 read_bytes 实测 9.5 ms，等于把省下
+    的时间吃掉一半。跨平台语义兜底交给 config.yaml 的内容摘要（它是决定状态
+    目录的那份文件，见 _config_content_digest）：Windows 上 st_ctime 是创建
+    时间而非元数据变更时间，本摘要因此退化为「路径集 + 大小 + mtime」，仍能
+    覆盖编辑器改文件（mtime 变）与增删声明；只有「改写内容并还原 mtime」这种
+    刻意手法在 Windows 上漏检，而 POSIX 上 ctime 仍然兜着。
     """
     latest = 0.0
-    latest_ctime = 0
     count = 0
     total = 0
+    digest = hashlib.blake2b(digest_size=16)
     if not ENGINES_DIR.is_dir():
-        return latest, count, total, latest_ctime
-    for path in ENGINES_DIR.rglob("*.yaml"):
+        return latest, count, total, digest.hexdigest()
+    for path in sorted(ENGINES_DIR.rglob("*.yaml")):
         if "plugins" in path.parts:
             continue
         try:
             st = path.stat()
-        except OSError:
+            rel = path.relative_to(ENGINES_DIR)
+        except (OSError, ValueError):
             continue
         count += 1
         total += st.st_size
         latest = max(latest, st.st_mtime)
-        latest_ctime = max(latest_ctime, st.st_ctime_ns)
-    return latest, count, total, latest_ctime
+        digest.update(f"{rel}\0{st.st_size}\0{st.st_mtime_ns}\0{st.st_ctime_ns}\n".encode())
+    return latest, count, total, digest.hexdigest()
 
 
 def _ttl_memo(cache: tuple[float, float] | None, ttl: float,
@@ -282,14 +290,14 @@ def _ttl_memo(cache: tuple[float, float] | None, ttl: float,
     return cache, value
 
 
-def _remember_ext_scan(scan: tuple[float, int, int, int]) -> None:
+def _remember_ext_scan(scan: tuple[float, int, int, str]) -> None:
     """把刚测到的外置声明指纹回填记忆——force 重读后不必立刻再扫一遍。"""
     global _ext_scan_cache
     if _stamp_ttl() > 0:
         _ext_scan_cache = (time.monotonic(), scan)
 
 
-def _external_engines_scan() -> tuple[float, int, int, int]:
+def _external_engines_scan() -> tuple[float, int, int, str]:
     """外置声明目录指纹，按与 config_stamp 相同的 TTL 记忆。"""
     global _ext_scan_cache
     _ext_scan_cache, value = _ttl_memo(
@@ -369,7 +377,7 @@ def _stamp_uncached() -> float:
 # 键必须同时覆盖「输入」与「解释输入的代码」：只按 config.yaml 的 mtime 命中，
 # 升级 argo（归一化逻辑改了）后仍会读回旧逻辑写下的缓存，表现是「升级了没生效」。
 # 故把 config.py 与 yaml_load.py 的源码 mtime 也算进键里（见 _loader_sig）。
-_CONFIG_DISK_CACHE_SCHEMA = 2
+_CONFIG_DISK_CACHE_SCHEMA = 3
 _loader_sig_cache: int | None = None
 
 
@@ -442,17 +450,46 @@ def _json_round_trip_safe(obj: Any) -> bool:
     return True
 
 
+def _config_content_digest(st: os.stat_result) -> str | None:
+    """config.yaml 的**内容摘要**（blake2b/16 hex），进程内按 stat 记忆。
+
+    为什么用内容而不是 stat 字段：这是跨平台正确性的分水岭。
+    - `st_mtime`/`st_size` 可以被 `touch -r`、`cp -p`、`tar -x` 原样还原；
+    - `st_ctime` 在 POSIX 是「元数据变更时间」（能兜住还原 mtime 的写法），
+      但**在 Windows 是创建时间**——改写内容后它根本不变，于是同一份代码在
+      两个平台上给出不同的失效保真度，Windows 上「改了不生效」会静默复现。
+    内容摘要没有这个问题：两个平台都只认字节。代价是 121 KB 读 + 哈希实测
+    0.47 ms，而它换来的是省下 19–35 ms/次，且决定状态目录（cache.db_path）
+    的那份文件从此不可能读到旧版本。
+
+    读不到（权限/被删）返回 None，调用方按「无摘要」处理——宁可不命中缓存，
+    也不要拿一份来源不明的摘要当命中依据。
+    """
+    global _content_digest_memo
+    key = _config_db_path_key(st)
+    if _content_digest_memo is not None and _content_digest_memo[0] == key:
+        return _content_digest_memo[1]
+    try:
+        digest: str | None = hashlib.blake2b(
+            CONFIG_PATH.read_bytes(), digest_size=16).hexdigest()
+    except OSError:
+        digest = None
+    _content_digest_memo = (key, digest)
+    return digest
+
+
 def _config_disk_cache_key(st: os.stat_result,
-                           scan: tuple[float, int, int, int]) -> dict[str, Any]:
+                           scan: tuple[float, int, int, str],
+                           digest: str | None) -> dict[str, Any]:
     """缓存指纹：凡能改变「解析结果」的输入都要进键。
 
-    - config.yaml 的 (mtime_ns, size, ctime_ns)：mtime/size 覆盖常规改写；
-      ctime 覆盖「等长改写 + `touch -r`/`cp -p` 还原 mtime」这种 mtime 被
-      伪造的写法（内核维护的 ctime 用户态改不回去）。
-    - 外置声明指纹 (max_mtime, 文件数, 总字节, max_ctime)：**只取 max_mtime
-      对删除与 `cp -p` 是盲的**——删掉一个不是最新的声明、或拷进来一个时间戳
-      很旧的声明，max 都不变，缓存会继续给出一份「引擎删了还在 / 加了不生效」
-      的配置。文件数、总字节对集合变化敏感，ctime 对「改写后还原 mtime」敏感。
+    - config_digest：config.yaml 的**内容摘要**。这是唯一的强判据——mtime 能被
+      `cp -p`/`touch -r` 还原，ctime 在 Windows 是创建时间（改写不变），只有
+      内容不会骗人。摘要取不到（None）时键必然不等于任何已存载荷，等价于
+      「不使用缓存」，这是刻意的保守选择。
+    - ext_digest：外置声明的集合摘要（每文件的相对路径/大小/mtime/ctime 聚合）。
+      只取 max_mtime 对「删除声明」与「拷入旧时间戳的声明」是盲的，会让缓存继续
+      给出一份「引擎删了还在 / 加了不生效」的配置。
     - loader_sig：解释这份配置的代码变了（归一化逻辑改了）也要失效，
       否则升级后读回的是旧逻辑写下的结果。
     - home：`~` 展开依赖 HOME，同一个 ARGO_STATE_DIR 下换 HOME 会拿到
@@ -460,25 +497,21 @@ def _config_disk_cache_key(st: os.stat_result,
     """
     return {
         "config_path": str(CONFIG_PATH),
-        "config_mtime_ns": st.st_mtime_ns,
+        "config_digest": digest,
         "config_size": st.st_size,
-        "config_ctime_ns": st.st_ctime_ns,
-        "ext_mtime": scan[0],
+        "ext_digest": scan[3],
         "ext_files": scan[1],
-        "ext_bytes": scan[2],
-        "ext_ctime_ns": scan[3],
         "loader_sig": _loader_sig(),
         "home": os.path.expanduser("~"),
     }
 
 
 def _config_db_path_key(st: os.stat_result) -> tuple[str, int, int, int]:
-    """db_path 只取决于 config.yaml 本身，故它的键只看这份文件的四个字段
-    （不含 ext_mtime——那要多扫一轮 engines/ 才拿得到，为读一个路径不值）。
+    """config.yaml 的**进程内记忆键**（stat 三元 + ctime）——只用于避免同一进程
+    重复读盘，不承担跨进程失效判据（那是 config_digest 的职责）。
 
-    带上 ctime_ns：mtime 可以被 `touch -r` / `cp -p` / `tar -x` 原样还原，
-    而 ctime 由内核在每次写入 inode 元数据时更新、用户态改不回去。少了它，
-    「等长改写 + 还原 mtime」就能让缓存与解析两条路径各说各话（审计实测）。
+    它自身不跨进程，也就没有平台语义问题：Windows 上 ctime 是创建时间，这里
+    退化为 (路径, mtime, size) 三重判据，而进程内改写文件必然同时改 mtime。
     """
     return (str(CONFIG_PATH), st.st_mtime_ns, st.st_size, st.st_ctime_ns)
 
@@ -501,6 +534,7 @@ def _looks_like_config(cfg: Any) -> bool:
 
 
 _disk_cache_memo: tuple[tuple[str, int, int, int], dict[str, Any] | None] | None = None
+_content_digest_memo: tuple[tuple[str, int, int, int], str | None] | None = None
 
 
 def _disk_cache_payload() -> dict[str, Any] | None:
@@ -534,40 +568,46 @@ def _disk_cache_payload() -> dict[str, Any] | None:
 
 
 def _load_config_disk_cache(st: os.stat_result,
-                           scan: tuple[float, int, int, int]) -> dict[str, Any] | None:
+                           scan: tuple[float, int, int, str],
+                           digest: str | None) -> dict[str, Any] | None:
     """取落盘配置缓存；指纹不完全匹配或结构不对则返回 None（走完整解析链）。"""
+    if digest is None:
+        return None          # 摘要取不到 → 不信任任何已存载荷（保守优先）
     raw = _disk_cache_payload()
-    if raw is None or raw.get("key") != _config_disk_cache_key(st, scan):
+    if raw is None or raw.get("key") != _config_disk_cache_key(st, scan, digest):
         return None
     cfg = raw.get("config")
     return cfg if _looks_like_config(cfg) else None
 
 
-def _peek_disk_cache_db_path(st: os.stat_result) -> tuple[bool, str | None]:
+def _peek_disk_cache_db_path(st: os.stat_result,
+                             digest: str | None) -> tuple[bool, str | None]:
     """从落盘缓存里取 cache.db_path → (命中, db_path)。
 
     命中时 import 链上的路径派生（argo_paths）连 YAML 都不用解析——这是冷启动
-    固定开销里最后一块可省的重复劳动：config.yaml 有 123 KB，C 版 loader 解析
+    固定开销里最后一块可省的重复劳动：config.yaml 有 121 KB，C 版 loader 解析
     一遍约 20 ms，而派生只需要里面一个标量。
 
-    **必须校验 (config_path, mtime_ns, size, ctime_ns)**：db_path 是状态目录的
-    源头（argo_paths.state_root），只比 config_path 会漏掉「配置改了但缓存文件
-    还在」的窗口——peek 拿到旧路径、load_config 拿到新路径，两处口径分裂，
-    长驻进程整个生命周期都会把状态文件写到旧目录（审计实测复现）。外置声明
-    指纹不在此校验：db_path 只由 config.yaml 本身决定。
+    **必须校验 config_digest**：db_path 是状态目录的源头（argo_paths.state_root），
+    只比 config_path 会漏掉「配置改了但缓存文件还在」的窗口——peek 拿到旧路径、
+    load_config 拿到新路径，两处口径分裂，长驻进程整个生命周期都会把状态文件
+    写到旧目录（审计实测复现）。用内容摘要而不是 stat 字段，是因为 stat 可被
+    `touch -r`/`cp -p` 还原、ctime 在 Windows 又只是创建时间（同一份代码在两个
+    平台上失效保真度不同）。外置声明摘要不在此校验：db_path 只由 config.yaml
+    本身决定。
 
     返回的路径与走 YAML 时**同为展开后的形式**（~ 已展开）：两条分支口径必须
     一致，否则同一个进程里先命中缓存、后走解析会拿到两种形态，给未来的调用者
     埋雷（当前唯一消费者 argo_paths 会再 expanduser 一次，所以现在看不出来）。
     """
+    if digest is None:
+        return False, None
     raw = _disk_cache_payload()
     if raw is None:
         return False, None
     key = raw.get("key") or {}
-    path, mtime_ns, size, ctime_ns = _config_db_path_key(st)
-    if (key.get("config_path"), key.get("config_mtime_ns"),
-            key.get("config_size"), key.get("config_ctime_ns")) != (
-            path, mtime_ns, size, ctime_ns):
+    if (key.get("config_path"), key.get("config_digest")) != (
+            str(CONFIG_PATH), digest):
         return False, None
     cfg = raw.get("config")
     if not _looks_like_config(cfg):
@@ -579,7 +619,8 @@ def _peek_disk_cache_db_path(st: os.stat_result) -> tuple[bool, str | None]:
     return True, (os.path.expanduser(str(db_path)) if db_path else None)
 
 
-def _save_config_disk_cache(st: os.stat_result, scan: tuple[float, int, int, int],
+def _save_config_disk_cache(st: os.stat_result, scan: tuple[float, int, int, str],
+                            digest: str | None,
                             config: dict[str, Any]) -> None:
     """原子写落盘缓存；任何失败静默（只读环境退回每次解析的老路）。
 
@@ -589,11 +630,12 @@ def _save_config_disk_cache(st: os.stat_result, scan: tuple[float, int, int, int
     读成事实，正是这套配置里最忌讳的「结论当输入存」。
     """
     global _disk_cache_memo
-    if not _config_disk_cache_enabled() or not _json_round_trip_safe(config):
+    if digest is None or not _config_disk_cache_enabled() \
+            or not _json_round_trip_safe(config):
         return
     payload = {
         "schema": _CONFIG_DISK_CACHE_SCHEMA,
-        "key": _config_disk_cache_key(st, scan),
+        "key": _config_disk_cache_key(st, scan, digest),
         "config": config,
     }
     path = _config_disk_cache_path()
@@ -648,7 +690,8 @@ def load_config(force: bool = False) -> dict[str, Any]:
     # 且看不出跟缓存有关」，用户无从知道要删哪个文件）。
     if not force:
         try:
-            disk = _load_config_disk_cache(st, scan)
+            # 内容摘要也在缓存判断之前算：它是唯一的强判据（见 _config_content_digest）
+            disk = _load_config_disk_cache(st, scan, _config_content_digest(st))
             if disk is not None:
                 _config_cache = _validate_engine_paths(disk)
                 _config_mtime = combined_mtime
@@ -670,7 +713,7 @@ def load_config(force: bool = False) -> dict[str, Any]:
             # 外置 spec 的 cmd 是相对路径 → 合并后必须再解析一次，
             # 否则它们永远保持相对（且校验随 CWD 漂移）
             resolved = _resolve_relative_paths(resolved)
-            _save_config_disk_cache(st, scan, resolved)
+            _save_config_disk_cache(st, scan, _config_content_digest(st), resolved)
             _config_cache = _validate_engine_paths(resolved)
             _config_mtime = combined_mtime
             _config_load_error = err
@@ -816,7 +859,7 @@ def peek_cache_db_path() -> str | None:
         st = CONFIG_PATH.stat()
     except OSError:
         return None
-    hit, db_path = _peek_disk_cache_db_path(st)
+    hit, db_path = _peek_disk_cache_db_path(st, _config_content_digest(st))
     if hit:
         return db_path
     try:

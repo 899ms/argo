@@ -266,6 +266,7 @@ class TestConfigDiskCache:
         config._config_mtime = 0.0
         config._parsed_yaml_cache = None
         config._disk_cache_memo = None
+        config._content_digest_memo = None
         # _ext_scan_cache 也要清：测试会 monkeypatch ENGINES_DIR/CONFIG_PATH，留着
         # 上一个夹具的外置声明指纹会让「本该不匹配」的缓存键恰好匹配，于是测试
         # 读到真实仓库的配置——缓存类用例最常见的假绿/假红来源。
@@ -346,6 +347,46 @@ class TestConfigDiskCache:
         assert config._json_round_trip_safe({"a": {"b": [1, 2]}})
         assert not config._json_round_trip_safe({"a": {1: "x"}})
         assert not config._json_round_trip_safe({"a": [{"深层": {2: "y"}}]})
+
+    def test_windows_semantics_do_not_weaken_invalidation(self, monkeypatch, tmp_path):
+        """内容摘要必须是唯一强判据：stat 字段全被还原也要能失效。
+
+        这是 Windows 短板的根因回归：`touch -r`/`cp -p` 能还原 mtime，而 Windows
+        上 st_ctime 是**创建时间**（改写内容后根本不变），于是「用 ctime 兜住还原
+        mtime」这条设计在 Windows 上等于没有——同一份代码两个平台失效保真度不同，
+        表现是「改了配置不生效」。这里用**同一个 stat 对象 + 两个摘要**直接锁死
+        「键只认内容」，与平台无关。
+        """
+        st = config.CONFIG_PATH.stat()
+        scan = (0.0, 0, 0, "ext-digest")
+        k_old = config._config_disk_cache_key(st, scan, "digest-old")
+        k_new = config._config_disk_cache_key(st, scan, "digest-new")
+        assert k_old != k_new, "键对内容不敏感——stat 被还原时会静默沿用旧配置"
+        assert "config_digest" in k_old, "键里应有内容摘要字段"
+        assert not {"config_ctime_ns", "config_mtime_ns"} & set(k_old), \
+            "键不该再依赖 ctime/mtime（ctime 在 Windows 是创建时间，跨平台语义不一致）"
+
+    def test_content_digest_detects_same_size_rewrite(self, monkeypatch, tmp_path):
+        """等长改写（编辑器/脚本都可能）必须改变摘要——不靠 size 或 mtime。"""
+        p = tmp_path / "c.yaml"
+        p.write_text("a: 1111\n", encoding="utf-8")
+        monkeypatch.setattr(config, "CONFIG_PATH", p)
+        config._content_digest_memo = None
+        first = config._config_content_digest(p.stat())
+        p.write_text("a: 2222\n", encoding="utf-8")      # 同上长度
+        config._content_digest_memo = None
+        second = config._config_content_digest(p.stat())
+        assert first and second and first != second, "等长改写没被摘要识别"
+
+    def test_missing_digest_disables_cache(self, monkeypatch):
+        """摘要取不到时不写也不读缓存：宁可每次解析，也不用来源不明的摘要命中。"""
+        monkeypatch.setattr(config, "_config_content_digest", lambda st: None)
+        assert config._load_config_disk_cache(
+            config.CONFIG_PATH.stat(), (0.0, 0, 0, "x"), None) is None
+        config._save_config_disk_cache(
+            config.CONFIG_PATH.stat(), (0.0, 0, 0, "x"), None, {"engines": {}})
+        # 不写缓存：解析链照样工作，只是每次全量
+        assert config.load_config().get("engines")
 
     def test_disk_path_is_bootstrap_root(self, monkeypatch, tmp_path):
         """缓存必须落在**不依赖配置解析**就能算出的位置，且按 config 路径分槽。

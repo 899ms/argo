@@ -123,3 +123,107 @@ def test_state_path_is_pure_join(monkeypatch, tmp_path):
     p = argo_paths.state_path("nope", "deep.json")
     assert p == tmp_path / "nope" / "deep.json"
     assert not p.exists()
+
+
+# ─── 跨进程文件锁（POSIX flock / Windows msvcrt 双实现）───────────────────────
+
+import threading  # noqa: E402
+import time  # noqa: E402
+import types  # noqa: E402
+
+
+class TestFileLock:
+    """锁的契约：真互斥、能释放、拿不到时 fail-open（绝不阻断搜索主路径）。
+
+    为什么两套实现都要测：Windows 没有 fcntl，此前这里直接 fail-open——于是
+    「6 进程 × 60 次 record 状态丢失 77%」那类丢更新在 Windows 上原样复现，而
+    调用方看不出任何异常（没有日志，锁看起来"加了"）。msvcrt 分支必须在 macOS
+    上也能被覆盖，否则它永远是「没被跑过的一行」。
+    """
+
+    def _lock_path(self, tmp_path):
+        return tmp_path / "state.json"
+
+    def _fake_msvcrt(self, recorder):
+        return types.SimpleNamespace(LK_NBLCK=2, LK_UNLCK=0, locking=recorder)
+
+    def test_posix_mutual_exclusion(self, tmp_path):
+        """同一把锁的第二个持有者必须等第一个释放——这是锁存在的全部意义。"""
+        path = self._lock_path(tmp_path)
+        order: list[str] = []
+
+        def worker(tag: str, hold: float) -> None:
+            with argo_paths.file_lock(path, timeout=5.0):
+                order.append(f"{tag}-in")
+                time.sleep(hold)
+                order.append(f"{tag}-out")
+
+        a = threading.Thread(target=worker, args=("A", 0.15))
+        b = threading.Thread(target=worker, args=("B", 0.0))
+        a.start()
+        time.sleep(0.02)          # 让 A 先拿到
+        b.start()
+        a.join()
+        b.join()
+        assert order == ["A-in", "A-out", "B-in", "B-out"], f"未互斥：{order}"
+
+    def test_windows_impl_locks_first_byte(self, monkeypatch, tmp_path):
+        """Windows 实现：msvcrt.locking 锁首字节（空文件先写占位字节）。"""
+        calls: list[tuple[int, int, int]] = []
+        monkeypatch.setitem(sys.modules, "msvcrt", self._fake_msvcrt(
+            lambda fd, mode, n: calls.append((mode, n, os.fstat(fd).st_size))))
+
+        impl = argo_paths._make_lock_impl(None)          # None = 模拟「没有 fcntl」
+        assert impl is not None, "Windows 分支丢了对 None 入参的处理"
+        acquire, release = impl
+
+        lock_file = self._lock_path(tmp_path)
+        fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            acquire(fd)
+            release(fd)
+        finally:
+            os.close(fd)
+        assert [c[0] for c in calls] == [2, 0], f"未按 LK_NBLCK/LK_UNLCK 加解锁：{calls}"
+        assert all(c[1] == 1 for c in calls), "锁区间应为 1 字节"
+        assert calls[0][2] >= 1, "空文件应先写占位字节，否则锁区间为空"
+
+    def test_windows_path_runs_body_and_releases(self, monkeypatch, tmp_path):
+        """整条 file_lock 在 Windows 实现下：加锁 → 临界区 → 解锁，顺序不能乱。"""
+        trace: list[str] = []
+        monkeypatch.setitem(sys.modules, "msvcrt", self._fake_msvcrt(
+            lambda fd, mode, n: trace.append("lock" if mode == 2 else "unlock")))
+        real_impl = argo_paths._make_lock_impl      # 先取原件，否则 patch 后自我递归
+        monkeypatch.setattr(argo_paths, "_make_lock_impl", lambda _fcntl: real_impl(None))
+        with argo_paths.file_lock(self._lock_path(tmp_path), timeout=1.0):
+            trace.append("body")
+        assert trace == ["lock", "body", "unlock"], f"Windows 路径顺序不对：{trace}"
+
+    def test_timeout_fails_open(self, monkeypatch, tmp_path):
+        """抢不到锁时按超时放行，而不是抛异常——锁是保护层，不该成为单点故障。"""
+        def always_busy(fd, mode, n):
+            raise OSError("被占用")
+
+        monkeypatch.setitem(sys.modules, "msvcrt", self._fake_msvcrt(always_busy))
+        real_impl = argo_paths._make_lock_impl
+        monkeypatch.setattr(argo_paths, "_make_lock_impl", lambda _fcntl: real_impl(None))
+        entered = False
+        t0 = time.monotonic()
+        with argo_paths.file_lock(self._lock_path(tmp_path), timeout=0.05):
+            entered = True
+        assert entered, "拿不到锁时没有放行（会阻断主路径）"
+        assert time.monotonic() - t0 >= 0.05, "应在 timeout 之后才放行"
+
+    def test_unknown_platform_fails_open(self, monkeypatch, tmp_path):
+        """两套锁都不可用的平台（不认识的系统）同样 fail-open。"""
+        monkeypatch.setattr(argo_paths, "_make_lock_impl", lambda _fcntl: None)
+        with argo_paths.file_lock(self._lock_path(tmp_path), timeout=0.01) as _:
+            pass    # 只要不抛异常即可
+
+    def test_lock_file_is_separate_from_data_file(self, tmp_path):
+        """锁落在独立的 .lock 文件上：数据文件靠 os.replace 整体替换，若锁与数据
+        同 inode，替换后新进程会锁到另一个 inode 而形同无锁。"""
+        data = tmp_path / "quota.json"
+        with argo_paths.file_lock(data, timeout=1.0):
+            assert (tmp_path / ".quota.json.lock").exists(), "锁文件未落在独立路径"
+            assert not data.exists(), "保护一个尚未创建的数据文件不该先建它"

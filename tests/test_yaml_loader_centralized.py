@@ -220,6 +220,91 @@ class TestConfigParseSharedWithLoad:
         assert repr(after) == snapshot, "load_config 改写了共享的解析结果"
 
 
+class TestArgoInterpreterWindowsCandidates:
+    """跨平台解释器候选链：Windows 没有 python3 这个名字，必须能落到 py/python。
+
+    上游 v2.8.5 的社区贡献只在 node 启动器（bin/argo.js）里按平台分流，
+    `bin/argo` 自身的候选链一直只认 python3.x——Windows 上这段等于全靠
+    `sys.executable` 兜底。这里锁住两端：候选里有 Windows 名字，且 `py -3`
+    这类**启动器 + 参数**会被解析成真实解释器路径后才入缓存（缓存与 execv
+    都只认单个绝对路径，存组合串会让缓存永远不命中）。
+    """
+
+    @pytest.fixture
+    def argo_bin(self, monkeypatch, tmp_path):
+        mod = _load_argo_bin()
+        monkeypatch.setattr(mod, "_PY_CACHE", str(tmp_path / ".argo_python"))
+        return mod
+
+    def test_probe_accepts_launcher_argv(self, argo_bin, monkeypatch):
+        """_probe_python 要接受参数列表形式（py -3），并把参数拼在 -c 之前。"""
+        seen: list[list[str]] = []
+
+        class _R:
+            returncode = 0
+
+        def fake_run(argv, **kwargs):
+            seen.append(list(argv))
+            return _R()
+
+        monkeypatch.setattr(argo_bin.subprocess, "run", fake_run)
+        assert argo_bin._probe_python(["py", "-3"], strict=True) is True
+        assert seen and seen[0][:3] == ["py", "-3", "-c"], f"argv 拼接不对：{seen}"
+
+    def test_resolve_launcher_returns_real_path(self, argo_bin, monkeypatch, tmp_path):
+        """`py -3` → 真实解释器绝对路径；输出不合法（相对路径/非零退出）返回空串。
+
+        路径用平台原生风格：`os.path.isabs` 在各平台按自己的规则判断，这正是
+        我们要的行为（Windows 上判 `C:\\...`，POSIX 上判 `/...`）。
+        """
+        real_python = str(tmp_path / "python.exe")
+
+        class _R:
+            def __init__(self, rc, out):
+                self.returncode, self.stdout = rc, out
+
+        monkeypatch.setattr(argo_bin.subprocess, "run",
+                            lambda argv, **kw: _R(0, real_python + "\n"))
+        assert argo_bin._resolve_launcher(["py", "-3"]) == real_python
+        monkeypatch.setattr(argo_bin.subprocess, "run",
+                            lambda argv, **kw: _R(1, "boom\n"))
+        assert argo_bin._resolve_launcher(["py", "-3"]) == ""
+        monkeypatch.setattr(argo_bin.subprocess, "run",
+                            lambda argv, **kw: _R(0, "python.exe\n"))   # 非绝对路径
+        assert argo_bin._resolve_launcher(["py", "-3"]) == ""
+
+    def test_launcher_candidate_is_resolved_before_caching(self, argo_bin, monkeypatch,
+                                                           tmp_path):
+        """Windows 机器上只装 py 启动器时：应缓存解析后的真实路径。"""
+        real = str(tmp_path / "python312.exe")
+        monkeypatch.setattr(argo_bin.shutil, "which",
+                            lambda name: "py.exe" if name == "py" else None)
+        monkeypatch.setattr(argo_bin, "_resolve_launcher", lambda argv: real)
+        monkeypatch.setattr(argo_bin, "_probe_python", lambda py, strict: py == real)
+        monkeypatch.setattr(argo_bin, "_cached_python", lambda: "")
+        monkeypatch.setattr(argo_bin.sys, "executable", str(tmp_path / "other.exe"))
+        got = argo_bin._pick_python()
+        assert got == real, f"没有落到 py 启动器候选：{got}"
+        from pathlib import Path as _P
+        assert _P(argo_bin._PY_CACHE).read_text(encoding="utf-8").strip() == real, \
+            "缓存里存的是启动器组合串而不是真实解释器路径——缓存将永不命中"
+
+    def test_generic_python_names_are_candidates(self, argo_bin, monkeypatch):
+        """python / python3 / *.exe 通用名也在候选链里（Windows 与精简镜像）。"""
+        seen: list[str] = []
+
+        def fake_which(name):
+            seen.append(name)
+            return None
+
+        monkeypatch.setattr(argo_bin.shutil, "which", fake_which)
+        monkeypatch.setattr(argo_bin, "_cached_python", lambda: "")
+        monkeypatch.setattr(argo_bin, "_probe_python", lambda py, strict: False)
+        argo_bin._pick_python()
+        for name in ("python", "python3", "python.exe", "python3.exe"):
+            assert name in seen, f"候选链缺少 {name}"
+
+
 class TestArgoInterpreterCache:
     """bin/argo 的解释器探测缓存：命中不重探、失败/异常缓存要退化为重探。"""
 

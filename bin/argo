@@ -44,14 +44,40 @@ _PY_CHEAP_CHECK = (
 )
 
 
-def _probe_python(p: str, strict: bool) -> bool:
-    """strict=True 真 import 依赖（首次探测）；False 只做廉价存在性校验。"""
+def _probe_python(py, strict: bool) -> bool:
+    """strict=True 真 import 依赖（首次探测）；False 只做廉价存在性校验。
+
+    py 既可以是可执行文件路径，也可以是**参数列表**（Windows 官方启动器
+    `py -3` 的形式——它本身不是解释器，要带参数才会选版本）。
+    """
     code = "import yaml" if strict else _PY_CHEAP_CHECK
+    argv = [py] if isinstance(py, str) else list(py)
+    if not argv:
+        return False
     try:
-        r = subprocess.run([p, "-c", code], capture_output=True, timeout=10)
+        r = subprocess.run(argv + ["-c", code], capture_output=True, timeout=10)
         return r.returncode == 0
     except Exception:
         return False
+
+
+def _resolve_launcher(argv: list[str]) -> str:
+    """把「启动器 + 参数」（如 Windows 的 `py -3`）解析成真实解释器绝对路径。
+
+    缓存与 execv 都只认单个绝对路径，所以必须在探测阶段就把启动器展开一次：
+    否则写进缓存的是 `py -3` 这样的组合，`_cached_python` 的 `os.path.isabs`
+    校验会直接判它不可用，缓存永远不命中。
+    """
+    try:
+        r = subprocess.run(argv + ["-c", "import sys; print(sys.executable)"],
+                           capture_output=True, text=True, timeout=10)
+    except Exception:
+        return ""
+    if r.returncode != 0:
+        return ""
+    lines = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+    p = lines[-1] if lines else ""
+    return p if p and os.path.isabs(p) else ""
 
 
 def _cached_python() -> str:
@@ -102,17 +128,25 @@ def _pick_python() -> str:
             return cached
 
     cands = ["python3.14", "python3.13", "python3.12",
-             "python3.11", "python3.10", sys.executable]
+             "python3.11", "python3.10", sys.executable,
+             # Windows：本机没有 `python3` 这个名字（上游 v2.8.5 的社区贡献已经
+             # 在 node 启动器里按平台分流，这里是 `bin/argo` 自身的对应分支）。
+             # `py` 是官方启动器，`py -3` 取最新 3.x；解析成真实路径后才入库。
+             ["py", "-3"], ["py"], "python3", "python", "python3.exe", "python.exe"]
     for cand in cands:
-        if not cand:
+        if isinstance(cand, str):
+            if not cand:
+                continue
+            py = cand if os.path.isabs(cand) else shutil.which(cand)
+        else:
+            launcher = shutil.which(cand[0])
+            py = _resolve_launcher([launcher] + list(cand[1:])) if launcher else ""
+        if not py:
             continue
-        p = shutil.which(cand) if not os.path.isabs(cand) else cand
-        if not p:
-            continue
-        if _probe_python(p, True):
+        if _probe_python(py, True):
             if not env_py:
-                _remember_python(p)
-            return p
+                _remember_python(py)
+            return py
     return sys.executable
 
 

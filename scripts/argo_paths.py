@@ -21,6 +21,7 @@ import contextlib
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -135,38 +136,81 @@ def file_lock(path: Path, *, timeout: float = 10.0):
         return
 
     try:
-        import fcntl  # 仅 POSIX；Windows 无 flock
+        import fcntl  # POSIX
     except ImportError:
         fcntl = None
 
-    if fcntl is None or not hasattr(fcntl, "flock"):
+    lock_impl = _make_lock_impl(fcntl)
+    if lock_impl is None:
+        # 两个平台都没有可用锁（不认识的系统）→ fail-open，绝不阻断主路径
         try:
             yield
         finally:
             os.close(fd)
         return
 
-    import time as _time
-    deadline = _time.monotonic() + timeout
+    acquire, release = lock_impl
+    deadline = time.monotonic() + timeout
     acquired = False
     while True:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            acquire(fd)
             acquired = True
             break
         except OSError:
-            if _time.monotonic() >= deadline:
+            if time.monotonic() >= deadline:
                 break
-            _time.sleep(0.002)
+            time.sleep(0.002)
     try:
         yield
     finally:
         if acquired:
             try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                release(fd)
             except OSError:
                 pass
         os.close(fd)
+
+
+def _make_lock_impl(fcntl: Any):
+    """选一套可用的文件锁实现 → (acquire(fd), release(fd))；都不可用返回 None。
+
+    为什么要两套：Windows 没有 `fcntl`，此前这里直接 fail-open——于是
+    「6 进程 × 60 次 record 状态丢失 77%」这类丢更新在 Windows 上原样复现，
+    而调用方完全看不出来（没有任何日志，锁看起来"加了"）。Windows 上的对应
+    设施是 `msvcrt.locking`：对文件的一段字节区间加锁，语义与 flock 足够接近。
+
+    差异点（都在这里吸收掉，不让调用方感知）：
+    - msvcrt 锁的是**相对当前文件位置**的字节区间 → 每次加/解锁前 seek(0)；
+    - 空文件上锁区间为空，先写一个字节把它变成合法区间（内容是占位，无人读）；
+    - msvcrt 的 LK_NBLCK 抢不到时抛 OSError，与 flock 的 LOCK_NB 一致，
+      所以外层重试循环两种实现可以共用。
+    """
+    if fcntl is not None and hasattr(fcntl, "flock"):
+        def _acq(fd: int) -> None:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        def _rel(fd: int) -> None:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
+        return _acq, _rel
+
+    try:
+        import msvcrt  # Windows
+    except ImportError:
+        return None
+
+    def _acq_win(fd: int) -> None:
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"\0")      # 让锁区间非空
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+
+    def _rel_win(fd: int) -> None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+    return _acq_win, _rel_win
 
 
 def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None:
