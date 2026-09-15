@@ -19,57 +19,127 @@ import os
 import re
 import json
 import shlex
+import sys
 import threading
 from pathlib import Path
 from typing import Any
 
-# ── 密钥文件热读（~/.config/argo/env 唯一真源）─────────────────────────────
+# ── 密钥文件热读（平台惯例位置，多候选合并）─────────────────────────────────
 # os.environ 优先（显式覆盖/测试注入），文件兜底：进程未经 mcp_launch.sh
-# 注入密钥时仍能拿到，且改文件无需重启——mtime+size 签名缓存，变更即重读。
+# 注入密钥时仍能拿到，且改文件无需重启——多候选签名缓存，任一变更即重读。
+#
+# 位置按平台惯例解析（候选按优先级排列）：
+#   1. ARGO_ENV_FILE：显式指定，**只读这一个**，不做合并（权威覆盖）
+#   2. Windows：%APPDATA%\argo\env；POSIX：$XDG_CONFIG_HOME/argo/env（若该变量设置了）
+#   3. 历史路径 ~/.config/argo/env（POSIX 上它就是 XDG 默认值）
+# 读取时**合并**全部候选（靠前者逐键优先），而不是只认第一个存在的文件：
+# 否则「用户在 XDG 目录放了一份、历史路径还留着一份」会让一部分密钥读得到、
+# 一部分读不到——那正是本仓反复踩过的「装了没通电」形态（引擎按状态层可用、
+# 实际取不到 key，静默 0 结果）。
 _envfile_lock = threading.Lock()
 _envfile_cache: dict[str, str] = {}
 _envfile_sig: tuple = ()
 
+ENV_ENV_FILE = "ARGO_ENV_FILE"
+ENV_XDG_CONFIG = "XDG_CONFIG_HOME"
+ENV_APPDATA = "APPDATA"
+_LEGACY_ENVFILE = "~/.config/argo/env"
+
+
+def _platform_config_root(env: "os._Environ[str] | dict[str, str] | None" = None,
+                          platform: str | None = None) -> Path | None:
+    """平台惯例的配置根（不含应用名）：Windows → %APPDATA%；其余 → $XDG_CONFIG_HOME。
+
+    未设置对应变量时返回 None，由调用方回落到 Unix 惯例 ~/.config。抽成纯函数
+    （可注入 env 与 platform）是为了能在 macOS 上直接单测 Windows 分支——否则
+    「Windows 上取哪个目录」永远只有真机才能验证。
+    """
+    env = os.environ if env is None else env
+    platform = sys.platform if platform is None else platform
+    if platform.startswith("win"):
+        base = str(env.get(ENV_APPDATA) or "").strip()
+    else:
+        base = str(env.get(ENV_XDG_CONFIG) or "").strip()
+    return Path(os.path.expanduser(base)) if base else None
+
+
+def _envfile_paths() -> list[Path]:
+    """密钥文件的候选路径，按优先级排列（去重保序）。
+
+    这里是**唯一**的位置解析入口：读取、签名、诊断都走它，任何新增候选都只
+    改这一处（此前写死 ~/.config/argo/env，Windows 与自定义 XDG 都无处安放）。
+    """
+    explicit = os.environ.get(ENV_ENV_FILE, "").strip()
+    if explicit:
+        return [Path(os.path.expanduser(explicit))]
+    cands: list[Path] = []
+    root = _platform_config_root()
+    if root is not None:
+        cands.append(root / "argo" / "env")
+    cands.append(Path(os.path.expanduser(_LEGACY_ENVFILE)))
+    out: list[Path] = []
+    for p in cands:
+        if p not in out:
+            out.append(p)
+    return out
+
 
 def _envfile_path() -> Path:
-    return Path.home() / ".config" / "argo" / "env"
+    """首选（最高优先级）密钥文件路径——展示与错误提示用。
+
+    读取请用 `_envfile_paths()`：只认这一个会漏掉另一份候选里的密钥。
+    """
+    return _envfile_paths()[0]
+
+
+def _parse_envfile(text: str) -> dict[str, str]:
+    """解析 env 文件文本（export 前缀、引号、注释都按既有口径处理）。"""
+    data: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):]
+        if "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k = k.strip()
+        v = v.strip()
+        if not k or not v:
+            continue
+        try:
+            parts = shlex.split(v)
+            val = parts[0] if parts else ""
+        except ValueError:
+            val = v.strip("'\"")
+        data[k] = val
+    return data
 
 
 def _envfile_load() -> dict[str, str]:
     global _envfile_cache, _envfile_sig
-    p = _envfile_path()
-    try:
-        st = p.stat()
-        sig = (st.st_mtime_ns, st.st_size)
-    except OSError:
-        sig = ()
+    paths = _envfile_paths()
+    stats: list[tuple[str, int, int]] = []
+    for p in paths:
+        try:
+            st = p.stat()
+            stats.append((str(p), st.st_mtime_ns, st.st_size))
+        except OSError:
+            continue
+    sig = tuple(stats)
     with _envfile_lock:
         if sig == _envfile_sig:
             return _envfile_cache
         data: dict[str, str] = {}
-        if sig:
+        # 靠前的候选优先：先读的键不被后面的覆盖（显式覆盖 > 平台惯例 > 历史）
+        for p in paths:
             try:
-                for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    if line.startswith("export "):
-                        line = line[len("export "):]
-                    if "=" not in line:
-                        continue
-                    k, _, v = line.partition("=")
-                    k = k.strip()
-                    v = v.strip()
-                    if not k or not v:
-                        continue
-                    try:
-                        parts = shlex.split(v)
-                        val = parts[0] if parts else ""
-                    except ValueError:
-                        val = v.strip("'\"")
-                    data[k] = val
+                text = p.read_text(encoding="utf-8", errors="replace")
             except OSError:
-                data = {}
+                continue
+            for k, v in _parse_envfile(text).items():
+                data.setdefault(k, v)
         _envfile_cache = data
         _envfile_sig = sig
         return data

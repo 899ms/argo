@@ -91,7 +91,10 @@ _BEARER_RE = re.compile(r"(bearer\s+)[A-Za-z0-9._\-]+", re.IGNORECASE)
 _VENDOR_KEY_RE = re.compile(
     r"\b(?:sk|rk|pk|gsk|xai|hf|ghp|gho|github_pat|glpat|AIza|ya29)"
     r"[-_][A-Za-z0-9._\-]{8,}")
-_HOME_PATH_RE = re.compile(r"(/Users/[^/\s:\"]+|/home/[^/\s:\"]+)")
+_HOME_PATH_RE = re.compile(
+    r"([A-Za-z]:\\Users\\[^\\\s:\"]+"      # Windows：C:\Users\<name>
+    r"|/Users/[^/\s:\"]+"                  # macOS
+    r"|/home/[^/\s:\"]+)")                 # Linux / BSD
 
 
 def redact_secrets(text: str) -> str:

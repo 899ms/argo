@@ -15,6 +15,22 @@
 
 set -euo pipefail
 
+# 本脚本用 bash 语法（数组、[[ ]]），在 sh/dash/ksh 下会在解析期报一堆语法错误、
+# 且看不出真正原因。FreeBSD/OpenBSD/精简容器里 /bin/sh 不是 bash，所以先自证运行
+# 环境：不是 bash 就尝试用 bash 重跑，找不到 bash 则给出一句可执行的指引。
+if [ -z "${BASH_VERSION:-}" ]; then
+  if command -v bash >/dev/null 2>&1; then
+    exec bash "$0" "$@"
+  fi
+  echo "install.sh 需要 bash（本脚本使用数组与 [[ ]] 语法）。" >&2
+  echo "  Debian/Ubuntu: sudo apt-get install -y bash" >&2
+  echo "  Alpine:        apk add bash" >&2
+  echo "  FreeBSD:       pkg install -y bash" >&2
+  echo "  OpenBSD:       pkg_add bash" >&2
+  echo "  macOS/多数 Linux 自带 bash，可直接： curl -fsSL <url> | bash" >&2
+  exit 1
+fi
+
 REPO="${ARGO_REPO:-https://github.com/taxueseek/argo.git}"
 BRANCH="${ARGO_BRANCH:-main}"
 PIN="${ARGO_PIN:-}"
@@ -69,7 +85,7 @@ fi
 PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 PY_OK=$(python3 -c 'import sys; print(1 if sys.version_info >= (3, 10) else 0)')
 if [[ "$PY_OK" != "1" ]]; then
-  echo "当前 Python 为 $PY_VER，需要 3.10+。" >&2
+  echo "当前 Python 为 ${PY_VER}，需要 3.10+。" >&2
   exit 1
 fi
 
@@ -90,7 +106,7 @@ fi
 if [[ -n "$PIN" ]]; then
   ACTUAL_HEAD=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
   if [[ "$ACTUAL_HEAD" != "$PIN" ]]; then
-    echo "!! 供应链校验失败：固定 commit 为 $PIN，实际 HEAD 为 $ACTUAL_HEAD" >&2
+    echo "!! 供应链校验失败：固定 commit 为 ${PIN}，实际 HEAD 为 ${ACTUAL_HEAD}" >&2
     echo "!! 仓库内容与预期不一致，拒绝继续。请人工核查仓库来源。" >&2
     exit 1
   fi

@@ -102,8 +102,8 @@ class TestMissingEnvOutcome(unittest.TestCase):
         for var in ("ARGO_ZHIHU_ACCESS_SECRET", "ZHIHU_ACCESS_SECRET"):
             os.environ.pop(var, None)
         # 屏蔽密钥文件兜底（本机 ~/.config/argo/env 真有 zhihu 密钥）
-        with patch("engine_env._envfile_path",
-                   lambda: Path("/nonexistent/argo/env")):
+        with patch("engine_env._envfile_paths",
+                   lambda: [Path("/nonexistent/argo/env")]):
             missing = _missing_env_for("zhihu")
         self.assertIn("ARGO_ZHIHU_ACCESS_SECRET", missing)
 

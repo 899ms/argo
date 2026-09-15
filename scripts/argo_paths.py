@@ -7,9 +7,12 @@ config 默认值），导致 config.yaml 的 cache.db_path 管不住 quota.json�
 health.db 等文件，测试也难以整体隔离。
 
 现在所有状态路径统一由本模块派生：
-  - 根目录可被 ARGO_STATE_DIR 覆盖（测试隔离 / 只读环境 / XDG 迁移）
-  - 未设置时回落到 config.yaml 的 cache.db_path 所在目录，保持向后兼容
+  - 根目录可被 ARGO_STATE_DIR 覆盖（测试隔离 / 只读环境 / 显式换目录）
+  - 其次认 config.yaml 的 cache.db_path 所在目录，保持向后兼容
+  - 再次：历史目录已存在就继续用（不迁移），否则落**平台惯例**目录
+    （Windows %LOCALAPPDATA%/unified-search；POSIX 遵循 XDG_CACHE_HOME）
   - 各模块只声明「文件名」，不再各自拼目录
+  - `python3 scripts/argo_paths.py [--json]` 可打印关键路径的实际来源
 
 注意：User-Agent 里的 unified-search@local 是邮箱标识，与状态目录无关，
 不在此处管理。
@@ -20,19 +23,140 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 # 环境变量覆盖：优先级最高，用于测试隔离与只读环境
 ENV_STATE_DIR = "ARGO_STATE_DIR"
+# 平台惯例变量（只读，不新增 argo 私有名字）
+ENV_XDG_CACHE = "XDG_CACHE_HOME"
+ENV_LOCALAPPDATA = "LOCALAPPDATA"
 
 # 历史默认目录（也是 config.yaml 中 db_path 的默认前缀）
 _LEGACY_ROOT = "~/.cache/unified-search"
 
 # 缓存配置段未就绪时的兜底（config 不可用、PyYAML 缺失等场景）
 _FALLBACK_ROOT = _LEGACY_ROOT
+
+# 应用名（平台惯例目录里的子目录名）
+_APP_DIRNAME = "unified-search"
+
+
+def _platform_cache_root(env: Mapping[str, str] | None = None,
+                         platform: str | None = None) -> Path | None:
+    """平台惯例的缓存根（不含应用名）：Windows → %LOCALAPPDATA%；其余 → $XDG_CACHE_HOME。
+
+    未设置对应变量时返回 None，由调用方回落到 Unix 惯例 ~/.cache。抽成纯函数
+    （可注入 env 与 platform）是为了能在 macOS 上直接单测 Windows 分支——否则
+    「Windows 上取哪个目录」永远只有真机才能验证。
+    """
+    env = os.environ if env is None else env
+    platform = sys.platform if platform is None else platform
+    if platform.startswith("win"):
+        base = str(env.get(ENV_LOCALAPPDATA) or "").strip()
+    else:
+        base = str(env.get(ENV_XDG_CACHE) or "").strip()
+    return Path(os.path.expanduser(base)) if base else None
+
+
+def platform_cache_default() -> Path:
+    """平台惯例的默认状态目录（不含覆盖与配置影响）。
+
+    Windows：%LOCALAPPDATA%\\unified-search；POSIX（Linux/BSD/macOS）：遵循
+    XDG_CACHE_HOME，未设置时 ~/.cache/unified-search（XDG 默认值，与历史一致）。
+    """
+    root = _platform_cache_root()
+    if root is not None:
+        return root / _APP_DIRNAME
+    return Path(os.path.expanduser(_LEGACY_ROOT))
+
+
+def state_root() -> Path:
+    """返回 argo 本地状态根目录（已 expanduser，不保证存在）。
+
+    优先级（**存量优先**，避免静默搬家丢掉用户的缓存与配额计数）：
+
+      1. ARGO_STATE_DIR 环境变量（显式覆盖，测试隔离与只读环境都用它）
+      2. config.yaml cache.db_path 的父目录（保证与主缓存同域）
+      3. 历史目录 ~/.cache/unified-search（**已存在**时继续用；不迁移）
+      4. 平台惯例目录：Windows → %LOCALAPPDATA%\\unified-search；
+         POSIX → $XDG_CACHE_HOME/unified-search（该变量设置时）
+      5. 兜底：~/.cache/unified-search（即 POSIX 惯例的 XDG 默认值）
+
+    为什么「已存在的历史目录」排在平台惯例之前：平台变量（XDG_CACHE_HOME /
+    LOCALAPPDATA）在 Windows 上恒有值、在部分 Linux 桌面也常被设置，若它们无条件
+    优先，存量用户升级后会发现搜索缓存、配额计数、准入记录全部"归零"——那是比
+    「目录不够惯例」严重得多的问题。想让 argo 换目录的用户用 ARGO_STATE_DIR
+    显式指定（或直接改 config.yaml 的 cache.db_path），一步到位且可预期。
+    """
+    override = os.environ.get(ENV_STATE_DIR, "").strip()
+    if override:
+        return Path(os.path.expanduser(override))
+
+    db_path = _config_db_path()
+    if db_path:
+        expanded = os.path.expanduser(db_path)
+        parent = os.path.dirname(expanded)
+        if parent:
+            return Path(parent)
+
+    legacy = Path(os.path.expanduser(_LEGACY_ROOT))
+    try:
+        if legacy.is_dir():
+            return legacy
+    except OSError:
+        pass
+    return platform_cache_default()
+
+
+def resolved_paths() -> dict[str, str]:
+    """诊断用：把关键路径的**实际来源**摊开（`python3 scripts/argo_paths.py`）。
+
+    支持类问题的第一步永远是「你到底在读哪个文件」；此前这些路径散在
+    state_root / config.peek_cache_db_path / engine_env._envfile_paths 三处，
+    只能靠读代码推。这里只做只读汇报，不产生任何副作用。
+    """
+    out: dict[str, str] = {}
+    override = os.environ.get(ENV_STATE_DIR, "").strip()
+    if override:
+        out["state_source"] = f"{ENV_STATE_DIR}={override}"
+    elif _config_db_path():
+        out["state_source"] = "config.yaml cache.db_path"
+    elif Path(os.path.expanduser(_LEGACY_ROOT)).is_dir():
+        out["state_source"] = "历史默认目录（已存在，未迁移）"
+    else:
+        out["state_source"] = "平台惯例默认"
+    out["state_root"] = str(state_root())
+    out["platform_cache_default"] = str(platform_cache_default())
+    out["legacy_root"] = str(Path(os.path.expanduser(_LEGACY_ROOT)))
+    try:
+        import engine_env
+        env_paths = [str(p) for p in engine_env._envfile_paths()]
+        out["env_files"] = os.pathsep.join(env_paths)
+        out["env_file_in_use"] = next(
+            (p for p in env_paths if Path(p).is_file()), "(均不存在)")
+    except Exception as e:      # engine_env 不可用不该让诊断本身失败
+        out["env_files"] = f"(不可用：{e})"
+    return out
+
+
+def _cli() -> int:
+    import argparse
+    import json as _json
+    parser = argparse.ArgumentParser(
+        description="argo 路径诊断：状态目录与密钥文件到底解析到了哪里")
+    parser.add_argument("--json", action="store_true", help="机器可读输出")
+    args = parser.parse_args()
+    info = resolved_paths()
+    if args.json:
+        print(_json.dumps(info, ensure_ascii=False, indent=2))
+    else:
+        for k, v in info.items():
+            print(f"{k:22} {v}")
+    return 0
 
 
 def _config_db_path() -> str | None:
@@ -54,27 +178,6 @@ def _config_db_path() -> str | None:
         return peek_cache_db_path()
     except Exception:
         return None
-
-
-def state_root() -> Path:
-    """返回 argo 本地状态根目录（已 expanduser，不保证存在）。
-
-    优先级：
-      1. ARGO_STATE_DIR 环境变量
-      2. config.yaml cache.db_path 的父目录（保证与主缓存同域）
-      3. 历史默认 ~/.cache/unified-search
-    """
-    override = os.environ.get(ENV_STATE_DIR, "").strip()
-    if override:
-        return Path(os.path.expanduser(override))
-
-    db_path = _config_db_path()
-    if db_path:
-        expanded = os.path.expanduser(db_path)
-        parent = os.path.dirname(expanded)
-        if parent:
-            return Path(parent)
-    return Path(os.path.expanduser(_FALLBACK_ROOT))
 
 
 def state_path(*parts: str) -> Path:
@@ -289,3 +392,7 @@ def db_path() -> Path:
     if raw:
         return Path(os.path.expanduser(raw))
     return state_path("cache.db")
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())

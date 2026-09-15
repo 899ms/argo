@@ -41,8 +41,8 @@ class TestEnvFileSync(unittest.TestCase):
         tmp.close()
         engine_env.reset_envfile_cache()
         try:
-            with patch.object(engine_env, "_envfile_path",
-                              return_value=Path(tmp.name)):
+            with patch.object(engine_env, "_envfile_paths",
+                              return_value=[Path(tmp.name)]):
                 injected = engine_env.sync_envfile_to_environ()
         finally:
             engine_env.reset_envfile_cache()
@@ -99,7 +99,7 @@ class TestEnvfileCacheInvariant(unittest.TestCase):
         engine_env._envfile_load()  # 先让缓存就位
         engine_env.reset_envfile_cache()
         keys = engine_env._envfile_load()
-        if engine_env._envfile_path().exists():
+        if any(p.exists() for p in engine_env._envfile_paths()):
             self.assertTrue(keys, "真实 env 文件存在，清空后却读不到内容")
         engine_env.reset_envfile_cache()
 

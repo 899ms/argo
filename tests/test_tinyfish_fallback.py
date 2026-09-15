@@ -66,8 +66,8 @@ def _isolate_envfile(monkeypatch):
     """屏蔽真实 ~/.config/argo/env：engine_env.get_env 会热读该文件兜底，
     不隔离则本机配了 TINYFISH_API_KEY 时 delenv 检查失效（环境依赖测试）。"""
     import engine_env
-    monkeypatch.setattr(engine_env, "_envfile_path",
-                        lambda: Path("/nonexistent/argo/env"))
+    monkeypatch.setattr(engine_env, "_envfile_paths",
+                        lambda: [Path("/nonexistent/argo/env")])
 
 
 def _set_key(monkeypatch):

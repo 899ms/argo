@@ -43,8 +43,8 @@ class TestEngineEnv(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if "TAVILY" not in k}
         # 同步屏蔽密钥文件兜底（本机 ~/.config/argo/env 真有 tavily key）
         with patch.dict(os.environ, env, clear=True), \
-             patch("engine_env._envfile_path",
-                   lambda: Path("/nonexistent/argo/env")):
+             patch("engine_env._envfile_paths",
+                   lambda: [Path("/nonexistent/argo/env")]):
             miss = engine_env.missing_env_for("tavily", {"type": "http"})
             self.assertTrue(miss)
             self.assertFalse(engine_env.env_ready("tavily", {"type": "http"}))
@@ -145,11 +145,13 @@ def _no_firecrawl_env() -> dict:
 class TestFirecrawlKeyless(unittest.TestCase):
     """firecrawl 可选密钥：缺 key 不阻断路由（keyless 免费层）。"""
 
-    _NONEXIST_ENVFILE = lambda: Path("/nonexistent/argo/env")  # noqa: E731
+    _NONEXIST_ENVFILE = lambda: [Path("/nonexistent/argo/env")]  # noqa: E731
+    # 注意：这里 patch 的是 _envfile_paths（候选列表）——只屏蔽首选路径时代码
+    # 仍会去读历史/平台惯例候选，本机真配了 key 就会漏隔离。
 
     def test_firecrawl_optional_keyless_ready(self):
         with patch.dict(os.environ, _no_firecrawl_env(), clear=True), \
-             patch("engine_env._envfile_path", self._NONEXIST_ENVFILE):
+             patch("engine_env._envfile_paths", self._NONEXIST_ENVFILE):
             self.assertTrue(engine_env.env_ready("firecrawl", {}))
             self.assertEqual(engine_env.required_env_for("firecrawl", {}), [])
             self.assertEqual(engine_env.missing_env_for("firecrawl", {}), [])
@@ -162,7 +164,9 @@ class TestPostHeaderKeyless(unittest.TestCase):
     keyless 时会把 'Bearer {FIRECRAWL_API_KEY}' 原样发出导致 401。
     """
 
-    _NONEXIST_ENVFILE = lambda: Path("/nonexistent/argo/env")  # noqa: E731
+    _NONEXIST_ENVFILE = lambda: [Path("/nonexistent/argo/env")]  # noqa: E731
+    # 注意：这里 patch 的是 _envfile_paths（候选列表）——只屏蔽首选路径时代码
+    # 仍会去读历史/平台惯例候选，本机真配了 key 就会漏隔离。
 
     @staticmethod
     def _post_spec() -> dict:
@@ -211,7 +215,7 @@ class TestPostHeaderKeyless(unittest.TestCase):
             return _Resp()
 
         with patch.dict(os.environ, env_extra, clear=True), \
-             patch("engine_env._envfile_path", TestPostHeaderKeyless._NONEXIST_ENVFILE), \
+             patch("engine_env._envfile_paths", TestPostHeaderKeyless._NONEXIST_ENVFILE), \
              patch("urllib.request.urlopen", _fake_urlopen):
             eng = _build_http_engine(TestPostHeaderKeyless._post_spec())
             results = eng("climate", n=3)

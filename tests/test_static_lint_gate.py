@@ -66,6 +66,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -236,12 +237,59 @@ def _authorization_flags_are_explicit(paths: list[Path]) -> list[str]:
     return problems
 
 
+def _shell_var_before_multibyte(paths: list[Path]) -> list[str]:
+    """shell 脚本里「变量引用后面紧贴非 ASCII 字符」且没加花括号的写法。
+
+    为什么这是缺陷而不是风格（2026-09-15 实测）：macOS 的 `/bin/sh` 是 bash 3.2
+    的 POSIX 模式，它把紧跟 `$PY_VER` 的中文逗号当成标识符的一部分，于是
+    `echo "当前 Python 为 $PY_VER，需要 3.10+。"` 在 `set -u` 下报
+    `PY_VER<0xEF>: unbound variable`——用户在 `sh scripts/install.sh` 或
+    `env -i`（容器、cron、CI 里 LANG 未设）时看到的报错与真实原因毫无关系。
+    写成 `${PY_VER}` 在所有 shell 与 locale 下都无歧义，零成本。
+
+    两类脚本的危险面不同，判据也不同：
+    - `.sh`：bash 3.2 会把**任何**非 ASCII 字节并入变量名（含标点）→ 全报；
+    - `.ps1`：PowerShell 只在后继字符是字母/数字时才会并进标识符
+      （`$name中文` 会被解析成另一个变量、静默取到 $null），标点无害 → 只报前者。
+    """
+    var = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*")
+    problems: list[str] = []
+    for path in paths:
+        if not path.is_file() or path.suffix not in (".sh", ".ps1"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for m in var.finditer(line):
+                nxt = line[m.end():m.end() + 1]
+                if not nxt or ord(nxt) <= 0x7F:
+                    continue
+                if path.suffix == ".ps1" and not nxt.isalnum():
+                    continue        # PowerShell 标识符在标点处结束，无歧义
+                why = ("sh/POSIX 模式会把中文并入变量名" if path.suffix == ".sh"
+                       else "PowerShell 会解析成另一个变量名")
+                problems.append(
+                    f"{_rel(path)}:{lineno} 变量引用 {m.group(0)} 后紧贴非 ASCII 字符"
+                    f"（{why}）：{line.strip()[:70]}")
+    return problems
+
+
 def _rel(path: Path) -> str:
     """相对仓库根的路径：子目录递归后 path.name 会与顶层同名文件混淆。"""
     try:
         return str(path.resolve().relative_to(ROOT.resolve()))
     except ValueError:
         return str(path)
+
+
+def _iter_shell_files() -> list[Path]:
+    """shell / PowerShell 脚本清单（含仓库根的 *.sh，如安装脚本副本）。"""
+    files = [p for p in sorted(SCRIPTS.glob("*.sh"))]
+    files += [p for p in sorted(SCRIPTS.glob("*.ps1"))]
+    files += [p for p in sorted(ROOT.glob("*.sh"))]
+    return files
 
 
 def _iter_target_files() -> list[Path]:
@@ -329,6 +377,14 @@ class TestStaticLintGate(unittest.TestCase):
             "授权类开关没写明 expand/strict（少写前缀的变量、拼错的值都可能放行）：\n  "
             + "\n  ".join(problems))
 
+    def test_shell_vars_braced_before_multibyte(self):
+        """shell 脚本里变量引用后紧贴中文必须加花括号（POSIX 模式会把中文并入变量名）。"""
+        problems = _shell_var_before_multibyte(_iter_shell_files())
+        self.assertEqual(
+            problems, [],
+            "未加花括号的写法在 sh/POSIX 模式与最小 locale 下会报 unbound variable：\n  "
+            + "\n  ".join(problems))
+
     def test_no_ruff_findings(self):
         """ruff 引擎：覆盖 RULES 全量规则。ruff 不可用时跳过（不阻塞）。"""
         findings = _ruff_findings(TARGETS)
@@ -354,6 +410,24 @@ class TestStaticLintGate(unittest.TestCase):
             problems = _duplicate_dict_keys([bad])
         self.assertEqual(len(problems), 1, f"造错样本没被抓住：{problems}")
         self.assertIn("alpha", problems[0])
+
+    def test_gate_has_teeth_shell_var_rule(self):
+        """造一个 `$VAR，` 样本，规则必须抓住；加花括号的写法不得误报。"""
+        with tempfile.TemporaryDirectory() as td:
+            bad = Path(td) / "bad.sh"
+            bad.write_text(
+                'set -u\nPY_VER=3.9\n'
+                'echo "当前 Python 为 $PY_VER，需要 3.10+"\n'
+                'echo "正确写法 ${PY_VER}，不报"\n',
+                encoding="utf-8")
+            ps_letter = Path(td) / "bad.ps1"
+            ps_letter.write_text('Write-Host "$name中文"\n', encoding="utf-8")
+            ps_punct = Path(td) / "ok.ps1"
+            ps_punct.write_text('Write-Host "$name，标点无害"\n', encoding="utf-8")
+            problems = _shell_var_before_multibyte([bad, ps_letter, ps_punct])
+        self.assertEqual(len(problems), 2, f"造错样本没被抓住或误报：{problems}")
+        assert any("bad.sh" in p for p in problems) and any("bad.ps1" in p for p in problems)
+        assert not any("ok.ps1" in p for p in problems), "PowerShell 标点场景被误报"
 
     def test_gate_has_teeth_authorization_rule(self):
         """造一个漏写 expand/strict 的授权开关，两种写法都必须被抓住。"""
