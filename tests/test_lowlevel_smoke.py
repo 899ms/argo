@@ -162,5 +162,18 @@ class TestMinhashDataRows:
         assert len(kept) == 1 and removed == 1
 
 
+class TestCommonFlagsContract:
+    """Usage 文本把 --json 列为 Common flags，各子命令解析器就得真认。
+
+    fetch 曾对 --json 报 unrecognized arguments——契约写在门面上、实现不认，
+    Agent 按文档传参必撞墙。
+    """
+
+    def test_fetch_accepts_json(self):
+        import fetch_v3
+        args = fetch_v3.build_parser().parse_args(["https://x", "--json"])
+        assert args.json is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

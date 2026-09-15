@@ -1182,6 +1182,10 @@ def build_parser():
                    help="BM25 聚焦关键词：只返回相关段落，省 token")
     p.add_argument("--focus-top", type=int, default=5,
                    help="--focus 无段落超阈值时的回退保留段落数（默认 5）")
+    p.add_argument("--json", action="store_true",
+                   help="只输出 JSON 摘要（缺省还会附人类可读的正文段；"
+                        "Usage 一直把 --json 列为 Common flags，此前却报"
+                        " unrecognized arguments）")
     return p
 
 
@@ -1212,10 +1216,12 @@ if __name__ == "__main__":
     if r.get("error"):
         summary["error"] = r["error"]
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    if r.get("title"):
-        print(f"\nTitle: {r['title']}")
-    if focus_requested:
-        print(f"\n[focus] query={args.focus!r} applied={bool(r.get('focus_applied'))} "
-              f"chars={pre_focus_len} → {r.get('length', 0)}")
-    print(f"\n--- CONTENT ({r['length']} chars) ---")
-    print(r.get("content", "")[:2000])
+    # __main__ 块是模块级代码，不能用 return 短路——用 if 包住人类可读段
+    if not args.json:
+        if r.get("title"):
+            print(f"\nTitle: {r['title']}")
+        if focus_requested:
+            print(f"\n[focus] query={args.focus!r} applied={bool(r.get('focus_applied'))} "
+                  f"chars={pre_focus_len} → {r.get('length', 0)}")
+        print(f"\n--- CONTENT ({r['length']} chars) ---")
+        print(r.get("content", "")[:2000])
