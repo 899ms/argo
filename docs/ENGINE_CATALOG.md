@@ -274,7 +274,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `douban_book` | 可直接用 | 免费 | 不限 | — | 域 book_search | 豆瓣读书搜索（评分/出版社/年份/价格，免认证） |
 | `gutenberg` | 可直接用 | 免费 | 不限 | — | 域 book_search | Project Gutenberg 公版书全文检索（gutendex.com 免认证） |
 | `imdb` | 可直接用 | 免费 | 不限 | — | 域 film_search、语义画像命中 | IMDb suggestion API（电影/剧集/人物，免认证） |
-| `itunes` | 可直接用 | 免费 | 不限 | — | 域 film_search、域 media_search、语义画像命中 | iTunes Search API（中文 country=cn；专辑问 entity=album，免认证） |
+| `itunes` | 可直接用 | 免费 | 不限 | — | 域 film_search、域 media_search、语义画像命中 | iTunes Search API（音乐/专辑、播客节目与单集（含集数/时长/发布日期）；中文 country=cn，免认证） |
 | `local_imdb` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | IMDb suggestion API（local-search 垂直别名，与 imdb 同源） |
 | `musicbrainz` | 可直接用 | 免费 | 不限 | — | 域 media_search、语义画像命中 | MusicBrainz 音乐人/作品元数据（免认证，限速 1rps） |
 | `open_library` | 可直接用 | 免费 | 不限 | — | 域 book_search、语义画像命中 | Open Library 图书搜索（免认证） |

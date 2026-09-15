@@ -1968,13 +1968,86 @@ def _build_imdb_engine(spec: dict[str, Any]) -> Any:
     return _engine
 
 
-# ── iTunes 媒体库（中文需 country=cn；专辑问 entity=album）────────────────────
+# ── iTunes 媒体库（中文需 country=cn；专辑问 entity=album；播客问 entity=podcast）──
+
+# 媒体意图词。引擎可被 --engine 直接调用，那时拿不到路由域的上下文，
+# 意图只能从查询词本身读——命中播客词即把 media 从 music 切到 podcast。
+_PODCAST_HINT_RE = re.compile(r"(?i)(播客|podcast|电台|单集|一期|这期|那期|episode)")
+# 单集意图：用户要的是某期节目（带时长），而非节目本体
+_PODCAST_EPISODE_RE = re.compile(r"(?i)(单集|一期|这期|那期|episode|第\s*\d+\s*集|#\s*\d+)")
+_ALBUM_HINT_RE = re.compile(r"(?i)(专辑|album|discography|唱片)")
+# 意图词只用于定实体，须从检索词里剥掉，否则「播客」这类词会污染 term
+_MEDIA_INTENT_WORD_RE = re.compile(
+    r"(?i)(专辑|新专辑|唱片|音乐|歌曲|单曲|播客|电台|单集|一期|这期|那期|"
+    r"album|discography|music|song|songs|single|podcast|podcasts|episode)"
+)
+# 节目级时长必须二跳取样（见下方 docstring），逐条补会让请求数随结果数膨胀。
+# 只补首条：播客名查询通常只有一个正解（实测「张小珺 商业访谈录」Apple 只回 1 条）。
+_ITUNES_SHOW_ENRICH_MAX = 1
+
+
+def _itunes_date(raw: Any) -> str:
+    """Apple 的 releaseDate 形如 2026-09-03T00:00:00Z，裁到日期部分供展示。"""
+    s = str(raw or "").strip()
+    return s[:10] if len(s) >= 10 else ""
+
 
 def _build_itunes_engine(spec: dict[str, Any]) -> Any:
-    """iTunes Search API：按语言/意图调 country 与 entity，避免中文专辑落到脏曲目。"""
+    """iTunes Search API：按语言与意图调 country / media / entity。
+
+    三种媒体形态（播客为 2026-09-15 补入）：
+      - 播客节目 media=podcast&entity=podcast → 集数(trackCount)、更新日期、类型
+      - 播客单集 media=podcast&entity=podcastEpisode → 时长(trackTimeMillis)、发布日期
+      - 音乐 media=music（专辑问 entity=album）
+
+    播客时长只能取自单集：**节目对象上的 trackTimeMillis 不是时长**。实测 12 档
+    节目只有 6 档等于最新单集的秒数，另 6 档明显偏小（忽左忽右 3491 而最新单集
+    5739），单位与含义上游都未文档化——取信它会静默给出错值。所以节目级的
+    「每期多长」走二跳单集取样，见 _recent_episode_duration。
+    """
     timeout = spec.get("timeout", 8)
     source_name = spec.get("_name", "itunes")
+    engine_tag = spec.get("_name", "")
     base = spec.get("url") or "https://itunes.apple.com/search"
+    lookup_base = (base.replace("/search", "/lookup") if "/search" in base
+                   else "https://itunes.apple.com/lookup")
+    ua_headers = {"User-Agent": "argo-search/2.6 (itunes)", "Accept": "application/json"}
+
+    def _get_json(url: str, to: float) -> dict[str, Any]:
+        req = urllib.request.Request(url, headers=ua_headers)
+        with http_open(req, timeout=to, engine=engine_tag) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+
+    def _recent_episode_duration(collection_id: Any, country: str, to: float) -> tuple[int | None, int]:
+        """节目近 5 期单集时长的中位数 → (中位分钟, 样本数)。
+
+        取中位数而非最新一期：访谈类单集长度波动大，一期 4 小时长访谈代表不了
+        整个节目。任何失败一律退回 (None, 0)，节目本体照常返回——时长是补充
+        信息，不该让整条结果缺失。
+        """
+        import statistics
+        if not collection_id:
+            return None, 0
+        params = {"id": str(collection_id), "entity": "podcastEpisode", "limit": "5"}
+        if country:
+            params["country"] = country
+        try:
+            data = _get_json(f"{lookup_base}?{urllib.parse.urlencode(params)}", to)
+        except Exception as e:
+            logger.debug(f"iTunes 单集取样失败: {e}")
+            return None, 0
+        mins = []
+        for it in data.get("results") or []:
+            if not isinstance(it, dict):
+                continue
+            if str(it.get("wrapperType") or "").lower() != "podcastepisode":
+                continue
+            ms = it.get("trackTimeMillis")
+            if isinstance(ms, (int, float)) and ms > 0:
+                mins.append(ms / 60000.0)
+        if not mins:
+            return None, 0
+        return int(round(statistics.median(mins))), len(mins)
 
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
@@ -1982,62 +2055,135 @@ def _build_itunes_engine(spec: dict[str, Any]) -> Any:
         if not q:
             return []
         to = _timeout or timeout
-        want_album = bool(re.search(r"(?i)专辑|album|discography|唱片", q))
-        # 去掉意图词，保留艺人名
-        term = re.sub(
-            r"(?i)(专辑|新专辑|音乐|歌曲|单曲|album|music|song|songs|single|discography|podcast)\b",
-            " ", q,
-        )
+        want_podcast = bool(_PODCAST_HINT_RE.search(q))
+        want_episode = want_podcast and bool(_PODCAST_EPISODE_RE.search(q))
+        want_album = bool(_ALBUM_HINT_RE.search(q)) and not want_podcast
+        # 去掉意图词，保留实体名
+        term = _MEDIA_INTENT_WORD_RE.sub(" ", q)
         term = re.sub(r"\s+", " ", term).strip() or q
         has_zh = bool(re.search(r"[\u4e00-\u9fff]", term))
+        country = "cn" if has_zh else ""
         params: dict[str, str] = {
             "term": term,
-            "media": "music",
             "limit": str(min(max(n, 1), 25)),
         }
-        if want_album:
-            params["entity"] = "album"
-        if has_zh:
-            params["country"] = "cn"
+        if want_podcast:
+            params["media"] = "podcast"
+            params["entity"] = "podcastEpisode" if want_episode else "podcast"
+        else:
+            params["media"] = "music"
+            if want_album:
+                params["entity"] = "album"
+        if country:
+            params["country"] = country
             params["lang"] = "zh_cn"
-        url = f"{base}?{urllib.parse.urlencode(params)}"
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "argo-search/2.6 (itunes)", "Accept": "application/json"},
-            )
-            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
-                data = json.loads(resp.read().decode("utf-8", "replace"))
+            data = _get_json(f"{base}?{urllib.parse.urlencode(params)}", to)
         except Exception as e:
             logger.warning(f"iTunes 失败: {e}")
             return []
         items = data.get("results") or []
-        # 相关度：艺人名/专辑名与 term 重叠
+        # 相关度：实体名与 term 重叠。播客单集的标题里不含节目名，故比对
+        # 「标题 + 摘要」——摘要首段就是《节目名》，否则搜节目名拿单集会全被滤掉。
         t_keys = {t.lower() for t in re.findall(r"[A-Za-z0-9\u4e00-\u9fff]{2,}", term)}
+        base_score = 0.88 if want_album else 0.85
         out: list[dict[str, Any]] = []
         for it in items:
             if not isinstance(it, dict):
                 continue
-            if want_album:
-                title = it.get("collectionName") or it.get("trackName") or ""
-                href = it.get("collectionViewUrl") or it.get("trackViewUrl") or ""
+            is_episode = want_podcast and (
+                str(it.get("wrapperType") or "").lower() == "podcastepisode"
+                or (not it.get("wrapperType") and it.get("episodeUrl"))
+            )
+            if want_podcast and not is_episode:
+                title = str(it.get("collectionName") or it.get("trackName") or "").strip()
+                href = it.get("collectionViewUrl") or it.get("feedUrl") or ""
+                count = it.get("trackCount")
+                bits = ["播客"]
+                if isinstance(count, int) and count > 0:
+                    bits.append(f"{count} 集")
+                genre = str(it.get("primaryGenreName") or "").strip()
+                if genre:
+                    bits.append(genre)
+                updated = _itunes_date(it.get("releaseDate"))
+                if updated:
+                    bits.append(f"更新 {updated}")
+                row: dict[str, Any] = {
+                    "title": title,
+                    "url": str(href or "").strip(),
+                    "snippet": " · ".join(bits)[:300],
+                    "source": source_name,
+                }
+                if isinstance(count, int) and count > 0:
+                    row["episode_count"] = count
+                # published_at 是既有的一等字段（--fields agent 与 --sort 都认它）。
+                # 只给播客挂：音乐的 releaseDate 不在本次范围内，而挂上会改变
+                # 音乐查询在 --sort newest 下的重排行为（releaseDate≠引擎相关序）。
+                _published = str(it.get("releaseDate") or "").strip()
+                if _published:
+                    row["published_at"] = _published[:64]
+            elif is_episode:
+                title = str(it.get("trackName") or "").strip()
+                show = str(it.get("collectionName") or "").strip()
+                bits = [f"《{show}》"] if show else []
+                ms = it.get("trackTimeMillis")
+                row = {
+                    "title": title,
+                    "url": str(it.get("trackViewUrl") or it.get("episodeUrl") or "").strip(),
+                    "snippet": "",
+                    "source": source_name,
+                }
+                if isinstance(ms, (int, float)) and ms > 0:
+                    mins = int(round(ms / 60000.0))
+                    row["duration_minutes"] = mins
+                    bits.append(f"时长 {mins} 分")
+                pub_date = _itunes_date(it.get("releaseDate"))
+                if pub_date:
+                    bits.append(pub_date)
+                _published = str(it.get("releaseDate") or "").strip()
+                if _published:
+                    row["published_at"] = _published[:64]
+                row["snippet"] = " · ".join(bits)[:300]
             else:
-                title = it.get("trackName") or it.get("collectionName") or ""
-                href = it.get("trackViewUrl") or it.get("collectionViewUrl") or ""
-            artist = it.get("artistName") or ""
-            if not title:
+                if want_album:
+                    title = str(it.get("collectionName") or it.get("trackName") or "").strip()
+                    href = it.get("collectionViewUrl") or it.get("trackViewUrl") or ""
+                else:
+                    title = str(it.get("trackName") or it.get("collectionName") or "").strip()
+                    href = it.get("trackViewUrl") or it.get("collectionViewUrl") or ""
+                row = {
+                    "title": title,
+                    "url": str(href or "").strip(),
+                    "snippet": str(it.get("artistName") or "").strip()[:300],
+                    "source": source_name,
+                }
+            if not row["title"] or not row["url"]:
                 continue
-            blob = f"{title} {artist}".lower()
+            blob = f"{row['title']} {row['snippet']}".lower()
             if t_keys and not any(k in blob for k in t_keys):
                 continue
-            out.append({
-                "title": title,
-                "url": href,
-                "snippet": artist[:300],
-                "source": source_name,
-                "score": 0.88 if want_album else 0.85,
-            })
+            row["score"] = rank_score(base_score, len(out))
+            out.append(row)
             if len(out) >= n:
                 break
+        # 节目级时长补在筛选之后：被滤掉的结果不该付二跳的代价
+        if want_podcast and not want_episode:
+            enriched = 0
+            for it in items:
+                if enriched >= _ITUNES_SHOW_ENRICH_MAX:
+                    break
+                if not isinstance(it, dict):
+                    continue
+                name = str(it.get("collectionName") or "").strip()
+                target = next((r for r in out if r["title"] == name), None)
+                if target is None or "duration_minutes" in target:
+                    continue
+                mid, samples = _recent_episode_duration(it.get("collectionId"), country, to)
+                if mid is None:
+                    continue
+                target["duration_minutes"] = mid
+                target["snippet"] = f"{target['snippet']} · 近 {samples} 期中位 {mid} 分"[:300]
+                enriched += 1
         return out
     return _engine
 

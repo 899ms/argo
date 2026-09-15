@@ -3650,7 +3650,7 @@ engines:
     - music
     - movie
     - podcast
-    desc: iTunes Search API（中文 country=cn；专辑问 entity=album，免认证）
+    desc: iTunes Search API（音乐/专辑、播客节目与单集（含集数/时长/发布日期）；中文 country=cn，免认证）
     timeout: 8
     url: https://itunes.apple.com/search
   openverse:

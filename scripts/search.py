@@ -2511,10 +2511,14 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
 # ── 信源标准化 ─────────────────────────────────────────────────────────────────
 
 # --fields agent：每条 result 保留的答案字段（P2-2）。
+# 媒体专属字段按需登记——非该媒体的结果此键为 None，_strip_for_agent 会自动
+# 丢弃，其他查询不付代价：image_* 来自图源，episode_count/duration_minutes
+# 来自 itunes 的播客结果。
 _AGENT_RESULT_FIELDS = (
     "title", "url", "snippet", "source", "score", "ref",
     "published_at", "fetch_suggested", "full_text_url",
     "image_url", "image_license",
+    "episode_count", "duration_minutes",
 )
 
 
