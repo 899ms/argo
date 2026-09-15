@@ -200,8 +200,63 @@ def _iter_target_files() -> list[Path]:
     return files
 
 
+def _envfile_internal_writes(files: list[Path]) -> list[str]:
+    """扫描对 engine_env 内部缓存状态的外部写入。
+
+    这两个变量必须同生同灭（见 engine_env.reset_envfile_cache 的说明）。
+    外部只改其中一个——尤其是「把签名恢复成旧值」——会让签名与内容错位：
+    签名与真实文件对得上，读取函数就直接返回那份**不属于该文件**的缓存，
+    本进程内的密钥读取永久失效。现场表现是「单独跑通过、与别的测试同跑
+    失败」，排查成本极高（2026-09-15 实测确认）。需要强制重读请用
+    engine_env.reset_envfile_cache()。
+    """
+    problems: list[str] = []
+    for path in files:
+        if path.name == "engine_env.py":
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            targets = []
+            if isinstance(node, ast.Assign):
+                targets = list(node.targets)
+            elif isinstance(node, ast.AugAssign):
+                targets = [node.target]
+            for tgt in targets:
+                name = getattr(tgt, "attr", None)
+                if name in ("_envfile_sig", "_envfile_cache"):
+                    problems.append(
+                        f"{_rel(path)}:{node.lineno} 直接写 engine_env 的 {name}"
+                        f"——两个变量必须一起清，请改用 reset_envfile_cache()")
+            # patch.object(engine_env, "_envfile_sig", ...) 是同一类写法，
+            # 少了这一支就等于给最常见的测试手法留后门
+            if isinstance(node, ast.Call):
+                fn = node.func
+                if (isinstance(fn, ast.Attribute) and fn.attr == "object"
+                        and len(node.args) >= 2
+                        and getattr(node.args[0], "id", None) == "engine_env"
+                        and isinstance(node.args[1], ast.Constant)
+                        and node.args[1].value in ("_envfile_sig",
+                                                   "_envfile_cache")):
+                    problems.append(
+                        f"{_rel(path)}:{node.lineno} 用 patch.object 改 engine_env "
+                        f"的 {node.args[1].value}——同样会错位，请改用 "
+                        f"reset_envfile_cache()")
+    return problems
+
+
 class TestStaticLintGate(unittest.TestCase):
     """静态缺陷门禁本体。"""
+
+    def test_no_external_writes_to_envfile_internals(self):
+        """engine_env 的缓存与签名只能由 engine_env 自己改。"""
+        problems = _envfile_internal_writes(_iter_target_files())
+        self.assertEqual(
+            problems, [],
+            "外部直接写了 engine_env 的内部缓存状态（签名与内容会错位）：\n  "
+            + "\n  ".join(problems))
 
     def test_no_duplicate_dict_keys(self):
         """零依赖引擎：字典重复键（不依赖 ruff，任何环境都跑）。"""

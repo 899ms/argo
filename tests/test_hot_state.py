@@ -116,15 +116,13 @@ class TestEnvFileHotRead(unittest.TestCase):
         self._saved = {k: os.environ.pop(k) for k in env_keys}
         self._home = patch.dict(os.environ, {"HOME": str(self.tmp)})
         self._home.start()
-        engine_env._envfile_sig = ()
-        engine_env._envfile_cache = {}
+        engine_env.reset_envfile_cache()
 
     def tearDown(self):
         self._home.stop()
         os.environ.update(self._saved)
         self._env.stop()
-        engine_env._envfile_sig = ()
-        engine_env._envfile_cache = {}
+        engine_env.reset_envfile_cache()
         self._td.cleanup()
 
     def _write(self, content: str):

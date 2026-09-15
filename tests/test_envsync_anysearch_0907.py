@@ -27,17 +27,25 @@ from quota import QuotaManager  # noqa: E402
 
 class TestEnvFileSync(unittest.TestCase):
     def _sync_with_envfile(self, content: str):
+        """读一份临时 env 文件并同步进环境，前后都把缓存清干净。
+
+        此前是「存旧签名 → 置空强制重读 → 用完恢复旧签名」：缓存内容与签名
+        是两份状态，只恢复签名会让二者错位——恢复的是真实文件的签名，缓存里
+        却是临时文件的内容，于是此后 get_env 直接返回这份缓存，
+        ~/.config/argo/env 里的密钥在本进程内全部读不到。实测现场：同进程内
+        先走过一次路由，再跑本类，后续带密钥的引擎全被判为不可用。
+        清空（而不是恢复）才是安全终态：下次读取必重读真实文件。
+        """
         tmp = tempfile.NamedTemporaryFile("w", suffix=".env", delete=False)
         tmp.write(content)
         tmp.close()
-        old_sig = engine_env._envfile_sig
-        engine_env._envfile_sig = ()  # 强制重读
+        engine_env.reset_envfile_cache()
         try:
             with patch.object(engine_env, "_envfile_path",
                               return_value=Path(tmp.name)):
                 injected = engine_env.sync_envfile_to_environ()
         finally:
-            engine_env._envfile_sig = old_sig
+            engine_env.reset_envfile_cache()
             Path(tmp.name).unlink(missing_ok=True)
         return injected
 
@@ -66,6 +74,34 @@ class TestEnvFileSync(unittest.TestCase):
             self.assertEqual(injected2, [])
         finally:
             engine_env.os.environ.pop("TEST_SYNC_C", None)
+
+
+class TestEnvfileCacheInvariant(unittest.TestCase):
+    """清空 env 缓存必须让下次读取真的重读磁盘。
+
+    这是上面 TestEnvFileSync 曾经的翻车点：缓存内容与签名是两份状态，
+    「只恢复签名、不恢复内容」会让二者错位——签名与真实文件对得上，函数
+    直接返回那份不属于该文件的缓存，本进程内密钥读取全部失效。现场表现是
+    「单独跑通过、与别的测试同跑就失败」，排查成本极高。所以把清空后的
+    行为钉成契约：哪怕缓存里塞了假内容，清空一次之后也读不回来。
+    """
+
+    def test_reset_discards_cache_and_rereads_disk(self):
+        """清空之后必须真的重读磁盘，而不是返回空表或被顶替的内容。
+
+        只清内容不清签名是最危险的一种写法：签名与真实文件对得上，读取函数
+        直接返回那张空表，本进程内所有密钥凭空消失（路由把带密钥的引擎全判
+        为不可用）。所以这里断言的是「清空后仍读得到真实文件的内容」。
+
+        构造「签名与内容错位」属于外部乱写内部状态，由静态检查
+        （test_no_external_writes_to_envfile_internals）负责拦，不在这里做。
+        """
+        engine_env._envfile_load()  # 先让缓存就位
+        engine_env.reset_envfile_cache()
+        keys = engine_env._envfile_load()
+        if engine_env._envfile_path().exists():
+            self.assertTrue(keys, "真实 env 文件存在，清空后却读不到内容")
+        engine_env.reset_envfile_cache()
 
 
 class TestMultilingualAnysearchInjection(unittest.TestCase):

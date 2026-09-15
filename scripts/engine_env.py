@@ -74,6 +74,25 @@ def _envfile_load() -> dict[str, str]:
         _envfile_sig = sig
         return data
 
+
+def reset_envfile_cache() -> None:
+    """清空 env 文件缓存，强制下次读取重新读盘。
+
+    缓存内容与签名是一对状态，必须一起清。只把签名改回旧值会让本进程内的
+    密钥读取**永久失效**：签名与真实文件对得上，函数就直接返回那份不属于
+    该文件的缓存。2026-09-15 实测到的现场——某测试用「改签名 + 临时路径」
+    强制重读，结束时只恢复签名，于是此后 get_env 再也读不到
+    ~/.config/argo/env 里的任何密钥，路由把带密钥的引擎全判为不可用，
+    表现为「单独跑通过、和别的测试一起跑就失败」。
+
+    需要强制重读的调用方（测试隔离、密钥热更新）都走这里，别再各自操作
+    那两个全局变量：只做一半的状态在测试里几乎看不出来，排查成本极高。
+    """
+    global _envfile_cache, _envfile_sig
+    with _envfile_lock:
+        _envfile_cache = {}
+        _envfile_sig = ()
+
 # 引擎 → 候选环境变量（从左到右优先）
 # 第一项为推荐新名（ARGO_ 前缀），后续为历史兼容名
 KNOWN_ENV_ALIASES: dict[str, list[str]] = {
