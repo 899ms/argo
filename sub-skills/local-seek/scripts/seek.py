@@ -93,7 +93,7 @@ def pcre2_supported() -> bool:
 
 def build_patterns(query: str, exact: bool = False):
     """构建搜索 pattern 列表。零依赖中文扩展：对长度>=3 的中文段补滑动二元组，
-    提升召回（如「封面图」扩展出「封面」），代价是少量噪音，--exact 可关闭。
+    能多搜到一些（如「封面图」扩展出「封面」），代价是少量噪音，--exact 可关闭。
     返回 (patterns, fixed)：fixed 表示全部 pattern 可作固定字符串。"""
     if exact:
         return [query], is_literal(query)
@@ -173,9 +173,14 @@ def truncate(text: str, n: int = 120) -> str:
 
 
 def rg_search(patterns, path, excludes, exts, context, count, max_results,
-              fixed, raw_query=""):
+              fixed, raw_query="", dots=False):
     def build(fixed):
         cmd = ["rg", "--line-number", "--no-heading", "-i", "--color", "never"]
+        if dots:
+            # rg 默认既不进以 . 开头的目录，也不跟软链。本机 skill 就放在
+            # ~/.agents、~/.zcode 这类目录里，很多条目还是软链，所以两个都要打开。
+            # 排除规则里的 !.git 仍然生效，不会把 .git 扫进来。
+            cmd += ["--hidden", "--follow"]
         if fixed:
             cmd.append("-F")
         elif needs_pcre2(raw_query):
@@ -362,8 +367,10 @@ def _merge_dedup(a: list, b: list, limit: int) -> list:
     return out
 
 
-def fd_search(query, path, exts, max_results):
+def fd_search(query, path, exts, max_results, dots=False):
     cmd = ["fd", "-i", "-t", "f", "--color", "never"]
+    if dots:
+        cmd += ["-H", "-L"]  # -H 进以 . 开头的目录、-L 跟软链，和 rg 的两个开关对应
     for ex in DEFAULT_EXCLUDES:
         cmd += ["-E", ex]
     if exts:
@@ -391,9 +398,11 @@ def resolve_grep():
 
 
 def grep_search(grep_exe, patterns, path, excludes, exts, context, count,
-                max_results, fixed, raw_query=""):
+                max_results, fixed, raw_query="", dots=False):
     def build(fixed):
-        cmd = [grep_exe, "-r", "-n", "-i", "-I", "--color=never"]
+        # grep 本来就会进以 . 开头的目录，差别在软链：-r 遇到软链目录不进，-R 才跟。
+        # 但 macOS 自带的 grep 连 -R 也不进软链目录（实测），所以这一路只在没装 rg 时用。
+        cmd = [grep_exe, "-R" if dots else "-r", "-n", "-i", "-I", "--color=never"]
         if fixed:
             cmd.append("-F")
         elif needs_pcre2(raw_query):
@@ -426,14 +435,19 @@ def grep_search(grep_exe, patterns, path, excludes, exts, context, count,
         proc = run(cmd2)
     if proc is None or proc.returncode not in (0, 1, 2):
         return [], "grep 执行失败"
-    if proc.returncode == 1:
+    # 返回码 1 不等于「没搜到」：macOS 自带的 grep 跟随软链时，会一边输出结果
+    # 一边返回 1（实测输出了 3972 行，返回码仍是 1）。输出为空才算真的没搜到。
+    if proc.returncode == 1 and not proc.stdout.strip():
         return [], None
     out = []
     for line in proc.stdout.splitlines():
         if count:
             if ":" in line:
                 fp, _, n = line.rpartition(":")
-                out.append((fp, int(n) if n.isdigit() else 0, ""))
+                # grep -c 会把没有命中的文件也列出来，写成 file:0。这种不算命中，
+                # 丢掉；这样和 rg --count-matches 只列命中的文件保持一致。
+                if n.isdigit() and int(n) > 0:
+                    out.append((fp, int(n), ""))
             if len(out) >= max_results:
                 break
         else:
@@ -679,7 +693,7 @@ for _key, _rule in STRUCTURAL_RULES.items():
         _STRUCT_ALIAS[_a] = _key
 
 
-def structural_search(rule_name, path, excludes, max_results):
+def structural_search(rule_name, path, excludes, max_results, dots=False):
     """结构搜索：按语义规则（空 catch/裸 except/未包装错误/装饰函数等）检索。
     零安装实现：rg -U 多行 + 语言感知 pattern；本机装 ast-grep 后可升级为 AST 精确匹配。"""
     key = _STRUCT_ALIAS.get(rule_name.strip().lower())
@@ -689,6 +703,8 @@ def structural_search(rule_name, path, excludes, max_results):
     results = []
     for exts, pat in STRUCTURAL_RULES[key]["patterns"]:
         cmd = ["rg", "--line-number", "--no-heading", "-U", "-i", "--color", "never"]
+        if dots:
+            cmd += ["--hidden", "--follow"]
         for ex in excludes:
             cmd += ["-g", f"!{ex}"]
         for e in exts:
@@ -699,7 +715,9 @@ def structural_search(rule_name, path, excludes, max_results):
             continue
         if proc.returncode == 1:
             continue  # 该语言无命中
-        if proc.returncode != 0:
+        # 返回码 2 表示「有结果，但过程中报了错」（比如软链指向的文件不存在）。
+        # 不能一见非零就当没结果，否则加上 --dot 以后，结构搜索会从有结果变成没找到。
+        if proc.returncode not in (0, 2):
             continue
         for line in proc.stdout.splitlines():
             m = re.match(r"^(.*?):(\d+):(.*)$", line)
@@ -747,20 +765,22 @@ def _run_grep_fallback(args, patterns, fixed, path, excludes, exts, max_results)
     grep_exe = resolve_grep()
     if not grep_exe:
         return None, "本机无 rg 与 grep 可用，请安装 ripgrep", ""
+    dots = getattr(args, "dot", False)
     mode = "fast"
     if not args.exact and len(patterns) > 1:
         results, err = grep_search(grep_exe, [args.query], path, excludes, exts,
                                    args.context, args.count, max_results,
-                                   is_literal(args.query))
+                                   is_literal(args.query), dots=dots)
         if not results and not err:
             results, err = grep_search(grep_exe, patterns, path, excludes, exts,
                                        args.context, args.count, max_results,
-                                       fixed)
+                                       fixed, dots=dots)
             if results:
                 mode += "+扩展"
     else:
         results, err = grep_search(grep_exe, patterns, path, excludes, exts,
-                                   args.context, args.count, max_results, fixed)
+                                   args.context, args.count, max_results, fixed,
+                                   dots=dots)
     return results, err, mode
 
 
@@ -772,6 +792,8 @@ def main():
                     help="code=正文+代码；doc=文档类；all=Spotlight 兜底")
     ap.add_argument("--filename", action="store_true", help="按文件名查找（fd）")
     ap.add_argument("--spotlight", action="store_true", help="Spotlight 全盘兜底")
+    ap.add_argument("--dot", action="store_true",
+                    help="连以 . 开头的目录和软链一起搜（默认关；搜 ~/.agents、~/.zcode 时要加）")
     ap.add_argument("--type", default="", help="限定扩展名，逗号分隔（py,ts,md）")
     ap.add_argument("--count", action="store_true", help="只输出每文件命中数")
     ap.add_argument("--context", type=int, default=0, help="上下文行数（默认 0）")
@@ -832,7 +854,7 @@ def main():
         start = time.time()
         results, err = structural_search(args.query, Path(args.path).expanduser(),
                                          load_excludes() + args.exclude,
-                                         args.max or 30)
+                                         args.max or 30, args.dot)
         elapsed = int((time.time() - start) * 1000)
         results = filter_by_mtime(results, args.since, args.until)
         if err:
@@ -906,19 +928,19 @@ def main():
     elif args.filename:
         engine, mode = "fd", "fast"
         if tool_exists("fd"):
-            results, err = fd_search(args.query, path, exts, max_results)
+            results, err = fd_search(args.query, path, exts, max_results, args.dot)
             # 拼音首字母补充：中文查询 → 双查拼音缩写（「新建夹」↔ xjj）。
             # 先窄后宽：仅原结果 <3 且中文 ≥2 字时做（单字「新」→'x' 太宽泛，会引入噪音）
             if not err and len(results or []) < 3:
                 _cjk_len = sum(1 for c in args.query if "\u4e00" <= c <= "\u9fff")
                 q_py = pinyin_initials(args.query)
                 if _cjk_len >= 2 and q_py and q_py.lower() != args.query.strip().lower():
-                    py_res, py_err = fd_search(q_py, path, exts, max_results)
+                    py_res, py_err = fd_search(q_py, path, exts, max_results, args.dot)
                     if not py_err and py_res:
                         results = _merge_dedup(results or [], py_res, max_results)
             # 拼音缩写反推：结果少且疑似缩写（xjj）→ 枚举候选按拼音首字母过滤
             if not err and (not results or len(results) < 3) and _looks_like_pinyin_abbrev(args.query):
-                all_res, all_err = fd_search("", path, exts, 3000)
+                all_res, all_err = fd_search("", path, exts, 3000, args.dot)
                 if not all_err and all_res:
                     py_hits = [it for it in all_res if _file_pinyin_bonus(it[0], args.query) > 0]
                     if py_hits:
@@ -931,17 +953,17 @@ def main():
             # 中文扩展遵循「先窄后宽」：先精确匹配，命中不足才放宽到扩展词
             results, err = rg_search([args.query], path, excludes, exts,
                                      args.context, args.count, max_results,
-                                     is_literal(args.query), args.query)
+                                     is_literal(args.query), args.query, args.dot)
             if not results and not err:
                 results, err = rg_search(patterns, path, excludes, exts,
                                          args.context, args.count, max_results,
-                                         fixed, args.query)
+                                         fixed, args.query, args.dot)
                 if results:
                     mode += "+扩展"
         else:
             results, err = rg_search(patterns, path, excludes, exts,
                                      args.context, args.count, max_results,
-                                     fixed, args.query)
+                                     fixed, args.query, args.dot)
 
     elapsed = int((time.time() - start) * 1000)
     # 时间窗：统一出口按文件 mtime 过滤（rg/fd/mdfind 共用）
