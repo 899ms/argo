@@ -199,5 +199,114 @@ class TestArchiveRedactionCrossPlatform:
         assert r"D:\build\out.bin" in out
 
 
+class TestLegacyStateMigration:
+    """可选迁移：把历史状态搬到平台惯例目录（默认只报告，绝不擅自搬用户数据）。"""
+
+    @pytest.fixture(autouse=True)
+    def _isolate(self, monkeypatch):
+        engine_env.reset_envfile_cache()
+        monkeypatch.delenv(argo_paths.ENV_STATE_DIR, raising=False)
+        monkeypatch.setattr(argo_paths, "_config_db_path", lambda: None)
+        yield
+        engine_env.reset_envfile_cache()
+
+    def _legacy(self, tmp_path):
+        d = tmp_path / ".cache" / "unified-search"
+        d.mkdir(parents=True)
+        (d / "quota.json").write_text('{"used": 3}', encoding="utf-8")
+        d.mkdir(exist_ok=True)
+        return d
+
+    def test_explicit_state_dir_is_never_moved(self, monkeypatch, tmp_path):
+        """ARGO_STATE_DIR 是权威：用户明确指定的位置不该被"顺手搬家"。"""
+        monkeypatch.setenv(argo_paths.ENV_STATE_DIR, str(tmp_path / "explicit"))
+        res = argo_paths.migrate_legacy_state(yes=True)
+        assert "跳过" in res["status"] and not res["moved"]
+
+    def test_config_db_path_is_never_moved(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(argo_paths, "_config_db_path",
+                            lambda: str(tmp_path / "custom" / "cache.db"))
+        res = argo_paths.migrate_legacy_state(yes=True)
+        assert "跳过" in res["status"] and not res["moved"]
+
+    def test_noop_when_no_legacy(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+        res = argo_paths.migrate_legacy_state(yes=True)
+        assert "无需迁移" in res["status"]
+
+    def test_dry_run_is_read_only_and_needs_no_yes(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+        legacy = self._legacy(tmp_path)
+        res = argo_paths.migrate_legacy_state(dry_run=True)     # 未加 yes
+        assert "预演" in res["status"] and "quota.json" in res["moved"]
+        assert (legacy / "quota.json").exists(), "预演不该动任何文件"
+
+    def test_non_interactive_requires_yes(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+        legacy = self._legacy(tmp_path)
+        res = argo_paths.migrate_legacy_state()                 # 无 yes、非 TTY
+        assert "拒绝" in res["status"]
+        assert (legacy / "quota.json").exists()
+
+    def test_migration_moves_state_and_convention_takes_effect(self, monkeypatch, tmp_path):
+        """核心断言：搬完之后 state_root 必须**真的**切到惯例目录。
+
+        只搬文件不删空目录时，state_root 仍会判「历史存在」而停在旧路径，用户会
+        以为数据丢了——所以历史目录的清理是这一步的一部分。
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+        legacy = self._legacy(tmp_path)
+        res = argo_paths.migrate_legacy_state(yes=True)
+        target = tmp_path / "xdg" / "unified-search"
+        assert res["moved"] and not res["errors"], res
+        assert (target / "quota.json").read_text(encoding="utf-8") == '{"used": 3}'
+        assert not legacy.exists(), "历史目录应被清掉（否则惯例不生效）"
+        assert argo_paths.state_root() == target, "迁移后 state_root 未切到惯例目录"
+
+    def test_refuses_when_target_has_content(self, monkeypatch, tmp_path):
+        """绝不覆盖：目标目录已有内容时拒绝执行（宁可让用户手工处理）。"""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+        self._legacy(tmp_path)
+        target = tmp_path / "xdg" / "unified-search"
+        target.mkdir(parents=True)
+        (target / "existing.json").write_text("{}", encoding="utf-8")
+        res = argo_paths.migrate_legacy_state(yes=True)
+        assert "拒绝" in res["status"] and not res["moved"]
+
+    def test_move_failure_keeps_legacy_dir_and_leaves_marker(self, monkeypatch, tmp_path):
+        """个别文件搬不动时：不假装成功——保留历史目录、写下标记说明去处。
+
+        （整目录整体搬走是刻意的：给状态文件维护"谁的文件"白名单会随新增状态文件
+        漂移，所以这里只覆盖失败路径。）
+        """
+        import shutil as _shutil
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+        legacy = self._legacy(tmp_path)
+        stuck = legacy / "stuck.db"
+        stuck.write_text("搬不动", encoding="utf-8")
+        real_move = _shutil.move
+
+        def flaky_move(src, dst):
+            if str(src).endswith("stuck.db"):
+                raise OSError("模拟占用")
+            return real_move(src, dst)
+
+        monkeypatch.setattr(_shutil, "move", flaky_move)
+        res = argo_paths.migrate_legacy_state(yes=True)
+        assert res["errors"], f"失败未记录：{res}"
+        assert res.get("legacy_removed") is False, "有文件没搬走就不该删历史目录"
+        marker = legacy / "MIGRATED_TO.txt"
+        assert marker.exists(), "未留下标记文件"
+        assert "unified-search" in marker.read_text(encoding="utf-8")
+        assert stuck.exists(), "没搬走的文件应留在原处供人工处理"
+        assert "部分完成" in res["status"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

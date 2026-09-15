@@ -143,13 +143,130 @@ def resolved_paths() -> dict[str, str]:
     return out
 
 
+def migrate_legacy_state(*, yes: bool = False, dry_run: bool = False) -> dict[str, Any]:
+    """把历史目录里的状态搬到**平台惯例目录**（可选命令，默认只报告不执行）。
+
+    为什么需要它：解析顺序刻意让「已存在的历史目录」优先（避免升级后状态归零），
+    代价是**存量安装永远留在历史路径**——Windows 用户想要 `%LOCALAPPDATA%`、
+    Linux 用户想要 `$XDG_CACHE_HOME` 时，此前只能设 `ARGO_STATE_DIR`（还要自己
+    把旧状态搬过去）。这个命令把「搬 + 让惯例生效」合成一步。
+
+    安全边界（这是会动用户数据的命令，默认什么都不做）：
+
+    - 仅当根目录由**历史默认**决定时才可迁移。`ARGO_STATE_DIR` 或 config.yaml 的
+      `cache.db_path` 说了算时直接拒绝——那是用户明确指定的位置，不该被搬家。
+    - 目标目录已存在且有内容时拒绝（绝不覆盖）。
+    - 非 TTY 环境必须显式 `--yes`：不给"顺带"执行的机会。
+    - 搬完尝试 `rmdir` 历史目录（只在空时成功）。这一步是关键：留着空目录会让
+      `state_root()` 继续判「历史存在」而停在旧路径，用户会以为数据丢了。
+      目录里还有别的文件（不是 argo 的）时 rmdir 失败，此时明确提示用户设
+      `ARGO_STATE_DIR` 或自行清理。
+    - 返回结构化结果（moved/skipped/errors），供 CLI 打印与测试断言。
+    """
+    legacy = Path(os.path.expanduser(_LEGACY_ROOT))
+    target = platform_cache_default()
+    result: dict[str, Any] = {
+        "legacy_root": str(legacy), "target": str(target),
+        "moved": [], "errors": [], "status": "", "dry_run": bool(dry_run),
+    }
+
+    if os.environ.get(ENV_STATE_DIR, "").strip():
+        result["status"] = f"跳过：{ENV_STATE_DIR} 已显式指定状态目录（那是权威，不改）"
+        return result
+    if _config_db_path():
+        result["status"] = "跳过：config.yaml 的 cache.db_path 已指定位置（那是权威，不改）"
+        return result
+    if legacy == target:
+        result["status"] = "无需迁移：历史目录就是平台惯例目录（POSIX 默认情形）"
+        return result
+    if not legacy.is_dir():
+        result["status"] = "无需迁移：历史目录不存在（新安装直接走平台惯例）"
+        return result
+
+    entries = sorted(p for p in legacy.iterdir() if p.name != "MIGRATED_TO.txt")
+    if not entries:
+        result["status"] = "无需迁移：历史目录是空的"
+        return result
+    target_occupied = target.is_dir() and any(target.iterdir())
+    if target_occupied:
+        result["status"] = f"拒绝：目标目录已有内容 {target}（不覆盖现有状态）"
+        return result
+    if dry_run:
+        # 预演是只读的，不需要 --yes：先看清楚会搬什么，再决定执不执行
+        result["status"] = "预演：以下内容将被移动（未执行）"
+        result["moved"] = [p.name for p in entries]
+        return result
+    if not yes:
+        # 不用 TTY 探测做交互确认：一来「是不是 tty」不是「要不要执行」的可靠判据
+        # （本仓有专门门禁挡 isatty），二来数据搬迁命令在脚本里也该有完全一致的
+        # 行为——要么显式 --yes，要么不动。
+        result["status"] = "拒绝：需显式加 --yes（该命令会移动用户数据；--dry-run 可先看内容）"
+        return result
+
+    import shutil as _shutil
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        result["status"] = f"失败：无法创建目标目录 {target}（{e}）"
+        return result
+
+    for p in entries:
+        try:
+            _shutil.move(str(p), str(target / p.name))   # 跨设备时自动退化复制+删除
+            result["moved"].append(p.name)
+        except (OSError, _shutil.Error) as e:
+            result["errors"].append(f"{p.name}: {e}")
+
+    try:
+        legacy.rmdir()          # 仅在空了之后成功——留着会让惯例不生效
+        result["legacy_removed"] = True
+    except OSError:
+        result["legacy_removed"] = False
+        try:
+            (legacy / "MIGRATED_TO.txt").write_text(
+                f"argos 状态已迁移到：{target}\n本目录剩余内容不属于 argo 或无法移动；"
+                f"可自行清理，或用 {ENV_STATE_DIR} 显式指定状态目录。\n",
+                encoding="utf-8")
+        except OSError:
+            pass
+
+    if result["errors"]:
+        result["status"] = f"部分完成：{len(result['moved'])} 项已移动，{len(result['errors'])} 项失败"
+    else:
+        result["status"] = (
+            f"完成：{len(result['moved'])} 项已移动到 {target}"
+            + ("" if result.get("legacy_removed") else "（历史目录未清空，见其中的 MIGRATED_TO.txt）"))
+    return result
+
+
 def _cli() -> int:
     import argparse
     import json as _json
     parser = argparse.ArgumentParser(
         description="argo 路径诊断：状态目录与密钥文件到底解析到了哪里")
     parser.add_argument("--json", action="store_true", help="机器可读输出")
+    parser.add_argument("--migrate", action="store_true",
+                        help="把历史状态目录搬到平台惯例目录（默认只报告）")
+    parser.add_argument("--yes", action="store_true",
+                        help="配合 --migrate：非交互环境确认执行")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="配合 --migrate：只列出将移动的内容")
     args = parser.parse_args()
+
+    if args.migrate:
+        result = migrate_legacy_state(yes=args.yes, dry_run=args.dry_run)
+        if args.json:
+            print(_json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print(f"状态：{result['status']}")
+            for name in result["moved"]:
+                print(f"  移动 {name} → {result['target']}")
+            for err in result["errors"]:
+                print(f"  失败 {err}")
+            if not args.dry_run and result["moved"]:
+                print(f"此后 state_root 解析为：{state_root()}")
+        return 0 if not result["errors"] else 1
+
     info = resolved_paths()
     if args.json:
         print(_json.dumps(info, ensure_ascii=False, indent=2))

@@ -1,5 +1,10 @@
 cache:
-  db_path: ~/.cache/unified-search/cache.db
+  # db_path 刻意不写默认值：路径由 argo_paths 按平台惯例派生（Windows
+  # %LOCALAPPDATA%/unified-search；POSIX 遵循 $XDG_CACHE_HOME，已存在的历史目录
+  # ~/.cache/unified-search 继续沿用）。写死一个值会盖掉这套惯例——此前这一行就是
+  # literal ~/.cache/unified-search/cache.db，等于让 XDG / LOCALAPPDATA 永远轮不到
+  # 生效。要固定位置（多机共享、只读挂载、显式换目录）再取消注释改成自己的路径：
+  # db_path: ~/.cache/unified-search/cache.db
   enabled: true
   max_size_mb: 200
   ttl: 3600
