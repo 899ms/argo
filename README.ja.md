@@ -60,7 +60,7 @@
 4. **無料オープン生態系で足りる。** 政府・学術・標準・セキュリティの公開 API とキーレス エンジンで大部分をカバー（184 ソースが無設定）。
 5. **品質は測定可能。** ランキング金標・融合利得アブレーション・負のルーティング制御。
 
-> v2.8.7 はこの全てを実装：218 ソース / 89 ドメイン / 184 無設定。
+> v2.8.8 はこの全てを実装：220 ソース / 89 ドメイン / 185 無設定。
 
 ---
 
@@ -153,7 +153,7 @@ freshness  ≈ 公開時刻（「2015 年以来」のような歴史比較年は
 
 ## クイックスタート
 
-どれか 1 つで十分です。**インストールの真源は GitHub のみ**（`npx github:taxueseek/argo` または `install.sh`）、現在推奨 **v2.8.5**。**`npm install argo-search` は使わないでください**——npm registry 上のそれは**非公式の古い v1.0.1**（本リポジトリ外、機能不足、更新されない）。本パッケージは `private: true` で npm 誤公開を防ぎます。
+どれか 1 つで十分です。**インストールの真源は GitHub のみ**（`npx github:taxueseek/argo` または `install.sh`）、現在推奨 **v2.8.8**。**`npm install argo-search` は使わないでください**——npm registry 上のそれは**非公式の古い v1.0.1**（本リポジトリ外、機能不足、更新されない）。本パッケージは `private: true` で npm 誤公開を防ぎます。
 
 **ゼロ設定で動く**：API Key なしなら無料エンジン + ローカル `local_*`。Key があるソースは品質が上がりやすく、無いものは自動スキップ。
 
@@ -233,11 +233,11 @@ dsh plugin --profile web add "github:taxueseek/argo#main&path:packages/dsh-plugi
 
 ### 方法三：Release ソースパッケージ
 
-[Releases](https://github.com/taxueseek/argo/releases) から **`argo-2.8.5.tar.gz`** を入手：
+[Releases](https://github.com/taxueseek/argo/releases) から最新の **`argo-x.y.z.tar.gz`** を入手（`x.y.z` は最新リリース番号に読み替え）：
 
 ```bash
-tar -xzf argo-2.8.5.tar.gz
-cd argo-2.8.5
+tar -xzf argo-x.y.z.tar.gz
+cd argo-x.y.z
 pip3 install pyyaml
 python3 scripts/search.py "Python asyncio" --json
 python3 scripts/mcp_server.py
@@ -331,13 +331,13 @@ python3 scripts/search.py --list-engines
 | `deep` | 調査・総説 | 品質優先、エンジン増可 |
 | `budget` | 枠が厳しい | クォータ制御、使い切ると劣化 |
 
-### 現時点の能力概要（v2.8.5）
+### 現時点の能力概要（v2.8.8）
 
 - **ローカルデータ融合（v2.8.4 新）**：研究作業パッケージに `file_inputs`（手元一次データ、sha256/血統を登記）+ `recompute`（サンドボックス再計算）；dossier は `local_sources` を出す
 - **MCP 一発注入（v2.8.4 新）**：`argo mcp inject` で Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline（アトミック書き込み + バックアップ + 可逆。真源 `mcp/clients.yaml`）
 - **構造化検索の強化（v2.8.4 新）**：クエリ正規化 + 変体 + 複雑さゲート；SNS 構文優先；TF-IDF は中国語エンジンを捨てた後も候補を見る；`--include-local`
 - **Keenable（v2.8.4 新）**：汎用ウェブ検索エンジン追加（L1 宣言的 HTTP、無料体験、`ARGO_KEENABLE_API_KEY`）
-- **218 ソース、89 ドメイン**（184 は設定不要）：一般ウェブ + 金融 / マクロ / 映像 / スポーツ / 地理 / 組織 / メディア / 化学 / 学術 / コード（真源：`config.yaml`）
+- **220 ソース、89 ドメイン**（185 は設定不要）：一般ウェブ + 金融 / マクロ / 映像 / スポーツ / 地理 / 組織 / メディア / 化学 / 学術 / コード（真源：`config.yaml`）
 - **12 の MCP ツール**：検索、研究、証拠、曖昧さ解消、取得、スクショ、PDF、SNS、ローカル、クロール、ローカルプレビュー、再計算
 - **多言語検索**：中・英・日・韓・キリル・タイ・アラビア・ヘブライ・ギリシャ・デーヴァナーガリーなど。ルーティングとエンジンパラメータが言語に追従。非中国語クエリは知乎 / 搜狗微信 / A 株スナップショットなど中国語専用源を避ける
 - **垂直復旧の門禁**：空結果復旧で pypi / npm / 速報などを映像・スポーツへ「混ぜない」
@@ -581,6 +581,9 @@ argo/
 
 | 版 | 内容 |
 |----|------|
+| **v2.8.8** | **実ユーザー報告の修正（キー別名の無言失敗 #12、プロキシ非対応の取得 #13）+ 直答／観測の 2 サブコマンド + parallel_free·seltz エンジン**：出口ディスパッチを統一（`ARGO_PROXY` / ドメイン別ルール / 標準プロキシ変数の三経路、`NO_PROXY` を尊重）；キー読み取り 16 箇所を別名チェーンに統一しソーススキャン門禁を追加；取得チェーンに Parallel 無料レンダリング段を追加；ソース 218 → 220。詳細は [リリースノート](docs/RELEASE_NOTES_v2.8.8.md) |
+| **v2.8.7** | **218 ソース / 89 ドメイン + 本文直出 3 チャネル + ルーティング発火規律 + macro ゼロ結果修正**：バッチ 7/8/9 で累計 50 の新ソース（法令／規格／セキュリティ情報／学術／ニュース／エンタメ／エネルギー交通／法務行政）、stackexchange と doi エンジン；取得チェーン第 0 段に llms.txt と `.md` 直出プローブ、r.jina.ai リーダー段を追加；`--engine` カンマ複数指定の修正、tfidf 口径と route_reason、負方向ルーティング制御マトリクス、ランキング金標と融合利得アブレーション門禁；中国マクロ照会は国家統計局を前置、全域ゼロ結果リカバリが L3 を解放、救援エンジンを正直に記帳。詳細は [リリースノート](docs/RELEASE_NOTES_v2.8.7.md) |
+| **v2.8.6** | **hedged 競速 + 知乎三源分担 + 宣言的言語ディスパッチ + 到達性ゲート + 学術検索プロトコル**：先頭エンジンに猶予窓を設けた競速（速いエンジンは呼び出し 1 回で済む）、zhihu の全网検索／個人データ接続と餓死防止、サブクエリの言語・学術ディスパッチ（英語源と 17 の学術源を研究収集に接続）、エンジン言語メタデータと到達性ゲート（死に源の可視化）、geo 尾部 −56%、学術検索クエリ構築プロトコル。詳細は [リリースノート](docs/RELEASE_NOTES_v2.8.6.md) |
 | **v2.8.5** | **DSH プラグインツールのネイティブ化 + MCP 既定オフ + Windows 互換 + クォータ自己修復 + フェッチ deadline**：`argo_search`/`argo_fetch` がネイティブ一等ツールで既定可用（CLI 単発は MCP と同エンジン同ガード、スキーマ単一真源 + ドリフト門禁）；3 形態接続、MCP は随時マウント既定オフ；Windows 互換（temp パス / GBK / インタプリタ解決 / junction / `install.ps1`、PR #11）；クォータ自己修復ループ（200 業務エラー封筒検出 + ルート除外 + 周期自己修復）；フェッチ全体 deadline（`ARGO_FETCH_DEADLINE_S`）+ tinyfish レンダリング + `.md` 変体プローブ；ホットリロード env と状態ディレクトリ単一真源。[リリースノート](docs/RELEASE_NOTES_v2.8.5.md) |
 | **v2.8.4** | **ローカルデータ融合 + 多クライアント MCP 注入 + 構造化検索 + Keenable**：研究 L1 の手元一次データ（`file_inputs` + `recompute` + `local_sources`）；`argo mcp inject`（宣言的 `mcp/clients.yaml`）；クエリ正規化 / 変体 / 複雑さゲート / SNS 構文優先 / TF-IDF 修正 / `--include-local`；Keenable（無料体験）；セキュリティ強化。[リリースノート](docs/RELEASE_NOTES_v2.8.4.md) |
 | **v2.8.3** | **多言語ルーティング修正 + プロセス内 anysearch + weighted RRF**：ja/ko が対象言語を返す；独仏西伊は anysearch；weakest-link 降権（論文 2508.01405）。[リリースノート](docs/RELEASE_NOTES_v2.8.3.md) |

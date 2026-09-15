@@ -836,10 +836,14 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             )
             focus_query = arguments.get("focus")
             if focus_query and result.get("success"):
+                # 裁剪契约唯一真源在 focus_extract.apply_focus（CLI 的
+                # `argo fetch --focus` 走同一函数），此处不再自写一套：
+                # 两处各写一份的代价是语义静默分叉（CLI 侧曾整个漏掉该参数）。
                 focus_mod = _lazy_cached("focus_extract")
-                result["content"] = focus_mod.focus_extract(result["content"], focus_query)
-                result["length"] = len(result["content"])
-                result["focus_applied"] = True
+                focus_mod.apply_focus(result, focus_query)
+                if not result.get("focus_applied"):
+                    # 正文过短、BM25 无从裁剪：如实标注，不谎报已省 token
+                    result["focus_note"] = "内容未达聚焦阈值，返回全文"
             # 默认截断 content 以控 token
             if arguments.get("summary", True) and isinstance(result.get("content"), str):
                 max_c = int(arguments.get("max_chars", 8000))

@@ -6,11 +6,15 @@ link_source.py — 把「消费者入口」指回本仓库真源（符号链接�
   1. 磁盘上只应有一份 argo 代码：本仓库（scripts/ 的上一级）。
   2. Skill 目录 / 文档入口若需要出现在主机约定位置，用 **symlink** 指向真源，
      禁止 rsync/cp 出第二份业务树。
-  3. **目标路径绝不写死在代码里**。来源优先级：
+  3. **链接必须直连真源（1 跳）**。宿主入口挂到另一个入口上（如
+     `~/.workbuddy/skills/argo -> ~/.claude/skills/argo -> 真源`）语义上能解析，
+     但多出一环依赖：中间那环被删改或指偏，入口就成断链，而工具此前对此
+     完全无感。间接链接会被本脚本**重建为直连**（只替换 symlink 本身）。
+  4. **目标路径绝不写死在代码里**。来源优先级：
        CLI `--to PATH`（可重复）
        → 环境变量 `ARGO_LINK_TARGETS`（os.pathsep 分隔，如 `:` / `;`）
        → 真源根目录下的 `installs.local.yaml`（本机声明，应 gitignore）
-  4. 注册表派生仍只走 `sync_backends.py`（config.yaml → backends/*），与链接无关。
+  5. 注册表派生仍只走 `sync_backends.py`（config.yaml → backends/*），与链接无关。
 
 用法：
   # 本机 installs.local.yaml 示例见 installs.local.yaml.example
@@ -18,10 +22,10 @@ link_source.py — 把「消费者入口」指回本仓库真源（符号链接�
   python3 scripts/link_source.py --to /any/consumer/path/argo
   ARGO_LINK_TARGETS="$HOME/.claude/skills/argo:$HOME/.agents/skills/argo" \\
     python3 scripts/link_source.py
-  python3 scripts/link_source.py --check
+  python3 scripts/link_source.py --check        # 只校验；间接链接记 warn 并非零退出
   python3 scripts/link_source.py --dry-run
 
-退出码：0 成功；1 无目标 / 链接失败 / 校验不一致。
+退出码：0 成功；1 无目标 / 链接失败 / 校验不一致（含「只经多跳间接指向真源」）。
 """
 
 from __future__ import annotations
@@ -54,45 +58,73 @@ def _load_local_targets() -> list[Path]:
         if not item:
             continue
         p = Path(str(item)).expanduser()
-        # 相对路径相对真源根
-        if not p.is_absolute():
-            p = (SOURCE / p).resolve()
-        else:
-            p = p.resolve()
-        out.append(p)
+        # 相对路径相对真源根；规范化但不跟随符号链接（见 _normalize_target）
+        out.append(_normalize_target(SOURCE / p if not p.is_absolute() else p))
     return out
+
+
+def _normalize_target(p: Path) -> Path:
+    """规范化目标路径：展开 ~、补成绝对路径、消掉 . 与 ..，**但不跟随符号链接**。
+
+    为什么不用 resolve()：宿主入口本来就应该是一条 symlink。resolve() 会先把
+    「已经指向真源的链接」折叠成真源路径，于是 link_one 看到的目标是「真源本体」
+    而直接跳过重建，check_targets 也无法区分「直连」与「隔了一层的间接链接」——
+    校验常年报 ok，实际入口却挂在中转链接上（2026-09-14 实测踩到）。
+    """
+    p = Path(p).expanduser()
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    return Path(os.path.normpath(str(p)))
+
+
+def _hops_to_source(target: Path) -> int:
+    """目标到真源的符号链接跳数。
+
+    0 = 目标就是真源本体；1 = 直连；>1 = 间接链接（可解析但多一跳依赖）；
+    -1 = 未指向真源 / 断链 / 成环（超过 8 跳按未指向处理，避免死循环）。
+    """
+    src = SOURCE.resolve()
+    cur = target
+    for hops in range(8):
+        try:
+            resolved = cur.resolve()
+        except (OSError, RuntimeError):
+            # 断链 / 符号链接成环（py3.13 的 resolve() 对环抛 RuntimeError）
+            return -1
+        if resolved != src:
+            return -1
+        if not cur.is_symlink():
+            return hops
+        try:
+            raw = os.readlink(cur)
+        except OSError:
+            return -1
+        nxt = Path(raw)
+        if not nxt.is_absolute():
+            nxt = cur.parent / nxt
+        cur = Path(os.path.normpath(str(nxt)))
+    return -1
 
 
 def _env_targets() -> list[Path]:
     raw = os.environ.get("ARGO_LINK_TARGETS", "").strip()
     if not raw:
         return []
-    return [Path(p).expanduser().resolve() for p in raw.split(os.pathsep) if p.strip()]
+    return [_normalize_target(p) for p in raw.split(os.pathsep) if p.strip()]
 
 
 def resolve_targets(cli: list[Path] | None) -> list[Path]:
     """无默认路径：没有 CLI / env / local 文件则空列表。"""
-    seen: set[Path] = set()
+    seen: set[str] = set()
     ordered: list[Path] = []
     for group in (cli or [], _env_targets(), _load_local_targets()):
         for p in group:
-            rp = p.expanduser().resolve() if p.exists() or p.parent.exists() else p.expanduser()
-            # normalize for dedupe
-            key = rp if rp.is_absolute() else (Path.cwd() / rp).resolve()
-            if key in seen:
+            key = _normalize_target(p)
+            if str(key) in seen:
                 continue
-            seen.add(key)
+            seen.add(str(key))
             ordered.append(key)
     return ordered
-
-
-def _is_link_to_source(path: Path) -> bool:
-    if not path.is_symlink():
-        return False
-    try:
-        return path.resolve() == SOURCE.resolve()
-    except OSError:
-        return False
 
 
 # 判定「目录像 argo 真源/旧副本」的特征文件。用于 --force 迁走目录前的软校验，
@@ -108,14 +140,41 @@ def _looks_like_argo_copy(path: Path) -> bool:
 
 
 def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
-    """将 target 设为指向 SOURCE 的 symlink。"""
+    """将 target 设为指向 SOURCE 的 symlink（间接链接会被重建为直连）。"""
     source = SOURCE.resolve()
-    if target.resolve() == source and target.exists() and not target.is_symlink():
+    depth = _hops_to_source(target)
+
+    if depth == 0:
         print(f"[skip] 目标就是真源本体: {target}")
         return 0
 
-    if _is_link_to_source(target):
+    if depth == 1:
         print(f"[ok]   已指向真源: {target} -> {source}")
+        return 0
+
+    if depth > 1:
+        # 间接链接：能解析到真源，但中间还挂了一环。重建为直连只替换符号链接
+        # 本身（不触碰任何目录内容），因此无需 --force。
+        if dry_run:
+            print(f"[dry]  将把 {depth} 跳间接链接重建为直连: {target}")
+            return 0
+        # 先建同目录临时链接再原子替换：避免「已 unlink、symlink 又失败」的
+        # 窗口里宿主入口凭空消失（入口消失会让 Skill/工具调用直接找不到 argo）。
+        tmp = target.with_name(target.name + ".relink-tmp")
+        try:
+            if tmp.is_symlink() or tmp.exists():
+                tmp.unlink()
+            os.symlink(source, tmp, target_is_directory=True)
+            os.replace(tmp, target)
+        except OSError as e:
+            try:
+                if tmp.is_symlink() or tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+            print(f"[fail] 重建直连失败: {target} ({e})", file=sys.stderr)
+            return 1
+        print(f"[relink] {target} -> {source}（原为 {depth} 跳间接链接，已重建为直连）")
         return 0
 
     if target.exists() or target.is_symlink():
@@ -169,7 +228,13 @@ def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
                 capture_output=True, text=True,
                 encoding="utf-8", errors="replace",
             )
-            if r.returncode == 0 and _is_link_to_source(target):
+            # junction 不是 symlink（is_symlink() 为 False，_hops_to_source 会
+            # 把它当普通目录），此处按「解析后是否等于真源」独立判定。
+            try:
+                linked = target.resolve() == SOURCE.resolve()
+            except OSError:
+                linked = False
+            if r.returncode == 0 and linked:
                 print(f"[link] {target} -> {source} (junction)")
                 return 0
         print(f"[fail] 创建链接失败: {target} -> {source}", file=sys.stderr)
@@ -185,10 +250,17 @@ def check_targets(targets: list[Path]) -> int:
         print("[fail] 无校验目标（请 --to / ARGO_LINK_TARGETS / installs.local.yaml）")
         return 1
     for t in targets:
-        if _is_link_to_source(t):
-            print(f"[ok]   {t} -> {t.resolve()}")
-        elif t.resolve() == SOURCE.resolve() and t.exists():
+        depth = _hops_to_source(t)
+        if depth == 0:
             print(f"[ok]   {t} 即真源本体")
+        elif depth == 1:
+            print(f"[ok]   {t} -> {SOURCE.resolve()}")
+        elif depth > 1:
+            # 间接链接仍能解析到真源，但多了一环依赖——按「校验不一致」计失败，
+            # 提示直接重跑（不带 --check）即可重建为直连。
+            print(f"[warn] {t} 经 {depth} 跳间接指向真源（非直连）；"
+                  f"去掉 --check 重跑即可重建为直连")
+            bad += 1
         else:
             print(f"[miss] {t} 未指向真源（exists={t.exists()} symlink={t.is_symlink()}）")
             bad += 1

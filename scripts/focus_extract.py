@@ -121,6 +121,34 @@ def focus_extract(content: str, query: str, top_k: int = 5) -> str:
     return header + "\n\n" + kept
 
 
+def apply_focus(result: dict, query: str, top_k: int = 5) -> dict:
+    """把 BM25 聚焦提取应用到抓取结果——CLI 与 MCP 共用的单一入口。
+
+    背景：`--focus` / `focus` 这个能力同时暴露在 CLI（`argo fetch URL --focus`）
+    与 MCP（`argo_fetch` 的 `focus` 参数）两处。两处各写一套裁剪逻辑时，
+    文档描述的语义与实际行为容易分叉（历史 bug：CLI 侧压根没有该参数）。
+    统一到这里，任何一侧新增调用方都自动继承同一语义。
+
+    契约：
+      - query 为空串或正文为空 → 原样返回，不写任何字段
+      - 正文过短（focus_extract 内部按 2000 字符阈值判定）→ 不裁剪，
+        focus_applied=False，调用方能看出「省 token 没生效」而不是静默当成功
+      - 发生裁剪 → content/length 更新，focus_applied=True
+    """
+    if not query or not (result.get("content") or "").strip():
+        return result
+    original = result["content"]
+    focused = focus_extract(original, query, top_k=top_k)
+    result["focus_query"] = query
+    if focused == original:
+        result["focus_applied"] = False
+        return result
+    result["content"] = focused
+    result["length"] = len(focused)
+    result["focus_applied"] = True
+    return result
+
+
 if __name__ == "__main__":
     # 简单测试：构造超过 2000 字符的文本
     block = """
@@ -140,5 +168,17 @@ Python asyncio 提供 async/await 语法，事件循环调度协程。
 
     # 短文本直接返回
     assert focus_extract("短文本", "查询") == "短文本"
+
+    # apply_focus：发生裁剪 → 记账为已应用
+    res = {"content": long_text, "length": len(long_text)}
+    out = apply_focus(res, "异步编程 事件循环")
+    assert out["focus_applied"] is True
+    assert out["length"] == len(out["content"])
+
+    # apply_focus：短文本不裁剪 → 诚实记账为未应用（而非假装成功）
+    short = {"content": "短文本", "length": 3}
+    short_out = apply_focus(short, "查询")
+    assert short_out["focus_applied"] is False
+    assert short_out["content"] == "短文本" and short_out["length"] == 3
 
     print("\n测试通过。")

@@ -1139,18 +1139,53 @@ def fetch_page_v3(url: str, max_chars: int = 3000,
     return out
 
 
+# ─── 聚焦提取（--focus：BM25 段落聚焦，省 token）──────────────────────────────
+# 语义真源在 focus_extract.apply_focus（CLI 与 MCP 的 argo_fetch 共用同一份
+# 裁剪契约），此处只做接线。历史 bug：文档（SKILL.md / references/usage.md）
+# 一直写着 `argo fetch URL --focus 关键词`，但本文件的 CLI 没有该参数，
+# 调用方拿到的是 argparse 的 unrecognized arguments——文档承诺的能力只在
+# MCP 侧存在。加了参数还不够，两处必须走同一实现，否则迟早再次分叉。
+
+def _apply_focus_to_result(result: dict, query: str,
+                           top_k: int = 5) -> dict:
+    """对成功结果做 BM25 聚焦裁剪（失败结果不动，语义与 MCP 侧一致）。"""
+    if not query or not result.get("success"):
+        return result
+    try:
+        from focus_extract import apply_focus
+    except ImportError:
+        return result
+    return apply_focus(result, query, top_k=top_k)
+
+
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def build_parser():
+    """CLI 参数表（独立成函数以便测试校验旗标契约）。
+
+    `--use-browser` 与 `--browser` 同义：文档两处都写过前者，入口若只认后者，
+    用户照文档敲命令即报错。两个名字都收，避免再出现「文档有、代码无」。
+    """
     import argparse
     p = argparse.ArgumentParser(description="Argo fetch v3 — 四级抓取（零依赖）")
     p.add_argument("url", help="目标 URL")
     p.add_argument("--max-chars", type=int, default=8000)
     p.add_argument("--timeout", type=float, default=8.0)
-    p.add_argument("--browser", action="store_true", help="强制使用浏览器")
+    p.add_argument("--browser", "--use-browser", dest="browser",
+                   action="store_true",
+                   help="强制使用浏览器（--use-browser 同义）")
     p.add_argument("--no-fallback", action="store_true", help="禁用浏览器降级")
-    p.add_argument("--actions", type=str, help="页面交互 JSON（如 '[{\"click\":\"#btn\"}]'）")
-    args = p.parse_args()
+    p.add_argument("--actions", type=str,
+                   help="页面交互 JSON（如 '[{\"click\":\"#btn\"}]'）")
+    p.add_argument("--focus", type=str, default="",
+                   help="BM25 聚焦关键词：只返回相关段落，省 token")
+    p.add_argument("--focus-top", type=int, default=5,
+                   help="--focus 无段落超阈值时的回退保留段落数（默认 5）")
+    return p
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
 
     actions = None
     if args.actions:
@@ -1161,14 +1196,25 @@ if __name__ == "__main__":
                  use_browser_fallback=not args.no_fallback,
                  actions=actions)
 
+    focus_requested = bool(args.focus)
+    pre_focus_len = r.get("length", 0)
+    r = _apply_focus_to_result(r, args.focus, top_k=args.focus_top)
+
     # 输出摘要
     summary = {k: r[k] for k in ("success", "fetch_method", "content_ok",
                                   "quality_score", "page_type", "source_type",
                                   "is_official", "length", "url")}
+    if focus_requested:
+        # 显式回报聚焦是否真的生效：正文过短时 focus_applied=False，
+        # 不谎报「已省 token」
+        summary["focus_applied"] = bool(r.get("focus_applied"))
     if r.get("error"):
         summary["error"] = r["error"]
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if r.get("title"):
         print(f"\nTitle: {r['title']}")
+    if focus_requested:
+        print(f"\n[focus] query={args.focus!r} applied={bool(r.get('focus_applied'))} "
+              f"chars={pre_focus_len} → {r.get('length', 0)}")
     print(f"\n--- CONTENT ({r['length']} chars) ---")
     print(r.get("content", "")[:2000])

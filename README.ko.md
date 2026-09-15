@@ -60,7 +60,7 @@
 4. **무료 오픈 생태계로 충분.** 정부·학술·표준·보안 공개 API와 키리스 엔진이 대부분 도메인을 커버 (무설정 184개).
 5. **품질은 측정 가능.** 랭킹 골든 플로어, 융합 이득 어블레이션 게이트, 음의 라우팅 제어.
 
-> v2.8.7은 이 모두를 구현: 218 소스 / 89 도메인 / 184 무설정.
+> v2.8.8은 이 모두를 구현: 220 소스 / 89 도메인 / 185 무설정.
 
 ---
 
@@ -153,7 +153,7 @@ composite  ≈ 0.40·selection + 0.35·absorption + 0.15·freshness + 0.10·engi
 
 ## 빠른 시작
 
-경로를 고르면 됩니다. **설치 진원은 GitHub뿐입니다**(`npx github:taxueseek/argo` 또는 `install.sh`); 현재 권장 **v2.8.5**. **`npm install argo-search`는 쓰지 마세요** — npm 레지스트리 사본은 **비공식 낡은 v1.0.1**(이 저장소가 아님, 기능 부족, 갱신 안 됨). 이 패키지는 `private: true`로 npm 오배포를 막습니다.
+경로를 고르면 됩니다. **설치 진원은 GitHub뿐입니다**(`npx github:taxueseek/argo` 또는 `install.sh`); 현재 권장 **v2.8.8**. **`npm install argo-search`는 쓰지 마세요** — npm 레지스트리 사본은 **비공식 낡은 v1.0.1**(이 저장소가 아님, 기능 부족, 갱신 안 됨). 이 패키지는 `private: true`로 npm 오배포를 막습니다.
 
 **제로 설정으로 동작**: API 키 없이도 무료 엔진 + 로컬 `local_*` 엔진이 돌고, 키 없는 엔진은 스킵됩니다(키가 있으면 보통 더 좋습니다).
 
@@ -233,11 +233,11 @@ dsh plugin --profile web add "github:taxueseek/argo#main&path:packages/dsh-plugi
 
 ### 옵션 3: 릴리스 tarball
 
-[Releases](https://github.com/taxueseek/argo/releases)에서 **`argo-2.8.5.tar.gz`** 다운로드:
+[Releases](https://github.com/taxueseek/argo/releases)에서 최신 **`argo-x.y.z.tar.gz`** 다운로드(`x.y.z`는 최신 릴리스 번호로 바꿔 읽기):
 
 ```bash
-tar -xzf argo-2.8.5.tar.gz
-cd argo-2.8.5
+tar -xzf argo-x.y.z.tar.gz
+cd argo-x.y.z
 pip3 install pyyaml
 python3 scripts/search.py "Python asyncio" --json
 python3 scripts/mcp_server.py
@@ -331,7 +331,7 @@ python3 scripts/search.py --list-engines
 | `deep` | 연구, 조사 | 품질 우선, 엔진 더 허용 |
 | `budget` | 할당량 타이트 | 쿼터 제어, 소진 시 저하 |
 
-### 대략적인 능력 세트 (v2.8.5)
+### 대략적인 능력 세트 (v2.8.8)
 
 - **로컬 데이터 융합 (v2.8.4 신규)**: 연구 작업 패키지에 `file_inputs`(로컬 1차 데이터, sha256/혈통 등기) + `recompute`(샌드박스 재계산); dossier가 `local_sources` 출력
 - **MCP 한 줄 주입 (v2.8.4 신규)**: `argo mcp inject`로 Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (원자 쓰기 + 백업 + 가역; 진원 `mcp/clients.yaml`)
@@ -581,6 +581,9 @@ argo/
 
 | 버전 | 비고 |
 |---------|-------|
+| **v2.8.8** | **실사용자 신고 수정(키 별칭 무음 실패 #12, 프록시 미지원 수집 #13) + 직답／관찰 하위 명령 + parallel_free·seltz 엔진**: 출구 디스패치 통일(`ARGO_PROXY` / 도메인별 규칙 / 표준 프록시 변수 세 갈래, `NO_PROXY` 존중); 키 읽기 16곳을 별칭 체인으로 통일하고 소스 스캔 게이트 추가; 수집 체인에 Parallel 무료 렌더링 단계 추가; 소스 218 → 220. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.8.md) |
+| **v2.8.7** | **218 소스 / 89 도메인 + 본문 직출 3채널 + 라우팅 발화 규율 + macro 제로 결과 수정**: 배치 7/8/9 누적 50개 신규 소스(법령, 표준, 보안 인텔, 학술, 뉴스, 엔터, 에너지·교통, 법무·행정), stackexchange·doi 엔진; 수집 체인 0단계에 llms.txt와 `.md` 직출 프로브, r.jina.ai 리더 단계 추가; `--engine` 콤마 다중 지정 수정, tfidf 기준과 route_reason, 부정 라우팅 제어 매트릭스, 랭킹 골든과 융합 이득 소거 게이트; 중국 거시 조회는 국가통계국 우선, 전역 제로 결과 복구가 L3 개방, 구조 엔진 정직 집계. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.7.md) |
+| **v2.8.6** | **hedged 레이싱 + 지후 3소스 분담 + 선언적 언어 디스패치 + 도달성 게이트 + 학술 검색 프로토콜**: 선두 엔진 유예 창 레이싱(빠른 엔진은 호출 1회), zhihu 전체 검색/개인 데이터 연동과 아사 방지, 하위 쿼리 언어·학술 디스패치(영어 소스와 17개 학술 소스를 연구 수집에 연결), 엔진 언어 메타데이터와 도달성 게이트(죽은 소스 노출), geo 꼬리 −56%, 학술 검색 쿼리 구성 프로토콜. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.6.md) |
 | **v2.8.5** | **DSH 플러그인 도구 네이티브화 + MCP 기본 끔 + Windows 호환 + 쿼터 자가 치유 + 페치 deadline**: `argo_search`/`argo_fetch`가 1급 네이티브 도구로 기본 사용 가능(CLI 단발은 MCP와 동일 엔진·가드, 스키마 단일 진원 + 드리프트 게이트); 3가지 형태 접속, MCP는 수요 시 마운트 기본 끔; Windows 호환(temp 경로 / GBK / 인터프리터 해석 / junction / `install.ps1`, PR #11); 쿼터 자가 치유 루프(200 업무 오류 봉투 감지 + 라우트 제외 + 주기 자가 치유); 페치 전역 deadline(`ARGO_FETCH_DEADLINE_S`) + tinyfish 렌더링 + `.md` 변형 프로브; 핫리로드 env와 상태 디렉터리 단일 진원. [릴리스 노트](docs/RELEASE_NOTES_v2.8.5.md) |
 | **v2.8.4** | **로컬 데이터 융합 + 다중 클라이언트 MCP 주입 + 구조화 검색 + Keenable**: 연구 L1 로컬 1차 데이터(`file_inputs` + `recompute` + `local_sources`); `argo mcp inject`(선언적 `mcp/clients.yaml`); 쿼리 정규화 / 변체 / 복잡도 게이트 / 소셜 문법 우선 / TF-IDF 수정 / `--include-local`; Keenable(무료 체험); 보안 강화. [릴리스 노트](docs/RELEASE_NOTES_v2.8.4.md) |
 | **v2.8.3** | **다국어 라우팅 수정 + 프로세스 내 anysearch + weighted RRF**: ja/ko가 대상 언어를 반환; 독/불/서/이 anysearch; weakest-link 다운웨이트(논문 2508.01405). [릴리스 노트](docs/RELEASE_NOTES_v2.8.3.md) |

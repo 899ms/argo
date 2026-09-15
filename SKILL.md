@@ -24,7 +24,7 @@ triggers:
   - research
 ---
 
-# Argo v2.8.7 — 统一搜索与证据核验
+# Argo v2.8.8 — 统一搜索与证据核验
 
 > 不止「帮你搜到」，还要「帮你核到」：高后果问题标 `fetch_required`、结果标
 > `fetch_suggested`，`--verify` 核验正文并回填证据分。变更日志见 `docs/RELEASE_NOTES_v2.8.*.md`。
