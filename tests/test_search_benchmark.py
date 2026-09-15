@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""search_benchmark 的确定性测试。
+
+锁定四件事：
+  1. route 基准输出形状正确、数值非负；
+  2. dispatch 在新架构（有界并发 + early-stop + 近重复去重）下仍让全部 N 个
+     引擎都产出结果，且串行墙钟明显累加、deep 全量并行显著更快；
+  3. 整体结果可被机器读取（JSON round-trip）且字段契约稳定；
+  4. 基准跑完不在临时目录留下缓存文件。
+
+全程离线：假引擎顶替了唯一网络出口，不需要 API key。
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent.parent / "scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import search_benchmark  # noqa: E402
+
+
+def _benchmark_leftovers() -> list[str]:
+    tmp = Path(tempfile.gettempdir())
+    return [p.name for p in tmp.glob("argo-benchmark-*")]
+
+
+def test_route_benchmark_is_deterministic_shape():
+    out = search_benchmark.benchmark_route(["Python async", "中国 GDP"], runs=2)
+    assert out["queries"] == 2
+    assert out["runs"] == 2
+    assert out["per_query_median_ms"] >= 0
+    assert out["batch_median_ms"] >= 0
+
+
+def test_dispatch_parallel_is_faster_than_serial_and_covers_all_engines():
+    before = set(_benchmark_leftovers())
+    out = search_benchmark.benchmark_dispatch(
+        ["benchmark_a", "benchmark_b", "benchmark_c"], runs=2, engine_delay=0.2,
+    )
+    after = set(_benchmark_leftovers())
+
+    # 三个引擎都被执行、各产出一条，样本数与 runs 一致。
+    assert out["engine_count"] == 3
+    assert len(out["serial_samples_ms"]) == 2
+    assert len(out["parallel_samples_ms"]) == 2
+
+    # 串行跑满 3 个引擎：墙钟至少应累加出接近 (N-1)×delay 的等待
+    # （留 15% 余量，不把线程调度抖动算成失败）。
+    expect_serial_floor_ms = (out["engine_count"] - 1) * out["engine_delay_ms"] * 0.85
+    assert out["serial_median_ms"] >= expect_serial_floor_ms
+
+    # 并行显著快于串行，且加速比明显大于 1（阈值 1.5，留出抖动余量）。
+    assert out["parallel_median_ms"] < out["serial_median_ms"]
+    assert out["parallel_speedup"] > 1.5
+
+    # 跑完不允许在临时目录残留缓存目录/文件。
+    assert after <= before, f"基准留下了临时文件：{sorted(after - before)}"
+
+
+def test_json_benchmark_schema():
+    out = search_benchmark.run_benchmark(runs=1, engine_delay=0.2)
+    # round-trip 同时锁定机器可读契约。
+    payload = json.loads(json.dumps(out, ensure_ascii=False))
+    assert payload["schema_version"] == 1
+    assert payload["benchmark"] == "argo-search-offline-dispatch"
+    assert "route" in payload and "dispatch" in payload
+    dispatch = payload["dispatch"]
+    assert dispatch["engine_count"] == 3
+    assert dispatch["parallel_speedup"] > 1.5
+    assert "serial_median_ms" in dispatch and "parallel_median_ms" in dispatch
