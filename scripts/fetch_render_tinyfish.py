@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.request
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 # fetch_method 标识。fetch_v3 主链用它判断是否已命中渲染层
 # （命中则不再冷启动本地 Chrome）。集中为常量避免拼写漂移。
@@ -75,7 +76,7 @@ def fetch(url: str, max_chars: int = 8000, timeout: float = 8.0) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with open_url(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
         data = json.loads(raw)
     except Exception as e:

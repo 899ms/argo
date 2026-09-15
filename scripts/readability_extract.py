@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 from typing import Any, Callable, Sequence
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 SKIP_TAGS = {
     "script", "style", "nav", "header", "footer", "aside", "noscript",
@@ -252,7 +253,7 @@ if __name__ == "__main__":
 
     url = sys.argv[1] if len(sys.argv) > 1 else "https://docs.python.org/3/"
     req = urllib.request.Request(url, headers={"User-Agent": "unified-search/2.5"})
-    with urllib.request.urlopen(req, timeout=10) as r:
+    with open_url(req, timeout=10) as r:
         raw = r.read(400000).decode("utf-8", errors="replace")
     content, title = extract_readability(raw, max_chars=2000)
     print(f"标题: {title}")

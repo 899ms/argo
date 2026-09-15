@@ -59,6 +59,7 @@ import fetch_quality as _quality
 
 # 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 
 # ─── 内容提取器（复用 fetch.py 的逻辑，增强版）──────────────────────────────
@@ -418,7 +419,7 @@ def _mobile_http_fetch(url: str, max_chars: int = 8000,
         import urllib.request
         req = urllib.request.Request(url, headers={"User-Agent": _MOBILE_UA})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with open_url(req, timeout=timeout) as r:
                 text = r.read().decode("utf-8", errors="replace")
                 return _make_result(url, text, max_chars, "http_mobile")
         except Exception as e:
@@ -474,7 +475,7 @@ def _http_fetch(url: str, max_chars: int = 8000, timeout: float = 8.0) -> dict:
             "User-Agent": "argo-fetch-v3/1.0 (+local-research)",
         })
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with open_url(req, timeout=timeout) as r:
                 text = r.read().decode("utf-8", errors="replace")
                 return _make_result(url, text, max_chars, "http")
         except Exception as e:

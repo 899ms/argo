@@ -592,7 +592,7 @@ class TestHttpClientEngineIntegration(unittest.TestCase):
         self.assertTrue(calls[1][2])  # follow_redirects 开启
 
     def test_http_get_raw_env_off_falls_back_urllib(self):
-        """ARGO_ENGINE_HTTP_CLIENT=0 → 回退 urllib（存量 mock 兼容）。"""
+        """ARGO_ENGINE_HTTP_CLIENT=0 → 回退 urllib 路径（该路径亦经出口调度）。"""
         from engines_base import _http_get_raw
         captured = []
 
@@ -610,8 +610,11 @@ class TestHttpClientEngineIntegration(unittest.TestCase):
             captured.append(req.full_url)
             return _FakeResp()
 
+        # mock 出口调度入口而非 urllib.request.urlopen：配了代理（config 的
+        # network.proxy 或 ARGO_PROXY）时 open_url 走 build_opener 分支，
+        # 不打 urlopen——只 mock urlopen 会让本用例隐式依赖「环境无代理」。
         with patch("engines_base.os.environ.get", return_value="0"), \
-             patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+             patch("net_proxy.open_url", side_effect=_fake_urlopen):
             raw = _http_get_raw("https://y.example/q", {}, 8)
         self.assertEqual(raw, '{"ok": 1}')
         self.assertEqual(captured, ["https://y.example/q"])

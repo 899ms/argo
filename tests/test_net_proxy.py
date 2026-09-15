@@ -121,5 +121,74 @@ class TestOpenConnection(unittest.TestCase):
         self.assertEqual(net_proxy.request_selector(parsed, "/x", via), "/x")
 
 
+class TestOpenUrlIsProxyAware(unittest.TestCase):
+    """`open_url` 是 urllib 类出口的唯一入口（issue #13 同类收口，2026-09-15）。
+
+    背景：issue #13 修复时只覆盖了 `http_open`（引擎侧），fetch/job/health/
+    pdf/readability/train/wx/search 共 13 处仍直接调 `urllib.request.urlopen`
+    ——在「必须经代理才能出网」的环境里，这些出口一律连不上。收口后出口
+    决策只有 net_proxy 一处，本类锁住「配了规则就走代理、没配就直连」。
+    """
+
+    def test_uses_proxy_opener_when_rule_matches(self):
+        seen = {}
+
+        class _FakeOpener:
+            def open(self, req, timeout=None):
+                seen["timeout"] = timeout
+                seen["url"] = getattr(req, "full_url", req)
+                return "RESP"
+
+        def _fake_build(handler):
+            seen["handler"] = handler
+            return _FakeOpener()
+
+        with patch.object(net_proxy, "_network_cfg",
+                          return_value=_cfg(rules={"github.com": _PROXY})), \
+             patch.object(net_proxy.urllib.request, "build_opener", _fake_build), \
+             patch.object(net_proxy.urllib.request, "urlopen",
+                          side_effect=AssertionError("不该走直连")):
+            out = net_proxy.open_url("https://github.com/a/b", timeout=7.0)
+        self.assertEqual(out, "RESP")
+        self.assertEqual(seen["url"], "https://github.com/a/b")
+        self.assertEqual(seen["timeout"], 7.0)
+        self.assertEqual(seen["handler"].proxies, {"https": _PROXY})
+
+    def test_falls_back_to_plain_urlopen_without_proxy(self):
+        calls = {}
+
+        def _fake_urlopen(req, timeout=None):
+            calls["url"] = getattr(req, "full_url", req)
+            calls["timeout"] = timeout
+            return "DIRECT"
+
+        with patch.object(net_proxy, "_network_cfg", return_value=_cfg()), \
+             patch.object(net_proxy.urllib.request, "urlopen", _fake_urlopen), \
+             patch.object(net_proxy.urllib.request, "build_opener",
+                          side_effect=AssertionError("无代理不该建 opener")):
+            with patch.dict("os.environ", {}, clear=True):
+                out = net_proxy.open_url("https://example.com/x", timeout=3.0)
+        self.assertEqual(out, "DIRECT")
+        self.assertEqual(calls["url"], "https://example.com/x")
+        self.assertEqual(calls["timeout"], 3.0)
+
+    def test_accepts_request_object(self):
+        req = net_proxy.urllib.request.Request("https://example.com/y")
+        with patch.object(net_proxy, "_network_cfg", return_value=_cfg()), \
+             patch.object(net_proxy.urllib.request, "urlopen",
+                          lambda r, timeout=None: r):
+            out = net_proxy.open_url(req, timeout=1.0)
+        self.assertIs(out, req)
+
+    def test_ignores_standard_env_proxy(self):
+        """标准环境变量由 urlopen 自己认，本函数不得重复接管（会改 mock 契约）。"""
+        with patch.object(net_proxy, "_network_cfg", return_value=_cfg()), \
+             patch.dict("os.environ", {"HTTPS_PROXY": _PROXY}), \
+             patch.object(net_proxy.urllib.request, "build_opener",
+                          side_effect=AssertionError("不该重复接管标准环境变量")):
+            self.assertIsNone(
+                net_proxy.resolve_proxy("https://example.com", include_standard_env=False))
+
+
 if __name__ == "__main__":
     unittest.main()

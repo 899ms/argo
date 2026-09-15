@@ -30,6 +30,7 @@ SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from argo_engine_registry import get_registry
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 logger = logging.getLogger("argo.health_check")
 if not logger.handlers:
@@ -65,7 +66,7 @@ def check_http_engine(name: str, url: str, spec: dict) -> dict:
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         })
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT) as resp:
+        with open_url(req, timeout=PROBE_TIMEOUT) as resp:
             content = resp.read().decode("utf-8", errors="replace")
             result["latency_ms"] = round((time.time() - t0) * 1000, 1)
             if _detect_anti_bot(content):

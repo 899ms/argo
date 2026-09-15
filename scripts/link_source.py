@@ -45,11 +45,11 @@ def _load_local_targets() -> list[Path]:
     if not LOCAL_INSTALLS.exists():
         return []
     try:
-        import yaml
+        from yaml_load import load as _yaml_load
     except ImportError:
         print("[warn] 需要 PyYAML 才能读 installs.local.yaml", file=sys.stderr)
         return []
-    data = yaml.safe_load(LOCAL_INSTALLS.read_text(encoding="utf-8")) or {}
+    data = _yaml_load(LOCAL_INSTALLS) or {}
     raw = data.get("link_targets") or data.get("targets") or []
     if not isinstance(raw, list):
         return []

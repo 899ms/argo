@@ -23,6 +23,7 @@ import urllib.parse as up
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 _INIT_URL = "https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc"
 _QUERY_URL = "https://kyfw.12306.cn/otn/leftTicket/queryG"
@@ -128,7 +129,7 @@ def _TYPE_WORD_RE():
 
 def _fetch(url: str, headers: dict | None = None, timeout: float = 15):
     req = urllib.request.Request(url, headers={**_HEADERS, **(headers or {})})
-    return urllib.request.urlopen(req, timeout=timeout)
+    return open_url(req, timeout=timeout)
 
 
 def _get_cookie(timeout: float = 15) -> str:

@@ -104,6 +104,37 @@ def resolve_proxy(url: str, override: str | None = None,
     return None
 
 
+def open_url(req: Any, timeout: float = 10.0):
+    """代理感知的 `urllib.request.urlopen` 替身——urllib 类出口的唯一入口。
+
+    为什么需要它：`urlopen` 原生只认标准 `HTTP(S)_PROXY` 环境变量，**不认**
+    argo 在 `config.yaml` 的 `network.proxy` 里配置的 url/rules。凡走 urllib
+    的抓取都应经本函数，否则在「必须经代理才能出网」的环境里会一直连不上、
+    把预算耗光后返回空（issue #13 的形态：抓 GitHub 挂到 deadline_exhausted）。
+
+    issue #13 修复时只覆盖了 `http_open`（引擎侧），其余脚本里的 urlopen
+    仍在裸奔；本函数把这条通道收成单一真源，供所有 urllib 出口复用。
+
+    失败语义与 `urlopen` 完全一致：原样抛出，调用方既有的 `except` 分支
+    （含 `urllib.error.HTTPError` / `URLError`）不受影响。
+    """
+    if isinstance(req, str):
+        req = urllib.request.Request(req)
+    url = getattr(req, "full_url", "") or ""
+    try:
+        # include_standard_env=False：urlopen 原生认标准环境变量，这里只补
+        # argo 级增量配置，避免重复接管改变既有 mock/失败语义。
+        px = resolve_proxy(url, include_standard_env=False)
+    except Exception:
+        px = None
+    if not px:
+        return urllib.request.urlopen(req, timeout=timeout)
+    scheme = urllib.parse.urlparse(url).scheme or "https"
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({scheme: px}))
+    return opener.open(req, timeout=timeout)
+
+
 def open_connection(parsed: urllib.parse.ParseResult, timeout: float,
                     proxy_url: str | None) -> tuple[http.client.HTTPConnection, bool]:
     """按是否走代理构造 http.client 连接。返回 (conn, via_proxy)。

@@ -99,6 +99,72 @@ class TestNoDirectUrlopenInBuilders:
             assert imported, f"{name} 用了 http_open 但没从 engines_base 导入"
 
 
+# 出口调度的唯一实现：只有它可以直接调 urlopen（open_url 的本体）
+_EGRESS_SOURCE = {"net_proxy.py"}
+
+
+class TestNoDirectUrlopenRepoWide:
+    """全仓门禁：任何脚本不得绕开代理感知的出口（issue #13 同类收口，2026-09-15）。
+
+    issue #13 的修复只覆盖了 `http_open` 所在的引擎路径，于是 fetch_v3（正是
+    该 issue 报的文件）、job、health_check、pdf_extract、readability_extract、
+    train、wx、search 里的 13 处 `urlopen` 继续裸奔——在「必须经代理才能出网」
+    的环境里那些出口一律连不上。上面那条 builder 门禁的作用域写死在
+    BUILDER_FILES 上，所以看不见它们。
+
+    本门禁把作用域放宽到全部 scripts/*.py：唯一允许直调 urlopen 的是
+    net_proxy.py 自己（open_url 的本体）。新增出口请走 net_proxy.open_url
+    或 engines_base.http_open。
+    """
+
+    def test_no_module_bypasses_egress_dispatch(self):
+        offenders = {}
+        assert (SCRIPTS_DIR / "net_proxy.py").is_file(), "net_proxy.py 不见了，门禁前提失效"
+        for path in sorted(SCRIPTS_DIR.glob("*.py")):
+            if path.name in _EGRESS_SOURCE:
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError):
+                continue
+            hits = [
+                node.lineno for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "urlopen"
+            ]
+            if hits:
+                offenders[path.name] = hits
+        assert not offenders, (
+            "这些文件绕开了出口调度（不认 config.yaml 的 network.proxy，"
+            "在必须走代理的环境里会连不上）："
+            f"{offenders}。请改用 net_proxy.open_url(req, timeout=...)。"
+        )
+
+    def test_gate_has_teeth(self):
+        """变异验证：往一个原本干净的脚本里塞一处 urlopen，门禁必须报红。"""
+        target = SCRIPTS_DIR / "wx.py"
+        src = target.read_text(encoding="utf-8")
+        patched = src.replace(
+            "from net_proxy import open_url",
+            "from net_proxy import open_url as _ou") + (
+            "\n\ndef _mutant_egress(req):\n"
+            "    import urllib.request\n"
+            "    return urllib.request.urlopen(req, timeout=1)\n")
+        assert patched != src, "变异源未生效，测试本身失效"
+        target.write_text(patched, encoding="utf-8")
+        try:
+            tree = ast.parse(target.read_text(encoding="utf-8"))
+            found = [
+                n.lineno for n in ast.walk(tree)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "urlopen"
+            ]
+            assert found, "变异后门禁未捕获——门禁无牙"
+        finally:
+            target.write_text(src, encoding="utf-8")
+
+
 # ── 2. http_open 是等价替换：成功路径字节保真 ───────────────────────────────
 
 class TestHttpOpenSuccessPath:

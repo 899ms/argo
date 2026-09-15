@@ -41,9 +41,12 @@ def _config_db_path() -> str | None:
     此处必须 fail-open，否则路径派生会连带崩溃。
 
     走 peek_cache_db_path() 轻量读取：get_cache_config() 会触发 load_config()
-    合并全部外置引擎 spec（约 1.7s），而 import cache 时就会调到本函数——
-    为一个标量付出冷启动大头不值得（2026-09-15 实测 import search 1.8s 中
-    1.7s 在这条链上）。
+    合并全部外置引擎 spec，而 import cache 时就会调到本函数——为一个标量付
+    整轮合并不值得。
+
+    （勘误 2026-09-15：此处的「约 1.7s」无法复现。实测 load_config() 为
+    纯 Python loader 107 ms / C 版 15 ms；真实问题是 import 链上这条派生被
+    连调 4 次，且每次都用慢的 loader 解析 123 KB 配置。）
     """
     try:
         from config import peek_cache_db_path

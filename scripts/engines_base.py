@@ -496,10 +496,13 @@ def _http_get_raw(url: str, headers: dict, timeout: float,
             note_failure(engine, "network", "exception",
                          f"{type(e).__name__}: {e}")
             return None
-    # 回退 urllib（原行为）
+    # 回退 urllib（原行为）。出口仍须经 net_proxy——否则设
+    # ARGO_ENGINE_HTTP_CLIENT=0 就顺带关掉了代理支持，在必须走代理的环境里
+    # 这条兜底路径会一直连不上（issue #13 的形态）。
     try:
+        from net_proxy import open_url as _proxy_open
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _proxy_open(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         body = ""
@@ -557,23 +560,13 @@ def http_open(req: Any, timeout: float = 10.0, engine: str = ""):
     """
     if isinstance(req, str):
         req = urllib.request.Request(req)
-    # 出口调度（issue #13）：argo 级配置（rules/ARGO_PROXY/config url）显式建
-    # opener；无 argo 级配置时仍走 urlopen——标准 HTTPS_PROXY/NO_PROXY 由
-    # urllib 原生支持，行为与旧版完全一致
+    # 出口调度（issue #13）：统一走 net_proxy.open_url——代理解析（argo 级
+    # rules / ARGO_PROXY / config url + 标准环境变量）的唯一真源。此前这里
+    # 自带一份 opener 拼装，与 fetch/job 等处的 urlopen 各写一份，于是 issue
+    # #13 只修了本函数覆盖的引擎路径，其余出口仍在裸奔。
+    from net_proxy import open_url
     try:
-        from net_proxy import resolve_proxy
-        _px = resolve_proxy(getattr(req, "full_url", ""),
-                            include_standard_env=False)
-    except Exception:
-        _px = None
-    try:
-        if _px:
-            _scheme = urllib.parse.urlparse(getattr(req, "full_url", "")).scheme or "https"
-            _opener = urllib.request.build_opener(
-                urllib.request.ProxyHandler({_scheme: _px}))
-            resp = _opener.open(req, timeout=timeout)
-        else:
-            resp = urllib.request.urlopen(req, timeout=timeout)
+        resp = open_url(req, timeout=timeout)
     except urllib.error.HTTPError as e:
         body_bytes = b""
         try:
@@ -728,10 +721,10 @@ def _load_parse_maps() -> dict:
     if not maps_path.exists():
         return {}
     try:
-        import yaml
-        # Windows 下 locale 默认编码（GBK）会读崩 UTF-8 的 YAML，必须显式声明
-        with open(maps_path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        from yaml_load import load as _yaml_load
+        # UTF-8 读取由 yaml_load 内部固定（Windows GBK locale 会读崩 UTF-8 的
+        # YAML，与原实现显式 encoding="utf-8" 等价）
+        return _yaml_load(maps_path) or {}
     except Exception:
         return {}
 
@@ -998,8 +991,8 @@ def _parse_yaml_output(text: str, engine_name: str, n: int = 10) -> list[dict[st
     字段别名：snippet|description；保留 published_at 时间维度。
     """
     try:
-        import yaml
-        data = yaml.safe_load(text)
+        from yaml_load import loads as _yaml_loads
+        data = _yaml_loads(text)
     except Exception:
         return []
     if isinstance(data, dict):

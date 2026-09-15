@@ -18,33 +18,94 @@ ARGO_HOME = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 SCRIPTS = os.path.join(ARGO_HOME, "scripts")
 
 
+# 解释器探测结果缓存。探测必须在子进程里真 import yaml+requests 才敢用，
+# 实测一次约 80–170 ms（其中 requests 一项就占 ~80 ms），而这是**每次** argo
+# 调用都要付的固定成本。缓存命中时只做一次「版本 + 依赖存在性」的廉价校验
+# （find_spec 不 import，约 15 ms），用它挡住解释器被删/降级/换版本的情况。
+_PY_CACHE = os.path.join(
+    os.environ.get("ARGO_STATE_DIR", "").strip()
+    or os.path.expanduser("~/.cache/unified-search"),
+    ".argo_python",
+)
+
+# 廉价校验：版本 ≥ 3.10（脚本用了 `X | None` 语法）且 yaml/requests 可被定位。
+# 用 find_spec 而非 import——存在性足以挡住缓存失效，而 import requests 正是
+# 探测成本的大头。
+_PY_CHEAP_CHECK = (
+    "import sys, importlib.util as u; sys.exit(0 if sys.version_info >= (3, 10) "
+    "and u.find_spec('yaml') is not None and u.find_spec('requests') is not None else 1)"
+)
+
+
+def _probe_python(p: str, strict: bool) -> bool:
+    """strict=True 真 import 依赖（首次探测）；False 只做廉价存在性校验。"""
+    code = "import yaml, requests" if strict else _PY_CHEAP_CHECK
+    try:
+        r = subprocess.run([p, "-c", code], capture_output=True, timeout=10)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _cached_python() -> str:
+    """读缓存的解释器绝对路径；不可用/校验不过返回空串。"""
+    try:
+        with open(_PY_CACHE, "r", encoding="utf-8") as f:
+            p = f.read().strip()
+    except OSError:
+        return ""
+    if p and os.path.isabs(p) and os.access(p, os.X_OK) and _probe_python(p, False):
+        return p
+    return ""
+
+
+def _remember_python(p: str) -> None:
+    """原子写入缓存；失败静默（只读环境下退回每次探测的老行为）。"""
+    try:
+        d = os.path.dirname(_PY_CACHE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        tmp = "%s.tmp.%d" % (_PY_CACHE, os.getpid())
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(p)
+        os.replace(tmp, _PY_CACHE)
+    except OSError:
+        pass
+
+
 def _pick_python() -> str:
     """选择可用解释器：ARGO_PYTHON 优先，其次高版本 python3.x，兜底当前解释器。
 
     背景：macOS 默认 /usr/bin/python3 是 3.9，而 argo 脚本用了 3.10+ 语法
     （如 `X | None` 联合类型），3.9 会报 TypeError。逐个探测版本并验证
     yaml/requests 依赖后选第一个可用的。
+
+    探测结果落盘缓存（见 _PY_CACHE）：命中时不再起子进程 import 依赖。显式
+    指定 ARGO_PYTHON 时不查也不写缓存——用户的覆盖是权威，不该被缓存遮蔽，
+    也不该把它固化下来。
     """
-    cands = []
     env_py = os.environ.get("ARGO_PYTHON", "").strip()
     if env_py:
-        cands.append(env_py)
-    cands += ["python3.14", "python3.13", "python3.12",
-              "python3.11", "python3.10", sys.executable]
+        p = shutil.which(env_py) if not os.path.isabs(env_py) else env_py
+        if p and _probe_python(p, True):
+            return p
+    else:
+        cached = _cached_python()
+        if cached:
+            return cached
+
+    cands = ["python3.14", "python3.13", "python3.12",
+             "python3.11", "python3.10", sys.executable]
     for cand in cands:
         if not cand:
             continue
         p = shutil.which(cand) if not os.path.isabs(cand) else cand
         if not p:
             continue
-        try:
-            r = subprocess.run(
-                [p, "-c", "import yaml, requests"], capture_output=True,
-                timeout=10)
-            if r.returncode == 0:
-                return p
-        except Exception:
-            pass
+        if _probe_python(p, True):
+            if not env_py:
+                _remember_python(p)
+            return p
     return sys.executable
 
 

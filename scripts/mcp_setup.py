@@ -60,7 +60,8 @@ def load_clients() -> list[dict[str, Any]]:
         raise FileNotFoundError(f"客户端真源不存在: {path}")
     if yaml is None:
         raise RuntimeError("需要 pyyaml（Argo 已有依赖）")
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    from yaml_load import load as _yaml_load
+    data = _yaml_load(path) or {}
     clients = data.get("clients") or []
     if not isinstance(clients, list) or not clients:
         raise ValueError(f"clients.yaml 缺少 clients 列表: {path}")

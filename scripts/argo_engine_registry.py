@@ -50,9 +50,8 @@ def _load_yaml(path: Path) -> dict:
     ):
         return _yaml_cache
     try:
-        import yaml
-        with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        from yaml_load import load as _yaml_parse
+        data = _yaml_parse(path) or {}
     except Exception:
         data = {}
     if not isinstance(data, dict):

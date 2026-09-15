@@ -48,6 +48,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 from typing import Optional
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 # ── 平台白名单 ──────────────────────────────────────────────────────────
 # 核心平台（逐平台 site: 查询用，带标签）
@@ -317,7 +318,7 @@ def _post(url: str, body: dict, headers: Optional[dict] = None,
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json",
                                           **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with open_url(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -325,7 +326,7 @@ def _get(url: str, timeout: int = 20) -> dict:
     req = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with open_url(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -653,7 +654,7 @@ def _search_simplify(q: str, n: int) -> list:
     req = urllib.request.Request(
         "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md",
         headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with open_url(req, timeout=30) as r:
         chunks, total = [], 0
         while total < 4_000_000:  # 分块读，防服务器断流（IncompleteRead）
             try:

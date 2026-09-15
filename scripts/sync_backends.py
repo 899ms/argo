@@ -63,9 +63,8 @@ _COST_TIER_TO_REGISTRY_COST = {"free": "free", "low": "api", "api": "api", "paid
 
 
 def _load_yaml(path: Path) -> dict:
-    import yaml
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    from yaml_load import load as _yaml_parse
+    data = _yaml_parse(path)
     return data if isinstance(data, dict) else {}
 
 

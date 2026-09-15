@@ -12,6 +12,7 @@ import urllib.request
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 
 class ContentExtractor(HTMLParser):
@@ -68,7 +69,7 @@ def fetch_page(url: str, max_chars: int = 3000, timeout: int = 8,
             "User-Agent": "unified-search/2.5 (+local-research)",
             "Accept": "text/html,application/xhtml+xml,application/xml",
         })
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with open_url(req, timeout=timeout) as resp:
             content_type = resp.headers.get("Content-Type", "")
             if "pdf" in content_type:
                 return {"url": url, "content": "", "html": "", "length": 0, "success": False, "error": "PDF not supported"}

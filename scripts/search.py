@@ -744,6 +744,7 @@ def rerank_results(query: str, results: list[dict[str, Any]],
         documents.append(doc_text or "empty")
 
     import urllib.request
+    from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
     payload = json.dumps({
         "model": "gte-rerank", "query": query,
         "documents": documents[:50],
@@ -756,7 +757,7 @@ def rerank_results(query: str, results: list[dict[str, Any]],
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with open_url(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             rerank_results_list = data.get("data", {}).get("results", [])
             if not rerank_results_list:

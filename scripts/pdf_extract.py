@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import re
 from typing import Any
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 # CID 损坏检测
 _CID_RE = re.compile(r"\(cid:\d+\)")
@@ -252,7 +253,7 @@ def extract_pdf(url_or_path: str, pages: str | None = None, password: str | None
     # 读取 PDF 字节
     if url_or_path.startswith(("http://", "https://")):
         import urllib.request
-        with urllib.request.urlopen(url_or_path, timeout=30) as resp:
+        with open_url(url_or_path, timeout=30) as resp:
             body = resp.read()
     else:
         with open(url_or_path, "rb") as f:

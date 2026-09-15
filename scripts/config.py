@@ -75,8 +75,14 @@ def _require_yaml():
 
 
 def _load_yaml(text: str) -> dict[str, Any]:
-    yaml = _require_yaml()
-    parsed = yaml.safe_load(text)
+    """解析 YAML —— 统一走 yaml_load（优先 libyaml C 版 loader）。
+
+    此前直接调 `yaml.safe_load`，走的是纯 Python 扫描器：解析 123 KB 的
+    config.yaml 实测 79 ms，C 版同内容 10 ms。冷启动链上同一份配置会被解析
+    多次，差距被成倍放大。详见 yaml_load.py。
+    """
+    from yaml_load import loads
+    parsed = loads(text)
     return parsed if isinstance(parsed, dict) else {}
 
 
@@ -170,6 +176,7 @@ def _load_external_engine_specs() -> dict[str, dict[str, Any]]:
         yaml = _require_yaml()
     except ImportError:
         return result
+    from yaml_load import loads as _yaml_loads
 
     def _load_dir(directory: Path) -> None:
         if not directory.is_dir():
@@ -178,7 +185,7 @@ def _load_external_engine_specs() -> dict[str, dict[str, Any]]:
             if path.name.startswith("_"):
                 continue
             try:
-                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                data = _yaml_loads(path.read_text(encoding="utf-8")) or {}
             except Exception:
                 continue
             if not isinstance(data, dict):
@@ -338,32 +345,68 @@ def get_domains(config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     return cfg.get("domains", [])
 
 
+# peek 结果记忆化：key = config.yaml 的 (mtime_ns, size)。
+# import 期的状态目录派发会连调 4 次（quota / adaptive / argo_engine_registry /
+# cache 各自的模块级常量），此前每次重解析一遍 123 KB 配置——实测 4×~79 ms。
+# 配置被改写（mtime 或 size 变）即失效，语义与逐次读盘一致。
+_peek_db_path_cache: tuple[tuple[int, int], str | None] | None = None
+
+
+def _peek_cache_db_path_read() -> tuple[bool, str | None]:
+    """真正解析一次 → (解析链可用, db_path)。不可用时调用方不写记忆。"""
+    try:
+        text = CONFIG_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return False, None
+    try:
+        parsed = _load_yaml(text)
+    except Exception:
+        # 含 yaml.YAMLError（ParserError 等）——它不是 ValueError 的子类，
+        # 此前只 catch (ImportError, ValueError) 会让「配置损坏」直接抛出，
+        # 与本文档声明的 fail-open 契约不符（2026-09-15 实测确认）。
+        return False, None
+    if not isinstance(parsed, dict):
+        return True, None
+    cache_cfg = parsed.get("cache")
+    if not isinstance(cache_cfg, dict):
+        return True, None
+    db_path = cache_cfg.get("db_path")
+    return True, (str(db_path) if db_path else None)
+
+
 def peek_cache_db_path() -> str | None:
     """轻量读取 config.yaml 的 cache.db_path，**不合并外置引擎 spec**。
 
     专用场景：import 期的路径派生（argo_paths._config_db_path → cache.py 的
-    DEFAULT_DB_PATH）。load_config() 会合并 engines/*.yaml 的全部外置声明
-    （实测约 1.7s，是 CLI 冷启动大头），而这里只需要一个标量。
+    DEFAULT_DB_PATH）。load_config() 会合并 engines/*.yaml 的全部外置声明，
+    而这里只需要一个标量——为它付整轮合并不值得。
+
+    （勘误 2026-09-15：本文档与 65e6d2e 提交信息曾记「load_config 实测约
+    1.7s」，该数字无法复现。同一台机器实测 load_config() 为纯 Python loader
+    107 ms / C 版 15 ms（含 63 个 yaml、220 个引擎），因此当时的真实成本是
+    「一次合并约 0.1 s，而 import 链上被连调 4 次」而非单次 1.7 s。数字已按
+    可复现口径改写。）
     语义与 get_cache_config() 的 db_path 字段保持一致：用户未配置返回 None
     （由调用方回退 state_path）；~ 展开由调用方做（与 load_config 链路相同，
     _resolve_relative_paths 不触碰 db_path，故此处无需复制该步骤）。
     PyYAML 缺失 / 配置损坏时 fail-open 返回 None，与 _config_db_path 契约一致。
+
+    结果按 config.yaml 的 (mtime_ns, size) 记忆化：同一进程内多次调用只解析
+    一次。解析链不可用时（PyYAML 缺失 / 配置损坏）不写记忆，下次调用仍会重试，
+    避免把一次瞬时故障固化成本进程的永久 None。
     """
+    global _peek_db_path_cache
     try:
-        text = CONFIG_PATH.read_text(encoding="utf-8")
+        st = CONFIG_PATH.stat()
     except OSError:
         return None
-    try:
-        parsed = _load_yaml(text)
-    except (ImportError, ValueError):
-        return None
-    if not parsed:
-        return None
-    cache_cfg = parsed.get("cache")
-    if not isinstance(cache_cfg, dict):
-        return None
-    db_path = cache_cfg.get("db_path")
-    return str(db_path) if db_path else None
+    key = (st.st_mtime_ns, st.st_size)
+    if _peek_db_path_cache is not None and _peek_db_path_cache[0] == key:
+        return _peek_db_path_cache[1]
+    ok, value = _peek_cache_db_path_read()
+    if ok:
+        _peek_db_path_cache = (key, value)
+    return value
 
 
 def get_cache_config(config: dict[str, Any] | None = None) -> dict[str, Any]:

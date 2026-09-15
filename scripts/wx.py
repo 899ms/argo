@@ -31,6 +31,7 @@ import urllib.parse as up
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 _WTTR_BASE = "https://wttr.in/"
 _OM_BASE = "https://api.open-meteo.com/v1/forecast"
@@ -75,7 +76,7 @@ _WEATHER_EN_ZH = {
 
 def _fetch(url: str, timeout: float = 8) -> str:
     req = urllib.request.Request(url, headers=_HEADERS)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with open_url(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", "replace")
 
 

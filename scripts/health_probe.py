@@ -23,6 +23,7 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any
+from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 
 SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -75,7 +76,7 @@ def _probe_http(url: str, timeout: float = PROBE_TIMEOUT) -> tuple[bool, float, 
     try:
         req = urllib.request.Request(url, method="HEAD")
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with open_url(req, timeout=timeout) as resp:
             elapsed = (time.time() - t0) * 1000
             return True, elapsed, ""
     except Exception as e:
