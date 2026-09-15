@@ -109,6 +109,24 @@ def _pick_python() -> str:
     return sys.executable
 
 
+def _self_capable() -> bool:
+    """当前解释器是否已满足 argo 的运行要求（版本 + 依赖），进程内判定。
+
+    与 _probe_python 的分工：那个要 spawn 一个 python 进程才问出一句话，
+    这个只查 importlib 的 find_spec，零子进程。
+
+    为什么需要它：shebang 是 `#!/usr/bin/env python3`，在装了高版本 python
+    的机器上（如 homebrew 3.14）落到的往往就是 _pick_python 会选中的那个
+    解释器。此时「探测一遍 + execv 重启」纯粹是把同一个解释器再启一次，
+    每次调用白付一次进程启动与一次校验子进程。达标就地执行即可。
+    """
+    if sys.version_info < (3, 10):
+        return False
+    import importlib.util as _util
+    return (_util.find_spec("yaml") is not None
+            and _util.find_spec("requests") is not None)
+
+
 def _engine_count():
     """收录的引擎数（config.yaml + engines/specs/*.yaml 合并口径，单一真源）。
 
@@ -182,7 +200,10 @@ def main():
 
     sub = sys.argv[1]
     rest = sys.argv[2:]
-    py = _pick_python()
+    # 达标就地执行；否则按 _pick_python 选解释器并 execv 重启。
+    # 判定前置于探测：达标时连 _pick_python 的子进程校验都省掉。
+    inplace = _self_capable()
+    py = sys.executable if inplace else _pick_python()
 
     # env 文件 → os.environ 同步（只填缺失，不覆盖已有值）：子进程按标准
     # os.environ 直读密钥（读取方零改动，含其他 AGT 既有集成），未经
@@ -266,8 +287,17 @@ def main():
     if "--explain" in rest and "--json" in defaults:
         defaults.remove("--json")
 
-    cmd = [py, path] + defaults + rest
-    os.execv(py, cmd)
+    args = defaults + rest
+    if inplace:
+        # 原地执行：省一次解释器启动，并复用本进程已 import 的模块。
+        # runpy 会正确设置 __file__ / __name__，目标脚本的
+        # `if __name__ == "__main__"` 分支照常触发，sys.exit 照常传播。
+        sys.argv = [path] + args
+        sys.path.insert(0, SCRIPTS)
+        import runpy
+        runpy.run_path(path, run_name="__main__")
+        return
+    os.execv(py, [py, path] + args)
 
 if __name__ == "__main__":
     main()
