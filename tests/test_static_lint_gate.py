@@ -40,6 +40,13 @@
 一刀切会打断导入链。已抽查确认 F841 多为无害冗余（算了未用），非逻辑错误，
 这两类留待人工复核后另行决定。
 
+## 扫描范围
+
+`scripts/` + `tests/` + `bin/argo`。把 `tests/` 纳入是有实际收益的：扩展范围
+当天就在 `test_tinyfish_fallback.py` 抓到一处 F821——`_isolate_envfile` 用了
+`Path` 却没导入，因为写在 `lambda` 体内而一直没被求值（24 项测试全绿），一旦
+有代码路径真的调用 `_envfile_path()` 就会当场 NameError。
+
 ## 双引擎设计
 
 - **ruff**（环境有 uv / ruff 时）：覆盖上表全部规则，判定最准。
@@ -68,8 +75,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
+TESTS = ROOT / "tests"
 BIN = ROOT / "bin" / "argo"
-TARGETS = [str(SCRIPTS), str(BIN)]
+TARGETS = [str(SCRIPTS), str(TESTS), str(BIN)]
 
 # 只列「会跑错 / 会静默失效」的规则。基线：本文件落地时全仓零违规。
 RULES = "E9,F821,F822,F823,F811,F601,F631,F632,F701,F702,F704,F706,F707"
@@ -163,7 +171,7 @@ def _duplicate_dict_keys(paths: list[Path]) -> list[str]:
 
 
 def _iter_target_files() -> list[Path]:
-    files = sorted(SCRIPTS.glob("*.py"))
+    files = sorted(SCRIPTS.glob("*.py")) + sorted(TESTS.glob("*.py"))
     if BIN.is_file():
         files.append(BIN)
     return files
