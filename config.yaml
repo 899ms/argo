@@ -20,6 +20,18 @@ domains:
   patterns:
   - '(?i)(REDSkill|红[书薯]技能|小红书.*(skill|技能)|技能(排行|榜单|排行榜)|skill.*(rank|排行|榜))'
   primary: redskill
+- desc: 跨生态 Agent 技能搜索（SkillsMP/ClawHub/REDSkill）
+  engines_combo:
+  - skillsmp
+  - clawhub
+  - redskill
+  - anysearch
+  fallback: anysearch
+  name: skill_search
+  parallel: true
+  patterns:
+  - '(?i)(agent\s*skills?|技能(搜索|检索|市场|目录|库)|找(个|一?个)?技能|装(个|一?个)?技能|claude\s*skill|codex\s*skill|dsh\s*skill|skills?\.sh|skillsmp|clawhub)'
+  primary: skillsmp
 - desc: 微信公众号文章搜索
   engines_combo:
   - wechat_sogou

@@ -2334,5 +2334,17 @@
     ],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "clawhub": {
+    "label": "ClawHub 技能目录",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "skillsmp": {
+    "label": "SkillsMP 技能目录",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

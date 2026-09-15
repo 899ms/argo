@@ -25,7 +25,7 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
-  <img alt="engines" src="https://img.shields.io/badge/engines-220-orange">
+  <img alt="engines" src="https://img.shields.io/badge/engines-222-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
 
@@ -62,7 +62,7 @@ Agent 干活的量级变了，检索的玩法跟着变了四件事，每一件 A
 4. **免费开放生态够用了。** 政府、学术、标准、安全机构的开放 API + 免 key 引擎，已经能覆盖大多数领域（185 个免配置源）；稀缺免费额度（firecrawl 1000 credits/月、stackexchange 300 次/天）做了「日常补位、关键顶上」的分层，订阅墙不是唯一解。
 5. **检索质量从「感觉」到「度量」。** 排序有金标（MRR/nDCG 地板）、融合有增益消融门禁、路由有负向控制矩阵——「这版比上版好吗」从此是数字问题，不是玄学。
 
-> v2.8.8 把以上全部落地：220 个源、89 个领域、185 个免配置开箱。逐项细节见 [docs/为什么选择argo.md](docs/为什么选择argo.md) 与 [发布说明](docs/RELEASE_NOTES_v2.8.8.md)。
+> v2.8.8 把以上全部落地：222 个源、90 个领域、187 个免配置开箱。逐项细节见 [docs/为什么选择argo.md](docs/为什么选择argo.md) 与 [发布说明](docs/RELEASE_NOTES_v2.8.8.md)。
 
 ---
 
@@ -295,7 +295,7 @@ python3 scripts/search.py --list-engines
 
 **1. 通用搜索 + 垂直搜索，双管齐下**
 
-日常问题走通用网页搜索；一问到行情、影视、体育、宏观这类「有标准答案」的问题，自动切到垂直源直接给答案，而不是扔给你一堆链接。目前 220 个源（185 个免密钥开箱可用）、88 个业务域，金融 / 宏观 / 影视 / 体育 / 地理 / 组织 / 媒体 / 化学 / 学术 / 代码等都有专门的路。
+日常问题走通用网页搜索；一问到行情、影视、体育、宏观这类「有标准答案」的问题，自动切到垂直源直接给答案，而不是扔给你一堆链接。目前 222 个源（187 个免密钥开箱可用）、90 个业务域，金融 / 宏观 / 影视 / 体育 / 地理 / 组织 / 媒体 / 化学 / 学术 / 代码等都有专门的路。
 
 **2. 缓存：不重复花冤枉钱**
 
@@ -387,7 +387,7 @@ python3 scripts/search.py --list-engines
 
 ## 引擎与路由
 
-当前配置 **218** 个源（**184** 个免密钥开箱可用）、**89** 个业务域（以 `config.yaml` 与 `--list-engines` 为准）。
+当前配置 **222** 个源（**187** 个免密钥开箱可用）、**90** 个业务域（以 `config.yaml` 与 `--list-engines` 为准）。
 
 ### 直连与垂类（节选）
 

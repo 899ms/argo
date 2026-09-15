@@ -1,0 +1,44 @@
+# SkillsMP — Agent Skills 聚合目录（skill 域跨生态技能索引，GET JSON，keyless）
+# 技能域的广覆盖目录源：独立索引 200 万+ 开源技能，支持语言/职业过滤，
+# 与 redskill（小红书生态 47650 技能本地缓存）互补不重复（不同上游、不同生态）。
+# 免费 REST API 无需密钥（bearerAuth 仅用于提额）；sortBy=stars 按仓库热度排序，
+# stars 口径是源仓库星数非安装量，与 skills.sh 安装遥测、ClawHub 下载量互不可比。
+# 可选过滤参数（按需加进 extra_params）：language（ISO 码，如 zh）、category、occupation。
+# 验证:
+#   python3 scripts/engine_validate.py --engine skillsmp --stage all --admit --write-doc
+
+engine_id: skillsmp
+type: http
+enabled: true
+cost_tier: free
+label: SkillsMP 技能目录
+family: misc_vertical
+priority: 50
+qps: 2
+period: second
+limit: null
+cost_per_call: 0.0
+cost_unit: free
+method: GET
+url: https://skillsmp.com/api/v1/skills/search
+timeout: 15
+canary_query: "git commit"
+coverage:
+- skill
+- developer
+- tech
+desc: "SkillsMP Agent 技能聚合目录（200万+ 开源技能独立索引，免费 keyless REST API，stars 排序）"
+format: json
+query_param: q
+extra_params:
+  limit: "{n}"
+  sortBy: stars
+output_map:
+  items: data.skills
+  item_title: name
+  item_url: skillUrl
+  item_summary: description
+quality_queries:
+  - query: "git commit"
+  - query: "code review"
+  - query: "pdf"

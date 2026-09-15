@@ -206,6 +206,19 @@ engines:
   recommended: false
   explicit_only: false
   desc: 英国电网碳强度与发电结构（国家电网官方，免认证）
+- name: clawhub
+  tier: T1
+  type: http
+  coverage:
+  - skill
+  - developer
+  - tech
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: ClawHub 技能生态聚合搜索（OpenClaw 原生 + skills.sh 条目，免认证，下载量口径）
 - name: cleveland
   tier: T1
   type: cleveland
@@ -2083,6 +2096,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: 新浪实时行情快照（现价/涨跌/成交量，免认证）
+- name: skillsmp
+  tier: T1
+  type: http
+  coverage:
+  - skill
+  - developer
+  - tech
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: SkillsMP Agent 技能聚合目录（200万+ 开源技能独立索引，免费 keyless REST API，stars 排序）
 - name: soilgrids
   tier: T1
   type: soilgrids

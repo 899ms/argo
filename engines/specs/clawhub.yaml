@@ -1,0 +1,43 @@
+# ClawHub — OpenClaw 技能生态聚合搜索（skill 域，GET JSON，keyless）
+# 聚合器：索引含 OpenClaw 原生技能 + skills.sh（Vercel 生态）条目，
+# 与 redskill（小红书生态）/ skillsmp（独立索引）互补不重复（不同上游）。
+# downloads 是其生态下载量口径，与 skills.sh 安装遥测、SkillsMP 仓库星数互不可比。
+# canonicalUrl 为站内相对路径，经 url_template 拼接为完整 URL。
+# 验证:
+#   python3 scripts/engine_validate.py --engine clawhub --stage all --admit --write-doc
+
+engine_id: clawhub
+type: http
+enabled: true
+cost_tier: free
+label: ClawHub 技能目录
+family: misc_vertical
+priority: 50
+qps: 2
+period: second
+limit: null
+cost_per_call: 0.0
+cost_unit: free
+method: GET
+url: https://clawhub.ai/api/search
+timeout: 15
+canary_query: "git commit"
+coverage:
+- skill
+- developer
+- tech
+desc: "ClawHub 技能生态聚合搜索（OpenClaw 原生 + skills.sh 条目，免认证，下载量口径）"
+format: json
+query_param: q
+extra_params:
+  limit: "{n}"
+output_map:
+  items: results
+  item_title: displayName
+  item_url: canonicalUrl
+  item_summary: summary
+  url_template: "https://clawhub.ai{canonicalUrl}"
+quality_queries:
+  - query: "git commit"
+  - query: "code review"
+  - query: "pdf"

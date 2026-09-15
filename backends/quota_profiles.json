@@ -160,6 +160,16 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "clawhub": {
+    "label": "ClawHub 技能目录",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
+  },
   "cleveland": {
     "label": "cleveland",
     "qps": 2,
@@ -1669,6 +1679,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 3
+  },
+  "skillsmp": {
+    "label": "SkillsMP 技能目录",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 50
   },
   "soilgrids": {
     "label": "soilgrids",
