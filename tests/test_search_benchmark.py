@@ -6,7 +6,8 @@
   2. dispatch 在新架构（有界并发 + early-stop + 近重复去重）下仍让全部 N 个
      引擎都产出结果，且串行墙钟明显累加、deep 全量并行显著更快；
   3. 整体结果可被机器读取（JSON round-trip）且字段契约稳定；
-  4. 基准跑完不在临时目录留下缓存文件。
+  4. 基准跑完不在**调用方指定的**临时根目录里留下缓存文件（传 tmp_root，
+     不 glob 系统临时目录——那是全局共享空间，会让断言随机变红）。
 
 全程离线：假引擎顶替了唯一网络出口，不需要 API key。
 """
@@ -15,7 +16,6 @@ from __future__ import annotations
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent / "scripts"
@@ -23,11 +23,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import search_benchmark  # noqa: E402
-
-
-def _benchmark_leftovers() -> list[str]:
-    tmp = Path(tempfile.gettempdir())
-    return [p.name for p in tmp.glob("argo-benchmark-*")]
 
 
 def test_route_benchmark_is_deterministic_shape():
@@ -38,12 +33,18 @@ def test_route_benchmark_is_deterministic_shape():
     assert out["batch_median_ms"] >= 0
 
 
-def test_dispatch_parallel_is_faster_than_serial_and_covers_all_engines():
-    before = set(_benchmark_leftovers())
+def test_dispatch_parallel_is_faster_than_serial_and_covers_all_engines(tmp_path):
+    """残留检查用**本用例自己的**目录，不 glob 系统临时目录。
+
+    此前是 `set(Path(tempfile.gettempdir()).glob("argo-benchmark-*"))` 前后对比。
+    那是全局共享空间：任何并发的创建/清理（另一次 pytest、手工跑基准、别的进程）
+    都会让断言随机变红，而失败时并没有真实残留——实测 3 次里红 1 次、每次查残留
+    都是空的。基准现在接受 tmp_root，把落点交给调用方，断言于是变成确定性的。
+    """
     out = search_benchmark.benchmark_dispatch(
         ["benchmark_a", "benchmark_b", "benchmark_c"], runs=2, engine_delay=0.2,
+        tmp_root=tmp_path,
     )
-    after = set(_benchmark_leftovers())
 
     # 三个引擎都被执行、各产出一条，样本数与 runs 一致。
     assert out["engine_count"] == 3
@@ -59,8 +60,9 @@ def test_dispatch_parallel_is_faster_than_serial_and_covers_all_engines():
     assert out["parallel_median_ms"] < out["serial_median_ms"]
     assert out["parallel_speedup"] > 1.5
 
-    # 跑完不允许在临时目录残留缓存目录/文件。
-    assert after <= before, f"基准留下了临时文件：{sorted(after - before)}"
+    # 跑完不得在自己的临时根目录里留下任何东西。
+    leftovers = [p.name for p in tmp_path.iterdir()]
+    assert leftovers == [], f"基准留下了临时文件：{leftovers}"
 
 
 def test_json_benchmark_schema():

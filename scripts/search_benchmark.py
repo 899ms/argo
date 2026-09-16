@@ -131,6 +131,7 @@ def benchmark_dispatch(
     engine_names: list[str],
     runs: int,
     engine_delay: float,
+    tmp_root: Path | str | None = None,
 ) -> dict[str, Any]:
     """用确定性假引擎比较 execute_search 串行/并行墙钟。
 
@@ -138,6 +139,11 @@ def benchmark_dispatch(
     需要完成时，串行路径接近 N×delay（叠加共同的融合固定开销），deep 全量并行
     路径接近 1×delay（叠加同一份固定开销）。结果以 Argo 自身编排为准，可用于检测
     调度并行度回归。全程不访问网络、不需要 API key、不读写真实缓存。
+
+    ``tmp_root``：缓存文件的落点。传了就在该目录下建临时目录（目录由调用方
+    拥有，跑完即删）；不传则用系统临时目录。测试**必须**传它——否则「有没有
+    残留」只能靠 glob 系统临时目录来判断，而那是全局共享空间，任何并发的
+    创建/清理都会让断言随机变红（实测 3 次里红 1 次，且失败时并无真实残留）。
     """
     import search
     from cache import SearchCache
@@ -174,7 +180,10 @@ def benchmark_dispatch(
 
     # 外层等待预算要明显大于「串行跑完全部引擎」的理论时长，避免基准自己被超时截断。
     outer_timeout = max(5, int(engine_delay * (len(engine_names) + 2)) + 2)
-    tmp_dir = tempfile.mkdtemp(prefix="argo-benchmark-")
+    tmp_dir = tempfile.mkdtemp(
+        prefix="argo-benchmark-",
+        dir=str(tmp_root) if tmp_root is not None else None,
+    )
 
     def run_once(parallel: bool, idx: int) -> float:
         # 唯一查询：隔离进程内熔断/负缓存单例，保证每个样本相互独立。
