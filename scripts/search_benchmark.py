@@ -283,7 +283,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.runs < 1 or args.engine_delay <= 0:
         parser.error("--runs 必须 >= 1，--engine-delay 必须 > 0")
 
-    result = run_benchmark(args.runs, args.engine_delay)
+    # 状态隔离必须早于任何状态模块 import。基准走真实 execute_search 的学习
+    # 记录路径，不隔离就把 benchmark_a/b/c 写进生产 adaptive.db 与 quota.json
+    # （实测生产库里 2113 行为基准残留）。迟一步就没救：route 在**模块级**
+    # `from adaptive import get_learner`，而 adaptive.DB_PATH 是 import 期定下
+    # 的常量，之后再改 ARGO_STATE_DIR 拉不回来（同 argo_paths 的模块级路径告警）。
+    #
+    # 放在 main() 而非模块级：测试只调 benchmark_dispatch/run_benchmark，
+    # 不走本入口，且 conftest 已设 ARGO_STATE_DIR——模块级隔离会在 pytest
+    # 收集期覆盖掉 conftest 的目录，制造跨用例串扰。
+    import argo_paths
+    state_dir = argo_paths.isolate_state_dir("argo-bench")
+    try:
+        result = run_benchmark(args.runs, args.engine_delay)
+    finally:
+        # 隔离目录是本次运行的一次性产物，跑完即删（与本脚本对 tmp_root 的
+        # 「不留残留」约定一致）。
+        shutil.rmtree(state_dir, ignore_errors=True)
+
     if args.json:
         print(dumps(result))
     else:

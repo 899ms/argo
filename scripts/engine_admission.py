@@ -79,24 +79,61 @@ def _now_iso() -> str:
 # 错认成「B 目录下也没有」。
 _admission_read_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
 
+# env 文件回退路径的记忆化：(单调钟读数, 解析值)。
+#
+# 只记忆「env 文件」这一条，不碰 os.environ 直读——后者是字典查找、本就免费，
+# 而且必须逐次生效（本旋钮的测试与 CI 都靠 setenv 控制，记忆化会把 setenv 吞掉，
+# 例如 test_ttl_zero_disables_cache）。贵的是回退路径：engine_env.get_env →
+# _envfile_load → 对候选密钥文件逐个 stat。
+_TTL_MEMO_S = 1.0
+_ttl_envfile_memo: tuple[float, float] | None = None
+
+
+def _parse_ttl(raw: str) -> float:
+    """TTL 字符串 → 秒。空值或非法值统一回落 1.0（唯一判据，两处共用）。"""
+    try:
+        return float(raw or 1.0)
+    except ValueError:
+        return 1.0
+
+
+def _envfile_ttl() -> float:
+    """从 env 文件解析 TTL，按 _TTL_MEMO_S 秒记忆化。
+
+    本函数在**每个引擎**的准入判定里都会被调用（实测一次路由决策 215 次），
+    而回退路径每次都要穿透到 engine_env.get_env → _envfile_load → 对候选密钥
+    文件逐个 stat。同一个进程级常量被解 215 遍，实测占准入扫描的三分之一
+    （2.79ms → 1.49ms，1.87×）。窗口取 1 秒与「本模块的读缓存默认 TTL」同量级：
+    改 env 文件最多 1 秒后生效，热更语义仍成立。
+    """
+    global _ttl_envfile_memo
+    now = time.monotonic()
+    hit = _ttl_envfile_memo
+    if hit is not None and now - hit[0] < _TTL_MEMO_S:
+        return hit[1]
+    try:
+        from engine_env import get_env
+        raw = get_env("ARGO_ADMISSION_TTL_S")
+    except Exception:
+        raw = ""
+    value = _parse_ttl(raw)
+    _ttl_envfile_memo = (now, value)
+    return value
+
 
 def _admission_ttl() -> float:
     """读缓存的 TTL（秒）；未设置或非法值回落 1.0。
 
     走 engine_env.get_env 而不是 os.environ 直读：开关写进 ~/.config/argo/env
     也要生效——与 config._stamp_ttl 同一计算方式（同一个旋钮不该有两套可读位置）。
+
+    os.environ 命中时逐次直读（零成本、setenv 立即生效）；只有回退到 env 文件的
+    那条路径走记忆化，见 _envfile_ttl。
     """
     raw = os.environ.get("ARGO_ADMISSION_TTL_S", "")
-    if not raw.strip():
-        try:
-            from engine_env import get_env
-            raw = get_env("ARGO_ADMISSION_TTL_S")
-        except Exception:
-            raw = ""
-    try:
-        return float(raw or 1.0)
-    except ValueError:
-        return 1.0
+    if raw.strip():
+        return _parse_ttl(raw)
+    return _envfile_ttl()
 
 
 def _read_admission_file(path: Path) -> dict[str, Any] | None:

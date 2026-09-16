@@ -1,6 +1,9 @@
-import { test } from 'node:test'
+import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeTracks, stageTracks, evaluateGates, normalizeSource, mapArgoToWebResult, buildLocalSources, parseJsonArray, parseJsonObject, extractValues, resolveNativeSpawn, makeNativeTool, buildChildToolFilters, apply } from '../dsh/index.js'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { normalizeTracks, stageTracks, evaluateGates, normalizeSource, mapArgoToWebResult, buildLocalSources, parseJsonArray, parseJsonObject, extractValues, resolveNativeSpawn, makeNativeTool, buildChildToolFilters, apply, nativeViaMcpPool, disposeSharedMcp } from '../dsh/index.js'
 
 test('mapArgoToWebResult maps compact argo payload to web sources', () => {
   const mapped = mapArgoToWebResult({
@@ -418,4 +421,150 @@ test('buildChildToolFilters: explicit list filters blocked names and dedupes', (
     childToolAllow: ['argo_search', 'argo_search', 'mcp__argo__argo_research', 'web_search'],
   }, 'wide_research')
   assert.deepEqual(allow, ['argo_search', 'web_search'])
+})
+
+// ── 连接池（真实 stdio 桩）─────────────────────────────────────────────────
+// 上面注入的 mcpCall 是替身，测不到池本身。这里起一个真进程讲 NDJSON：每次
+// 启动往计数文件追加一行，「开了几条连接」于是成为可断言的观测值——复用、
+// 按需增长、并发是否真并行、dispose 是否收干净，都能被证明而不是被假设。
+
+const STUB_DIR = mkdtempSync(join(tmpdir(), 'argo-dsh-stub-'))
+const STUB_SERVER = join(STUB_DIR, 'stub-mcp.js')
+
+writeFileSync(STUB_SERVER, `
+const fs = require('node:fs')
+if (process.env.ARGO_STUB_COUNTER) fs.appendFileSync(process.env.ARGO_STUB_COUNTER, 'spawn\\n')
+const delayMs = Number(process.env.ARGO_STUB_DELAY_MS || 0)
+const toolError = process.env.ARGO_STUB_TOOL_ERROR === '1'
+let buf = ''
+process.stdin.setEncoding('utf8')
+const write = (obj) => process.stdout.write(JSON.stringify(obj) + '\\n')
+process.stdin.on('data', (chunk) => {
+  buf += chunk
+  let nl
+  while ((nl = buf.indexOf('\\n')) >= 0) {
+    const line = buf.slice(0, nl).trim()
+    buf = buf.slice(nl + 1)
+    if (line === '') continue
+    let msg
+    try { msg = JSON.parse(line) } catch { continue }
+    if (msg.id === undefined) continue
+    if (msg.method === 'initialize') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'stub', version: '0' } } })
+      continue
+    }
+    setTimeout(() => {
+      write({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: toolError
+          ? { content: [{ type: 'text', text: 'stub tool failed' }], isError: true }
+          : { content: [{ type: 'text', text: 'pooled-ok' }] },
+      })
+    }, delayMs)
+  }
+})
+`, 'utf8')
+
+let spawnLog = ''
+let envRestore = {}
+
+function stubEnv(vars = {}) {
+  spawnLog = join(mkdtempSync(join(tmpdir(), 'argo-dsh-count-')), 'spawns.log')
+  envRestore = {}
+  for (const [key, value] of Object.entries({ ARGO_STUB_COUNTER: spawnLog, ...vars })) {
+    envRestore[key] = process.env[key]
+    process.env[key] = value
+  }
+}
+
+/** 桩进程启动次数 === 池开出的连接数。 */
+function spawnCount() {
+  if (!existsSync(spawnLog)) return 0
+  return readFileSync(spawnLog, 'utf8').split('\n').filter(Boolean).length
+}
+
+function stubTool(config = {}) {
+  return makeNativeTool(
+    { searchCommand: process.execPath, searchArgs: [STUB_SERVER], ...config },
+    'argo_search',
+  )
+}
+
+afterEach(() => {
+  disposeSharedMcp()
+  for (const [key, value] of Object.entries(envRestore)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+  envRestore = {}
+})
+
+test('pool: sequential calls reuse one connection (no extra resident process)', async () => {
+  stubEnv()
+  const tool = stubTool({ searchConcurrency: 3 })
+  await tool.execute({ query: 'a' })
+  await tool.execute({ query: 'b' })
+  assert.equal(spawnCount(), 1, '顺序调用只该有一条常驻连接，池化不该带来固定开销')
+})
+
+test('pool: concurrent calls grow the pool without exceeding the cap', async () => {
+  stubEnv({ ARGO_STUB_DELAY_MS: '150' })
+  const tool = stubTool({ searchConcurrency: 3 })
+  await Promise.all([1, 2, 3].map(i => tool.execute({ query: `q${i}` })))
+  const spawned = spawnCount()
+  assert.ok(spawned > 1, `并发调用应补开连接，实际只有 ${spawned} 条`)
+  assert.ok(spawned <= 3, `不得越过 searchConcurrency，实际开了 ${spawned} 条`)
+})
+
+test('pool: concurrent calls run in parallel instead of queueing on one connection', async () => {
+  stubEnv({ ARGO_STUB_DELAY_MS: '300' })
+  const tool = stubTool({ searchConcurrency: 3 })
+  const started = Date.now()
+  await Promise.all([1, 2, 3].map(i => tool.execute({ query: `q${i}` })))
+  const elapsed = Date.now() - started
+  // 单连接串行会累加到 ~900ms；池化后应贴近单次 300ms。阈值放宽到 700ms 抗抖动。
+  assert.ok(elapsed < 700, `3 个 300ms 调用耗时 ${elapsed}ms，说明仍在同一连接上串行`)
+})
+
+test('pool: tool-level error is NOT retried through single-shot spawn', async () => {
+  stubEnv({ ARGO_STUB_TOOL_ERROR: '1' })
+  const spawned = []
+  const tool = makeNativeTool(
+    { searchCommand: process.execPath, searchArgs: [STUB_SERVER] },
+    'argo_search',
+    { mcpCall: nativeViaMcpPool, run: async (spec) => { spawned.push(spec); return 'unreachable' } },
+  )
+  await assert.rejects(() => tool.execute({ query: 'q' }), /stub tool failed/)
+  assert.equal(spawned.length, 0, '工具级错误不得回退单发（那是双倍引擎调用与配额）')
+  assert.equal(spawnCount(), 1, '工具级错误不得新起进程重跑')
+})
+
+test('pool: transport failure still falls back to single-shot spawn', async () => {
+  const spawned = []
+  const tool = makeNativeTool(
+    { searchCommand: process.execPath, searchArgs: [join(STUB_DIR, 'does-not-exist.js')] },
+    'argo_search',
+    {
+      mcpCall: nativeViaMcpPool,
+      run: async (spec) => {
+        spawned.push(spec)
+        return JSON.stringify({ content: [{ type: 'text', text: 'via-spawn' }] })
+      },
+    },
+  )
+  const value = await tool.execute({ query: 'q' })
+  assert.equal(spawned.length, 1, '连接建立失败应回退单发一次，功能不丢')
+  assert.equal(tool.output.render({}, value)[0].text, 'via-spawn')
+})
+
+test('pool: disposeSharedMcp closes every connection; next call rebuilds', async () => {
+  stubEnv()
+  const tool = stubTool({ searchConcurrency: 2 })
+  await Promise.all([tool.execute({ query: 'a' }), tool.execute({ query: 'b' })])
+  const before = spawnCount()
+  assert.ok(before >= 1)
+  disposeSharedMcp()
+  await tool.execute({ query: 'c' })
+  assert.equal(spawnCount(), before + 1, 'dispose 后池应为空，下次调用重新建立连接')
 })

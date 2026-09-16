@@ -43,7 +43,6 @@ try:
 except ImportError:
     _query_similarity = None  # type: ignore
 from route import route_query  # noqa: E402
-from engines import search as engine_search, available_engines  # noqa: E402
 from config import get_execution_config, get_cost_factor, get_engines  # noqa: E402
 from cli_io import dumps  # noqa: E402
 try:
@@ -54,6 +53,31 @@ except ImportError:
 # import 链结束的时点。固定开销 = 导入 + argparse + 收尾；这里把导入那段
 # 单独报出来，因为它的可控性最好（延迟导入 / 拆模块就是冲它去的）。
 _IMPORTS_DONE = time.perf_counter()
+
+
+# ── engines 惰性代理 ──────────────────────────────────────────────────────────
+# engines 是 import 链里最重的一块：它连带 engines_builders 的 7 个模块与
+# urllib.request 的 http/ssl/email 链，实测占 `import search` 的 39%（交错
+# A/B 中位 47.5ms → 29.2ms，即 18.3ms）。而**缓存命中**这一跳对它零依赖——
+# 实测缓存命中时 engine_search 与 available_engines 调用次数都是 0，两者只在
+# 派发、清单与错误路径上用到。改成惰性代理后：日常热路径省下整棵子树，冷路径
+# 在首次派发时照常导入（总量不变，而冷路径本来就被网络耗时主导）。
+#
+# 必须是**模块级函数**而不是 import 内联：网络出口靠属性替换被顶替——
+# search_benchmark 直接 `search.engine_search = fake`，
+# tests/test_budget_observability 用 `patch("search.engine_search")`。属性被换掉
+# 后代理自然让位，测试与基准的既有语义逐位不变。
+
+def engine_search(*args, **kwargs):
+    """惰性包装 engines.search（见上方说明）。"""
+    from engines import search as _engine_search
+    return _engine_search(*args, **kwargs)
+
+
+def available_engines(*args, **kwargs):
+    """惰性包装 engines.available_engines（见上方说明）。"""
+    from engines import available_engines as _available_engines
+    return _available_engines(*args, **kwargs)
 
 
 # ── 时间辅助（时间窗归一化 / published_at 解析 / 后过滤 / 排序）──────────────

@@ -10,13 +10,25 @@ benchmark.py — 性能测试
 """
 from __future__ import annotations
 
+import atexit
 import json
+import shutil
 import sys
 import time
 import os
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
+
+# 状态隔离必须早于 cache / route 的 import：两者在模块级就按当时的
+# ARGO_STATE_DIR 定下路径常量（cache.db / adaptive.db），import 之后再设环境
+# 变量对它们无效。本脚本会真读写缓存与学习库——不隔离就会把 query_0..9 这类
+# 夹具写进生产 cache.db，且缓存命中率是拿生产热缓存量出来的（数字失真）。
+# 无法像 search_benchmark.py 那样放进 main()：本文件的 cache/route 是模块级
+# import，main() 时路径早已钉死。
+import argo_paths
+_STATE_DIR = argo_paths.isolate_state_dir("argo-bench")
+atexit.register(shutil.rmtree, _STATE_DIR, ignore_errors=True)
 
 from tfidf_router import get_router, semantic_route
 from cache import SearchCache

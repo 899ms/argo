@@ -132,6 +132,11 @@ const DEFAULTS = Object.freeze({
   searchTimeoutMs: 30_000,
   /** 常驻 MCP 连接空闲回收时间（ms）；0 表示不自动回收。 */
   searchIdleMs: 60_000,
+  /**
+   * 连接池上限（并发搜索度）。按需增长：顺序调用恒为 1 条连接，只有并发抢占
+   * 才补开，空闲各自回收。每条连接是一个常驻 python 进程，调大换并发、换内存。
+   */
+  searchConcurrency: 3,
   /** 研究报告落盘目录（render 只回摘要+路径，控制上下文占用）。 */
   reportDir: join(homedir(), '.dsh-research'),
 })
@@ -162,6 +167,21 @@ function argoAborted() {
 }
 
 /**
+ * 工具级失败（引擎报错、参数不合法、源不可达）——**不是**连接故障。
+ *
+ * 必须与传输故障区分：makeNativeTool 在常驻连接抛错时回退单发，用于救「进程
+ * 崩溃 / 入口不支持 stdio」。但工具自己的错误经同一条 catch 漏下去，就会把
+ * 同一次注定失败的调用再起一个进程跑一遍——双倍引擎调用与配额，最坏还要
+ * 多等一整个 nativeTimeoutMs。用 code 标记（与本文件 argoAborted 同惯例），
+ * 让回退分支只认真正的传输故障。
+ */
+function argoToolError(message) {
+  const err = new Error(message)
+  err.code = 'ARGO_TOOL_ERROR'
+  return err
+}
+
+/**
  * Map the argo_search compact payload to the web seam's result shape.
  * `payload` is `_compact_search_result` output: top-level meta plus
  * `results[]` with title/url/snippet/source/score.
@@ -180,13 +200,26 @@ export function mapArgoToWebResult(payload, query) {
 }
 
 /**
- * 常驻 argo MCP 连接（模块级单例）：web_search provider 与未来的诊断
- * 端点共用一条 stdio 连接，避免每次搜索 spawn 进程 + 重复预热。
- * MCP server 顺序处理请求（单线程 JSON-RPC），客户端用 promise 链串行。
- * 空闲自动关闭回收；进程意外退出后下次调用自动重建。
+ * 常驻 argo MCP 连接池（**按需增长**，模块级）：web_search provider、原生
+ * 工具与 wide_research 的多个 worker 共用。避免每次搜索 spawn 进程 + 重复预热。
+ *
+ * 为什么不沿用单例：MCP server 顺序处理请求（单线程 JSON-RPC），客户端又用
+ * promise 链串行——一条连接就等于「全系统搜索串行」。多个 worker 并发研究时
+ * 会退化成逐个搜索（实测两条并发搜索 2615ms / 5276ms，第二条恰好等第一条跑完），
+ * wide_research 声明的并行度一分都兑现不了。
+ *
+ * 为什么按需增长而不是固定池：每条连接是一个常驻 python 进程（含预热与配置
+ * 加载）。顺序调用（日常单次搜索）只该有一条；固定开 N 条等于天天白付 N 份
+ * 内存。只有真发生并发抢占时才补开，空闲超时各自回收，池子自然缩回 1 条。
+ *
  * 连接生命周期由创建它的插件实例通过 ctx.effect 持有，插件卸载即关闭。
  */
-let sharedMcp = null
+const mcpPool = []
+
+function dropFromPool(conn) {
+  const index = mcpPool.indexOf(conn)
+  if (index >= 0) mcpPool.splice(index, 1)
+}
 
 function createMcpConnection(options) {
   const { command, args, idleMs } = options
@@ -196,6 +229,10 @@ function createMcpConnection(options) {
   let chain = Promise.resolve()
   let idleTimer = null
   let disposed = false
+  // 已认领、但请求尚未发出的次数。调用方取到连接后到真正 request() 之间隔着一个
+  // await，只看 pending 会让同一批并发调用方都判它「空闲」而挤上同一条连接，
+  // 池化等于白做。认领在 acquireMcp 里**同步**完成，这个间隙因此被覆盖。
+  let claims = 0
   const pending = new Map()
 
   const touchIdle = () => {
@@ -217,7 +254,48 @@ function createMcpConnection(options) {
     const err = new Error('argo MCP connection closed')
     for (const entry of pending.values()) entry.rej(err)
     pending.clear()
-    if (sharedMcp === conn) sharedMcp = null
+    dropFromPool(conn)
+  }
+
+  // 内部发送：**不**消耗认领。initialize 的请求是连接自建的一部分，不该顶掉
+  // 调用方为「自己那次调用」预支的认领。
+  const send = (method, params, timeoutMs = 0) => {
+    touchIdle()
+    const run = () => new Promise((res, rej) => {
+      if (proc === null || proc.stdin.destroyed) {
+        rej(new Error('argo MCP process not running'))
+        return
+      }
+      const id = nextId
+      nextId += 1
+      const entry = { res, rej }
+      pending.set(id, entry)
+      // 内建超时：到点后从 pending 清掉本 entry（否则响应永不来时
+      // entry 泄漏到进程 close 才释放），并 reject 本请求。
+      let reqTimer = null
+      if (timeoutMs > 0) {
+        reqTimer = setTimeout(() => {
+          pending.delete(id)
+          rej(new Error(`argo MCP request timed out after ${timeoutMs}ms: ${method}`))
+        }, timeoutMs)
+        if (reqTimer.unref) reqTimer.unref()
+      }
+      const settle = (fn, value) => {
+        if (reqTimer !== null) clearTimeout(reqTimer)
+        fn(value)
+      }
+      entry.res = (v) => settle(res, v)
+      entry.rej = (e) => settle(rej, e)
+      try {
+        proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      } catch (err) {
+        pending.delete(id)
+        rej(err)
+      }
+    })
+    const result = chain.then(run)
+    chain = result.catch(() => { /* 失败不中断后续请求 */ })
+    return result
   }
 
   const conn = {
@@ -252,7 +330,7 @@ function createMcpConnection(options) {
         proc.once('spawn', res)
         proc.once('error', rej)
       })
-      const init = await conn.request('initialize', {
+      const init = await send('initialize', {
         protocolVersion: '2025-06-18',
         capabilities: {},
         clientInfo: { name: 'argo-dsh', version: PLUGIN_VERSION }
@@ -261,43 +339,16 @@ function createMcpConnection(options) {
       return init
     },
     request: (method, params, timeoutMs = 0) => {
-      touchIdle()
-      const run = () => new Promise((res, rej) => {
-        if (proc === null || proc.stdin.destroyed) {
-          rej(new Error('argo MCP process not running'))
-          return
-        }
-        const id = nextId
-        nextId += 1
-        const entry = { res, rej }
-        pending.set(id, entry)
-        // 内建超时：到点后从 pending 清掉本 entry（否则响应永不来时
-        // entry 泄漏到进程 close 才释放），并 reject 本请求。
-        let reqTimer = null
-        if (timeoutMs > 0) {
-          reqTimer = setTimeout(() => {
-            pending.delete(id)
-            rej(new Error(`argo MCP request timed out after ${timeoutMs}ms: ${method}`))
-          }, timeoutMs)
-          if (reqTimer.unref) reqTimer.unref()
-        }
-        const settle = (fn, value) => {
-          if (reqTimer !== null) clearTimeout(reqTimer)
-          fn(value)
-        }
-        entry.res = (v) => settle(res, v)
-        entry.rej = (e) => settle(rej, e)
-        try {
-          proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
-        } catch (err) {
-          pending.delete(id)
-          rej(err)
-        }
-      })
-      const result = chain.then(run)
-      chain = result.catch(() => { /* 失败不中断后续请求 */ })
-      return result
+      if (claims > 0) claims -= 1
+      return send(method, params, timeoutMs)
     },
+    /** 同步认领一次调用（在 acquireMcp 里于任何 await 之前调用）。 */
+    claim: () => {
+      claims += 1
+      touchIdle()
+    },
+    /** 在途请求 + 已认领未发出的请求：池的负载口径。 */
+    load: () => pending.size + claims,
     notify: (method, params) => {
       if (proc !== null && !proc.stdin.destroyed) {
         try {
@@ -310,27 +361,50 @@ function createMcpConnection(options) {
   return conn
 }
 
-async function getSharedMcp(options) {
-  if (sharedMcp !== null && sharedMcp !== undefined) {
+/**
+ * 取一条连接供本次调用独占使用（并发度 = 同时认领的连接数）。
+ *
+ * 顺序调用恒为 1 条连接（不增加常驻进程）；并发抢占时按需补开到 `max`，
+ * 达到上限后最闲的一条排队（该连接上请求链自然串行）。
+ */
+async function acquireMcp(options) {
+  const max = Math.max(1, Number(options.max) || DEFAULTS.searchConcurrency)
+  const idle = mcpPool.find(entry => entry.load() === 0)
+  if (idle !== undefined) {
+    idle.claim()
     try {
-      await sharedMcp.initialize()
-      return sharedMcp
-    } catch {
-      sharedMcp = null
+      await idle.initialize()
+      return idle
+    } catch (err) {
+      // 连接已坏：摘掉它再走下面的新开分支，不把失败留给调用方
+      dropFromPool(idle)
+      idle.close()
+      if (mcpPool.length >= max) throw err
     }
   }
-  const conn = createMcpConnection(options)
-  await conn.initialize()
-  sharedMcp = conn
-  return conn
+  if (mcpPool.length < max) {
+    const conn = createMcpConnection(options)
+    mcpPool.push(conn)
+    conn.claim()
+    try {
+      await conn.initialize()
+    } catch (err) {
+      dropFromPool(conn)
+      throw err
+    }
+    return conn
+  }
+  const least = mcpPool.reduce((a, b) => (a.load() <= b.load() ? a : b))
+  least.claim()
+  await least.initialize()
+  return least
 }
 
-/** 插件卸载时关闭共享连接（HMR/停用不泄漏子进程）。 */
+/** 插件卸载时关闭全部池内连接（HMR/停用不泄漏子进程）。 */
 export function disposeSharedMcp() {
-  if (sharedMcp !== null && sharedMcp !== undefined) {
-    sharedMcp.close()
-    sharedMcp = null
-  }
+  // close() 会自行 dropFromPool，故遍历副本。
+  for (const conn of [...mcpPool]) conn.close()
+  mcpPool.length = 0
 }
 
 /** 报告落盘：<reportDir>/<ts>-<slug>.md，返回绝对路径。 */
@@ -355,7 +429,12 @@ export async function searchViaArgoMCP(query, maxResults = 5, signal, options = 
   const timeoutMs = options.timeoutMs ?? DEFAULTS.searchTimeoutMs
   const count = clamp(maxResults ?? 5, 5, 1, 20)
 
-  const conn = await getSharedMcp({ command, args, idleMs: options.idleMs ?? DEFAULTS.searchIdleMs })
+  const conn = await acquireMcp({
+    command,
+    args,
+    idleMs: options.idleMs ?? DEFAULTS.searchIdleMs,
+    max: options.max ?? DEFAULTS.searchConcurrency,
+  })
   const result = await new Promise((resolve, reject) => {
     const onAbort = () => reject(argoAborted())
     if (signal !== undefined) {
@@ -874,7 +953,12 @@ export async function recomputeViaArgoMCP(spec, fileInputs, options = {}) {
   const command = options.command ?? DEFAULTS.searchCommand
   const args = options.args ?? DEFAULTS.searchArgs
   const timeoutMs = options.timeoutMs ?? DEFAULTS.searchTimeoutMs
-  const conn = await getSharedMcp({ command, args, idleMs: options.idleMs ?? DEFAULTS.searchIdleMs })
+  const conn = await acquireMcp({
+    command,
+    args,
+    idleMs: options.idleMs ?? DEFAULTS.searchIdleMs,
+    max: options.max ?? DEFAULTS.searchConcurrency,
+  })
   // 超时内建在 conn.request：pending entry 同步清理（与 searchViaArgoMCP 同口径）。
   const result = await conn.request('tools/call', {
     name: 'argo_recompute',
@@ -991,18 +1075,24 @@ function resolveEntry(config) {
   return { command, args }
 }
 
-// 走共享的常驻 MCP 连接调用原生工具，避免每次调用都新起一个 python 进程
-// （冷启动 + 重新加载配置/引擎表的开销在高频调用下很可观）。返回与单发形态一致的
-// MCP 信封 JSON 字符串，让 makeNativeTool 的 render 无需区分两条路径。
-async function nativeViaSharedMcp(config, kind, argsObj, timeoutMs) {
+// 走常驻 MCP 连接池调用原生工具，避免每次调用都新起一个 python 进程
+// （冷启动 + 重新加载配置/引擎表的开销在高频调用下很可观）；并发时由池分配
+// 独立连接，不再互相排队。返回与单发形态一致的 MCP 信封 JSON 字符串，
+// 让 makeNativeTool 的 render 无需区分两条路径。
+async function nativeViaMcpPool(config, kind, argsObj, timeoutMs) {
   const { command, args } = resolveEntry(config)
-  const conn = await getSharedMcp({
-    command, args, idleMs: config.searchIdleMs ?? DEFAULTS.searchIdleMs,
+  const conn = await acquireMcp({
+    command,
+    args,
+    idleMs: config.searchIdleMs ?? DEFAULTS.searchIdleMs,
+    max: config.searchConcurrency ?? DEFAULTS.searchConcurrency,
   })
   const result = await conn.request('tools/call', { name: kind, arguments: argsObj }, timeoutMs)
   if (result?.isError) {
     const body = result?.content?.[0]?.text
-    throw new Error(typeof body === 'string' && body !== '' ? body : `argo tool ${kind} returned an error`)
+    throw argoToolError(typeof body === 'string' && body !== ''
+      ? body
+      : `argo tool ${kind} returned an error`)
   }
   return JSON.stringify(result ?? {})
 }
@@ -1023,7 +1113,7 @@ export function makeNativeTool(config, kind, deps = {}) {
     throw new Error(`argo-dsh: unknown native tool "${kind}" (known: ${Object.keys(NATIVE_TOOL_SPECS).join(', ')})`)
   }
   const spawnRun = deps.run ?? runNativeCall
-  const mcpCall = deps.mcpCall ?? nativeViaSharedMcp
+  const mcpCall = deps.mcpCall ?? nativeViaMcpPool
   // 只注入单发 runner（单测/定制）时直接走单发、保持确定性；生产环境两条都在，
   // 优先复用常驻连接，连接异常再回退单发。
   const forceSpawn = deps.run !== undefined && deps.mcpCall === undefined
@@ -1054,7 +1144,10 @@ export function makeNativeTool(config, kind, deps = {}) {
       if (!forceSpawn) {
         try {
           return { stdout: await mcpCall(config, kind, argsObj, nativeTimeoutMs) }
-        } catch {
+        } catch (err) {
+          // 工具级错误是「工具跑过了、它说不行」：单发重试只会把同一次注定
+          // 失败的调用再起一个进程跑一遍（双倍引擎调用与配额），原样抛出。
+          if (err?.code === 'ARGO_TOOL_ERROR') throw err
           // 常驻连接不可用（进程崩溃 / 入口不支持 stdio）→ 回退单发，保证功能不丢
         }
       }
@@ -1104,6 +1197,7 @@ export function apply(ctx, providedConfig = {}) {
           args: config.searchArgs,
           timeoutMs: config.searchTimeoutMs,
           idleMs: config.searchIdleMs,
+          max: config.searchConcurrency,
         }),
     })
   }
@@ -1197,6 +1291,7 @@ export function apply(ctx, providedConfig = {}) {
           args: config.searchArgs,
           timeoutMs: config.searchTimeoutMs,
           idleMs: config.searchIdleMs,
+          max: config.searchConcurrency,
         })
       }
 
@@ -1367,4 +1462,4 @@ export function apply(ctx, providedConfig = {}) {
 }
 
 // Exported for unit tests; DSH loads the bundle through apply() only.
-export { normalizeTracks, stageTracks, evaluateGates, normalizeSource, buildLocalSources, parseJsonArray, parseJsonObject, extractValues }
+export { normalizeTracks, stageTracks, evaluateGates, normalizeSource, buildLocalSources, parseJsonArray, parseJsonObject, extractValues, nativeViaMcpPool }
