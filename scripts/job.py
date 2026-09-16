@@ -50,6 +50,7 @@ from urllib.parse import quote
 from typing import Optional
 from engine_env import get_env  # 密钥别名唯一真源（漏 import 曾令全部后端 NameError）
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
+from cli_io import dumps
 
 # ── 平台白名单 ──────────────────────────────────────────────────────────
 # 核心平台（逐平台 site: 查询用，带标签）
@@ -1064,7 +1065,7 @@ def main():
     if args.json:
         if args.watch:
             out["watch"] = {"new": len(new_jobs), "gone": len(gone_jobs)}
-        print(json.dumps(out, ensure_ascii=False, indent=2))
+        print(dumps(out))
     else:
         mode = "严格" if strict else "宽松" if args.loose else "全部"
         print(f"查询: {query} | 后端: {','.join(engines)} | {mode} | {len(unique)} 条")

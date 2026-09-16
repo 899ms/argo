@@ -15,6 +15,7 @@ import functools
 from datetime import datetime, date, timezone
 from typing import Any
 from urllib.parse import urlparse
+from cli_io import dumps
 
 # ── 全局常量 ────────────────────────────────────────────────────────
 
@@ -424,5 +425,4 @@ if __name__ == "__main__":
     )
     test_content = body_text
     test_meta = {"title": "asyncio", "published_time": "2024-01-15", "modified_time": "2025-06-01"}
-    import json
-    print(json.dumps(analyze_fetch_result(test_url, test_html, test_content, test_meta), ensure_ascii=False, indent=2))
+    print(dumps(analyze_fetch_result(test_url, test_html, test_content, test_meta)))

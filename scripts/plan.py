@@ -27,12 +27,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
 import re
 import sys
 from typing import Any, Literal
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+from cli_io import dumps
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -408,7 +408,7 @@ def main() -> int:
         login_approved=args.login_approved,
         context=args.context,
     )
-    print(json.dumps(plan, ensure_ascii=False, indent=2))
+    print(dumps(plan))
     return 0 if plan.get("status") in ("ready", "handoff_required", "needs_authorization") else 1
 
 

@@ -17,10 +17,10 @@ clarify.py — 意图消歧工具
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from typing import Any
+from cli_io import dumps
 
 
 # ── 歧义词库 ──────────────────────────────────────────────────────────────────
@@ -665,7 +665,7 @@ def main():
     analysis["routing"] = routing
 
     if args.json:
-        print(json.dumps(analysis, ensure_ascii=False, indent=2))
+        print(dumps(analysis))
     else:
         print(f"\n查询分析：{analysis['query']}")
         print(f"语言：{analysis['language']} | 置信度：{analysis['confidence']:.2f}")

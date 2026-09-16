@@ -34,6 +34,7 @@ except ImportError:
 
 # 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths
+from cli_io import dumps
 
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
@@ -944,7 +945,7 @@ def _cli():
         cache.clear(older_than_hours=args.older_than)
         print('{"ok": true}')
     elif args.cmd == "stats":
-        print(json.dumps(cache.stats, ensure_ascii=False, indent=2))
+        print(dumps(cache.stats))
     else:
         parser.print_help()
 

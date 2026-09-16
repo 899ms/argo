@@ -162,6 +162,68 @@ class TestMinhashDataRows:
         assert len(kept) == 1 and removed == 1
 
 
+class TestMinhashEarlyStop:
+    """去重提前停：只保证「前 max_keep 条」正确，不改变任何输出。
+
+    去重是对**全部**融合结果做 O(n²) 两两比较，而结果紧接着就被截断到
+    `_rerank_pool_limit(max_results)`（max_results 的 3 倍，下限 15）。实测
+    200 条结果要跑 19746 次相似度比较、84 ms；而 95% 的计算在下一行被丢掉。
+
+    这里锁两件事：提前停的结果与不设上限**逐位一致**（这是它能被称为「优化」
+    而不是「降级」的全部理由），以及两条路径共用同一个池上限口径。
+    """
+
+    @staticmethod
+    def _rows(n: int, dup_every: int = 3) -> list[dict]:
+        rows: list[dict] = []
+        for i in range(n):
+            if rows and i % dup_every == 0:
+                base = rows[-1]
+                # 近重复：同标题同正文，换个站的 URL
+                rows.append({"title": base["title"], "snippet": base["snippet"],
+                             "url": f"https://mirror{i}.example.com/p/{i}",
+                             "source": "m", "score": 0.5})
+            else:
+                rows.append({"title": f"独立标题 {i} 唯一的措辞",
+                             "snippet": f"完全不同的正文 {i} " * 8,
+                             "url": f"https://site{i}.example.com/p/{i}",
+                             "source": "s", "score": 0.9 - i * 0.001})
+        return rows
+
+    @pytest.mark.parametrize("n", [20, 60, 200, 400])
+    def test_prefix_identical_to_unbounded(self, n):
+        import copy
+
+        from search import minhash_dedupe
+        cap = 24
+        rows = self._rows(n)
+        unbounded, _ = minhash_dedupe(copy.deepcopy(rows), enabled=True)
+        capped, _ = minhash_dedupe(copy.deepcopy(rows), enabled=True, max_keep=cap)
+        assert [r["url"] for r in capped] == [r["url"] for r in unbounded[:cap]], (
+            "提前停改变了输出前缀——那就不是等价优化，而是行为回归")
+
+    def test_capped_never_returns_more_than_limit(self):
+        from search import minhash_dedupe
+        kept, _ = minhash_dedupe(self._rows(300), enabled=True, max_keep=10)
+        assert len(kept) == 10
+
+    def test_unbounded_still_default(self):
+        """不传 max_keep 时行为不变：直接调用者（测试/评测）仍拿到全量。"""
+        from search import minhash_dedupe
+        unbounded, _ = minhash_dedupe(self._rows(120), enabled=True)
+        capped, _ = minhash_dedupe(self._rows(120), enabled=True, max_keep=24)
+        assert len(capped) == 24
+        assert len(unbounded) > len(capped), \
+            "不设上限时应返回全部非重复项，而不是也停在池上限"
+
+    def test_pool_limit_is_single_source(self):
+        """池上限只有一处定义，且与放宽截断的旧口径逐值相同。"""
+        from search import _rerank_pool_limit
+        for max_results in (1, 5, 8, 10, 50):
+            assert _rerank_pool_limit(max_results) == max(max_results * 3, 15), \
+                f"max_results={max_results} 的池上限口径变了"
+
+
 class TestCommonFlagsContract:
     """Usage 文本把 --json 列为 Common flags，各子命令解析器就得真认。
 

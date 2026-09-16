@@ -16,13 +16,13 @@ adaptive.py — Unified Search v2 自适应学习引擎
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Optional
+from cli_io import dumps
 
 # ── 路径 ──────────────────────────────────────────────────────────────────────
 
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     import sys
     learner = get_learner()
     if len(sys.argv) > 1 and sys.argv[1] == "stats":
-        print(json.dumps(learner.get_stats(), ensure_ascii=False, indent=2))
+        print(dumps(learner.get_stats()))
     elif len(sys.argv) > 1 and sys.argv[1] == "rank":
         ranking = learner.get_ranking()
         for engine, score in ranking:

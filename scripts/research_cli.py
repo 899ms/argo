@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 from typing import Any
+from cli_io import dumps
 
 
 def _load_work_packages(raw: str | None) -> Any:
@@ -300,7 +301,7 @@ def main() -> None:
             print(f"  [archive error] {type(e).__name__}: {e}", file=sys.stderr)
 
     if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        print(dumps(report))
     else:
         if profile_applied:
             print(f"📋 选题类型：{profile_applied}", file=sys.stderr)

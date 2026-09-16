@@ -17,7 +17,6 @@ health_check.py — 引擎健康检查（v2.1 新增，替代 health_probe.py）
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -31,6 +30,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from argo_engine_registry import get_registry
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
+from cli_io import dumps
 
 logger = logging.getLogger("argo.health_check")
 if not logger.handlers:
@@ -154,10 +154,10 @@ def main():
 
     if args.engine:
         result = check_engine(args.engine)
-        print(json.dumps({args.engine: result}, ensure_ascii=False, indent=2))
+        print(dumps({args.engine: result}))
     elif args.category:
         results = check_category(args.category)
-        print(json.dumps(results, ensure_ascii=False, indent=2))
+        print(dumps(results))
     elif args.all:
         results = check_all()
         available = sum(1 for r in results.values() if r.get("available"))

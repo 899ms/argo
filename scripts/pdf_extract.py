@@ -17,6 +17,7 @@ import io
 import re
 from typing import Any
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
+from cli_io import dumps
 
 # CID 损坏检测
 _CID_RE = re.compile(r"\(cid:\d+\)")
@@ -337,7 +338,6 @@ def format_pdf_result(result: dict[str, Any], include_tables: bool = False) -> s
 
 if __name__ == "__main__":
     import argparse
-    import json
 
     p = argparse.ArgumentParser(
         description="Argo pdf — PDF 正文提取（URL 或本地路径）")
@@ -358,7 +358,7 @@ if __name__ == "__main__":
                          force_ocr=args.force_ocr)
 
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(dumps(result))
     else:
         print(format_pdf_result(result, include_tables=True)[:2000])
         if not result.get("content_ok"):

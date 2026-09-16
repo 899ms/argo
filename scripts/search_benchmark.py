@@ -38,7 +38,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import statistics
 import sys
@@ -47,6 +46,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from cli_io import dumps
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -276,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
 
     result = run_benchmark(args.runs, args.engine_delay)
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(dumps(result))
     else:
         route = result["route"]
         dispatch = result["dispatch"]

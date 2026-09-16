@@ -35,6 +35,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from cli_io import dumps
 
 # 状态目录隔离必须在 import 任何 argo 模块之前：熔断/配额的可靠性因子读
 # 本机状态文件，金标评测要跨机器确定性，一律落空态（可靠性=1.0）。
@@ -288,7 +289,7 @@ def main() -> int:
         return 0
 
     if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=1))
+        print(dumps(report))
         return 0
 
     print(f"排序金标评测：{report['n_cases']} 条 | "

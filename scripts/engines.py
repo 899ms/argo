@@ -49,6 +49,7 @@ from engines_base import (
     _CUSTOM_JSON_PARSERS,
 )
 from recovery import strip_structured
+from cli_io import dumps
 
 # 对外/测试兼容：专用解析器与 source 纠正
 __all__ = [
@@ -682,11 +683,11 @@ def _cli():
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
     if args.list:
-        print(json.dumps(available_engines(), ensure_ascii=False, indent=2))
+        print(dumps(available_engines()))
         return
     if not args.query:
         parser.error("必须提供 query")
-    print(json.dumps(search(args.query, args.engine, args.n, args.timeout), ensure_ascii=False, indent=2))
+    print(dumps(search(args.query, args.engine, args.n, args.timeout)))
 
 
 if __name__ == "__main__":

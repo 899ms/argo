@@ -18,6 +18,7 @@ import os
 import re
 import time
 from typing import Any
+from cli_io import dumps
 
 try:
     from config import (load_config, get_engines, get_domains, get_cost_factor,
@@ -1858,7 +1859,6 @@ def route_query(query: str, engine_override: str = "auto",
 
 def _cli():
     import argparse
-    import json
     parser = argparse.ArgumentParser(description="Unified Search v2 路由器")
     parser.add_argument("query")
     parser.add_argument("--engine", default="auto")
@@ -1867,7 +1867,7 @@ def _cli():
     args = parser.parse_args()
     decision = route_query(args.query, engine_override=args.engine, mode=args.mode)
     if args.json:
-        print(json.dumps(decision, ensure_ascii=False, indent=2))
+        print(dumps(decision))
     else:
         print(f"引擎: {decision['engine']}")
         print(f"组合: {decision.get('engines_combo', decision['engines'])}")

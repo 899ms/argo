@@ -10,6 +10,7 @@
 输出: 标题 / 作者 / 发布时间 / 正文纯文本 / 图片 URL 列表
 """
 import argparse, json, re, sys, html as htmllib, urllib.request
+from cli_io import dumps
 
 UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
       "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
@@ -118,7 +119,7 @@ def main():
         sys.exit(1)
 
     if args.json:
-        print(json.dumps(out, ensure_ascii=False, indent=2))
+        print(dumps(out))
     else:
         print(f"标题: {out['title']}")
         print(f"作者: {out['author']}  时间: {out['publish_time']}  "

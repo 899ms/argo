@@ -29,6 +29,7 @@ ENGINES_DIR = Path(__file__).parent.parent / "engines"
 # 本地状态目录单一真源。argo_paths 只在函数体内反向 import config，
 # 因此此处模块级导入不会成环（config 未就绪时 argo_paths 会回落到历史目录）。
 import argo_paths  # noqa: E402
+from cli_io import dumps
 
 
 # ── 默认配置 ──────────────────────────────────────────────────────────────────
@@ -949,20 +950,20 @@ def _cli():
     args = parser.parse_args()
     cfg = load_config(force=True)
     if args.engines:
-        print(json.dumps(get_engines(cfg), ensure_ascii=False, indent=2))
+        print(dumps(get_engines(cfg)))
     elif args.domains:
-        print(json.dumps(get_domains(cfg), ensure_ascii=False, indent=2))
+        print(dumps(get_domains(cfg)))
     elif args.cost_tiers:
-        print(json.dumps(get_cost_tiers(cfg), ensure_ascii=False, indent=2))
+        print(dumps(get_cost_tiers(cfg)))
     elif args.check:
         err = last_load_error()
-        print(json.dumps({
+        print(dumps({
             "path": str(CONFIG_PATH), "ok": err is None, "error": err,
             "engines": list(get_engines(cfg).keys()),
             "domains": [d.get("name") for d in get_domains(cfg)],
-        }, ensure_ascii=False, indent=2))
+        }))
     else:
-        print(json.dumps(cfg, ensure_ascii=False, indent=2))
+        print(dumps(cfg))
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from cli_io import dumps
 
 _TAIL_STDOUT = 3000  # 超时/被杀时保留尾部输出（大任务不至于白跑全丢）
 _TAIL_STDERR = 2000
@@ -411,4 +412,4 @@ if __name__ == "__main__":
         args.script, inputs, timeout_s=args.timeout,
         max_mem_mb=args.max_mem_mb, allow_exec=args.allow_exec,
     )
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(dumps(result))

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import argo_paths
+from cli_io import dumps
 
 # ── 路径 ──────────────────────────────────────────────────────────────────────
 
@@ -389,7 +390,7 @@ if __name__ == "__main__":
     import sys
     mgr = get_quota_manager()
     if len(sys.argv) > 1 and sys.argv[1] == "stats":
-        print(json.dumps(mgr.get_stats(), ensure_ascii=False, indent=2))
+        print(dumps(mgr.get_stats()))
     elif len(sys.argv) > 2 and sys.argv[1] == "reset":
         # 充值后提前恢复：清除远端配额耗尽标记
         ok = mgr.clear_remote_exhausted(sys.argv[2])

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cli_io.py — CLI 标准输入判据的唯一真源。
+"""cli_io.py — CLI 标准输入/输出判据的唯一真源。
 
 ## 为什么需要它
 
@@ -15,15 +15,42 @@
   - S_ISFIFO → `... | argo ...`（管道）
   - S_ISREG  → `argo ... < data.json`（文件重定向）
   - S_ISCHR  → 终端或 /dev/null（无数据）
+
+## stdout 序列化同理
+
+`--json` 输出是给 Agent / 脚本读的，缩进只增加传输体积与 token，不增加任何
+信息。MCP 侧早已如此（`mcp_handlers._dumps` 默认 `separators=(",", ":")`），
+但 CLI 侧此前在 45 处各写一遍 `json.dumps(..., indent=2)`——同一份载荷两套
+口径，实测多占 22% 体积。这里给 stdout 一个唯一入口。
 """
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import sys
+from typing import Any
 
-__all__ = ["stdin_is_piped", "read_stdin_if_piped"]
+__all__ = ["stdin_is_piped", "read_stdin_if_piped", "dumps", "dumps_pretty"]
+
+# stdout 的紧凑分隔符（无冗余空格）：与 mcp_handlers._dumps 的默认口径一致。
+_COMPACT = (",", ":")
+
+
+def dumps(obj: Any) -> str:
+    """CLI stdout 的 JSON 序列化唯一真源（默认紧凑）。
+
+    用途边界：**stdout**。写进磁盘的归档文件（`archive_run` 的 public.json /
+    coverage.json 等）是给人翻的，仍用 `dumps_pretty`——「机器读 stdout、
+    人读文件」这条线让两种格式各归其位，而不是按文件拍脑袋。
+    """
+    return json.dumps(obj, ensure_ascii=False, separators=_COMPACT)
+
+
+def dumps_pretty(obj: Any) -> str:
+    """人读场景（归档文件、诊断输出）的缩进序列化。"""
+    return json.dumps(obj, ensure_ascii=False, indent=2)
 
 
 def stdin_is_piped() -> bool:

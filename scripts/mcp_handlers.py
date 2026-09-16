@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import cli_io
 from typing import Any
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -147,10 +148,13 @@ def _get_cache():
 
 
 def _dumps(obj: Any, pretty: bool = False) -> str:
-    """MCP 默认紧凑 JSON（无 indent），显著降低 token / 传输体积。"""
-    if pretty:
-        return json.dumps(obj, ensure_ascii=False, indent=2)
-    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    """MCP 的 JSON 序列化：复用 CLI stdout 的同一套口径（cli_io 是唯一真源）。
+
+    两边此前各写一份实现（这里 separators=(",", ":")、CLI 侧各写 indent=2），
+    同一份载荷两套格式——口径分叉后没人会发现「MCP 紧凑、CLI 美化」这件事本身
+    就是不一致。合并后只留一个真源；`pretty=True` 仍供人读场景使用。
+    """
+    return cli_io.dumps_pretty(obj) if pretty else cli_io.dumps(obj)
 
 
 def _ok(payload: Any, pretty: bool = False) -> dict[str, Any]:

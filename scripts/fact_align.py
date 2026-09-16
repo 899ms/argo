@@ -28,6 +28,7 @@ import re
 from collections import defaultdict
 from typing import Any
 from urllib.parse import urlparse
+from cli_io import dumps
 
 
 # ── 事实抽取正则（每类捕获归一化 value）──────────────────────────────────────
@@ -189,7 +190,6 @@ def align_facts(results: list[dict[str, Any]], min_results: int = 3,
 # ── CLI 测试 ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import json
 
     sample = [
         {"title": "Python 3.12 发布", "snippet": "性能提升 5%，2023-10-02 正式发布",
@@ -204,4 +204,4 @@ if __name__ == "__main__":
          "url": "https://finance.b.com"},
     ]
     out = align_facts(sample, mode="auto", depth="deep")
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    print(dumps(out))

@@ -24,6 +24,7 @@ import tempfile
 from cache import SearchCache
 from evidence import is_serp_or_jump_url, score_authority
 from circuit_breaker import CircuitBreaker
+from cli_io import dumps
 
 
 def section(title: str):
@@ -240,8 +241,7 @@ def main():
     section("汇总")
     total = report["pass"] + report["fail"]
     print(f"  PASS={report['pass']} FAIL={report['fail']} TOTAL={total}")
-    print(json.dumps({"latency": report["latency"], "sample": report["sample"]},
-                     ensure_ascii=False, indent=2))
+    print(dumps({"latency": report["latency"], "sample": report["sample"]}))
     return 0 if report["fail"] == 0 else 1
 
 

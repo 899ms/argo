@@ -32,6 +32,7 @@ import time
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
+from cli_io import dumps
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKENDS_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "backends"))
@@ -626,7 +627,7 @@ def main():
     )
 
     if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        print(dumps(report))
     else:
         print(f"\n来源可信度评估：{report['query']}  [{report['framework']}]")
         print(f"{'='*50}")

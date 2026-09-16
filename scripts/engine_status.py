@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any, Iterable
@@ -21,6 +20,7 @@ from config import load_config, get_cost_tiers  # noqa: E402
 from engine_env import env_status_for, is_engine_allowed_by_env  # noqa: E402
 from engine_requires import requires_status  # noqa: E402
 from engine_admission import load_admission, is_blocked, is_admitted  # noqa: E402
+from cli_io import dumps
 
 
 def _cost_tier_of(engine_id: str, tiers: dict[str, list[str]]) -> str:
@@ -269,7 +269,7 @@ def _cli() -> None:
     else:
         rows = list_engines_detail(routable_only=args.routable_only)
     if args.json:
-        print(json.dumps(rows if len(rows) != 1 else rows[0], ensure_ascii=False, indent=2))
+        print(dumps(rows if len(rows) != 1 else rows[0]))
     else:
         print(format_engines_table(rows))
 

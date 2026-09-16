@@ -32,12 +32,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from cli_io import dumps
 
 UNSUPPORTED = "unsupported"
 NEEDS_AUTH = "needs_auth"
@@ -231,7 +231,7 @@ def main() -> int:
 
     report = probe_batch(urls, do_probe=args.probe)
     if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        print(dumps(report))
     else:
         print(_format_report(report))
     return 0

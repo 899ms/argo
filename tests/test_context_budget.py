@@ -24,6 +24,7 @@ skill 的上下文开销不是「感觉大不大」，而是可以逐字节算�
 
 from __future__ import annotations
 
+import ast
 import json
 import sys
 import unittest
@@ -231,6 +232,70 @@ class TestContextGuidanceIsReal(unittest.TestCase):
         """查了不存在的引擎要返回空（配合 CLI 的 stderr 提示），不能回退成全量。"""
         from engine_status import list_engines_detail
         self.assertEqual(list_engines_detail(engines=["__no_such_engine__"]), [])
+
+
+class TestStdoutJsonIsCompact(unittest.TestCase):
+    """CLI 的 stdout JSON 必须走 cli_io.dumps（紧凑），不得各处写 indent=2。
+
+    `--json` 是给 Agent / 脚本读的，缩进只增加传输体积与 token，不增加信息。
+    MCP 侧一直是紧凑的（`mcp_handlers._dumps` 原实现 separators=(",", ":")），
+    而 CLI 侧曾在 45 处各写一遍 `json.dumps(..., indent=2)`——同一份载荷两套
+    口径，实测多占 23%（25626 B → 19928 B）。
+
+    这里同时锁两侧：序列化函数的**行为**，以及源码里不再出现美化 stdout 的
+    新写法（否则第 46 处会悄悄长出来）。
+    """
+
+    # 允许的美化 stdout：无（归档文件写入走 dumps_pretty，不属于 stdout）
+    def test_helper_is_compact(self):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import cli_io
+        obj = {"a": [1, 2], "b": {"c": "中文"}, "d": "x\ny"}
+        compact = cli_io.dumps(obj)
+        self.assertNotIn(": ", compact, "dumps 仍带分隔空格，不是紧凑输出")
+        self.assertNotIn(", ", compact)
+        self.assertEqual(json.loads(compact), obj, "紧凑化改变了数据")
+        # 人读档仍在：缩进版本必须与紧凑版本语义一致
+        pretty = cli_io.dumps_pretty(obj)
+        self.assertIn("\n", pretty)
+        self.assertEqual(json.loads(pretty), obj)
+        self.assertLess(len(compact), len(pretty), "紧凑版应小于美化版")
+
+    def test_mcp_and_cli_share_one_source(self):
+        """MCP 的 _dumps 必须复用 cli_io，而不是再写一份自己的分隔符。"""
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import cli_io
+        import mcp_handlers
+        probe = {"k": [1, 2], "z": "中文"}
+        self.assertEqual(mcp_handlers._dumps(probe), cli_io.dumps(probe))
+        self.assertEqual(mcp_handlers._dumps(probe, pretty=True),
+                         cli_io.dumps_pretty(probe))
+
+    def test_no_pretty_stdout_in_scripts(self):
+        """源码门禁：不得新增 `print(json.dumps(..., indent=...))`。"""
+        offenders = []
+        for path in sorted((ROOT / "scripts").rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "print"):
+                    continue
+                for inner in ast.walk(node):
+                    if (isinstance(inner, ast.Call)
+                            and isinstance(inner.func, ast.Attribute)
+                            and inner.func.attr == "dumps"
+                            and any(k.arg == "indent" for k in inner.keywords)):
+                        offenders.append(f"{path.relative_to(ROOT)}:{inner.lineno}")
+        self.assertEqual(
+            offenders, [],
+            "CLI stdout 出现缩进 JSON（应改用 cli_io.dumps）：\n  "
+            + "\n  ".join(offenders))
 
 
 if __name__ == "__main__":

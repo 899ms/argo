@@ -42,6 +42,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
+from cli_io import dumps, dumps_pretty
 
 _TZ_CN = timezone(timedelta(hours=8))
 SCHEMA = "argo-search-archive/1.0"
@@ -298,7 +299,7 @@ def write_search_archive(
     index_md_path = run_dir / "INDEX.md"
 
     envelope_path.write_text(
-        json.dumps(public, ensure_ascii=False, indent=2) + "\n",
+        dumps_pretty(public) + "\n",
         encoding="utf-8",
     )
     with candidates_path.open("w", encoding="utf-8") as f:
@@ -311,7 +312,7 @@ def write_search_archive(
         for s in sources:
             f.write(json.dumps(s, ensure_ascii=False) + "\n")
     coverage_path.write_text(
-        json.dumps(coverage, ensure_ascii=False, indent=2) + "\n",
+        dumps_pretty(coverage) + "\n",
         encoding="utf-8",
     )
 
@@ -367,7 +368,7 @@ def write_search_archive(
         },
     }
     summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        dumps_pretty(summary) + "\n",
         encoding="utf-8",
     )
 
@@ -524,7 +525,7 @@ def main(argv: list[str] | None = None) -> int:
             note=args.note,
             source=args.source,
         )
-        print(json.dumps(meta, ensure_ascii=False, indent=2))
+        print(dumps(meta))
         return 0
 
     if args.cmd == "list":
@@ -535,7 +536,7 @@ def main(argv: list[str] | None = None) -> int:
             query_substr=args.query,
         )
         if args.json:
-            print(json.dumps(rows, ensure_ascii=False, indent=2))
+            print(dumps(rows))
         else:
             if not rows:
                 print("(empty)")
@@ -554,7 +555,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "show":
         data = load_run(args.run_dir)
         if args.json:
-            print(json.dumps(data["summary"], ensure_ascii=False, indent=2))
+            print(dumps(data["summary"]))
         else:
             s = data["summary"]
             print(f"run_id: {s.get('run_id')}")

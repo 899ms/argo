@@ -14,7 +14,6 @@ health_probe.py — 引擎健康探针（v2.5 新增）
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import sys
@@ -24,6 +23,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
+from cli_io import dumps
 
 SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -229,4 +229,4 @@ if __name__ == "__main__":
             pass
     else:
         results = probe_all_engines()
-        print(json.dumps(results, ensure_ascii=False, indent=2))
+        print(dumps(results))

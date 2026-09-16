@@ -22,6 +22,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
+from cli_io import dumps
 
 
 # ── 威胁类型 ──────────────────────────────────────────────────────────────
@@ -637,7 +638,6 @@ def scrub_to_dict(content: str) -> dict:
 
 if __name__ == "__main__":
     import argparse
-    import json
     import sys
 
     p = argparse.ArgumentParser(description="Argo 内容安全引擎（注入检测 + 清洗）")
@@ -666,7 +666,7 @@ if __name__ == "__main__":
             ],
             "content": result.content,
         }
-        print(json.dumps(out, ensure_ascii=False, indent=2))
+        print(dumps(out))
     else:
         print(f"clean={result.clean} risk={result.risk_score:.3f} "
               f"redactions={result.redactions} threats={len(result.threats)}")

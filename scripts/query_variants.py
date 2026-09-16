@@ -17,6 +17,7 @@ query_variants.py — 无 LLM 查询变体生成（深度研究多路召回）
 from __future__ import annotations
 
 import re
+from cli_io import dumps
 
 # 概念扩展映射（不只同义词——相关表述框架）
 CONCEPT_MAP = {
@@ -278,8 +279,7 @@ if __name__ == "__main__":
 
     variants = generate_query_variations(q)
     if args.json:
-        print(json.dumps({"original": q, "variants": variants},
-                         ensure_ascii=False, indent=2))
+        print(dumps({"original": q, "variants": variants}))
     else:
         print(f"原查询：{q}")
         for i, v in enumerate(variants, 1):

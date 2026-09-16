@@ -61,6 +61,7 @@ import fetch_quality as _quality
 import argo_paths as _paths
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 from engine_env import env_flag  # 布尔开关统一判断（见 env_flag 的说明）
+from cli_io import dumps
 
 
 # ─── 内容提取器（复用 fetch.py 的逻辑，增强版）──────────────────────────────
@@ -1212,7 +1213,7 @@ if __name__ == "__main__":
         summary["focus_applied"] = bool(r.get("focus_applied"))
     if r.get("error"):
         summary["error"] = r["error"]
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    print(dumps(summary))
     # __main__ 块是模块级代码，不能用 return 短路——用 if 包住人类可读段
     if not args.json:
         if r.get("title"):

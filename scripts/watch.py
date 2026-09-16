@@ -23,6 +23,7 @@ import re
 import sys
 import time
 from typing import Any
+from cli_io import dumps
 
 _SNAP_CAP = 10  # 每个 URL 保留的快照历史上限（旧的丢弃）
 
@@ -188,7 +189,7 @@ def main() -> None:
         payload = {"status": "completed", "removed": args.url}
 
     if args.json or args.action in ("check", "list"):
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print(dumps(payload))
         return
     # 人类可读（add / remove）
     if args.action == "add":

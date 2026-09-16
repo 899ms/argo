@@ -28,6 +28,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+from cli_io import dumps
 
 # 环境变量覆盖：优先级最高，用于测试隔离与只读环境
 ENV_STATE_DIR = "ARGO_STATE_DIR"
@@ -396,7 +397,6 @@ def run_checks(lock_hold_s: float = 0.6) -> list[dict[str, Any]]:
 
 def _cli() -> int:
     import argparse
-    import json as _json
     parser = argparse.ArgumentParser(
         description="argo 路径诊断：状态目录与密钥文件到底解析到了哪里")
     parser.add_argument("--json", action="store_true", help="机器可读输出")
@@ -413,7 +413,7 @@ def _cli() -> int:
     if args.check:
         checks = run_checks()
         if args.json:
-            print(_json.dumps(checks, ensure_ascii=False, indent=2))
+            print(dumps(checks))
         else:
             marks = {"pass": "通过", "fail": "失败", "warn": "注意", "info": "信息"}
             print(f"argo 路径自检（{sys.platform}）")
@@ -424,7 +424,7 @@ def _cli() -> int:
     if args.migrate:
         result = migrate_legacy_state(yes=args.yes, dry_run=args.dry_run)
         if args.json:
-            print(_json.dumps(result, ensure_ascii=False, indent=2))
+            print(dumps(result))
         else:
             print(f"状态：{result['status']}")
             for name in result["moved"]:
@@ -437,7 +437,7 @@ def _cli() -> int:
 
     info = resolved_paths()
     if args.json:
-        print(_json.dumps(info, ensure_ascii=False, indent=2))
+        print(dumps(info))
     else:
         for k, v in info.items():
             print(f"{k:22} {v}")

@@ -9,12 +9,12 @@ MCP 够得着。本文件与 mcp_handlers.py 的 argo_screenshot 分支共用 ch
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import tempfile
 import time
 from typing import Any
+from cli_io import dumps
 
 _SCRIPTS = os.path.dirname(os.path.realpath(__file__))
 if _SCRIPTS not in sys.path:
@@ -60,7 +60,7 @@ def main() -> None:
                                 wait_until=args.wait_until)
 
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(dumps(result))
     elif result.get("success"):
         print(result["screenshot"])
     else:

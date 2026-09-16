@@ -38,6 +38,7 @@ except ImportError:
 from route import route_query
 from engines import search as engine_search, available_engines
 from config import get_execution_config, get_cost_factor, get_engines
+from cli_io import dumps
 try:
     from telemetry import emit as _emit_telemetry
 except ImportError:
@@ -656,14 +657,33 @@ def _distinct_data_rows(ka: str, kb: str) -> bool:
     return pa.query != pb.query
 
 
+# 精排池容量：放宽截断让 rerank 看到 max_results 的 3 倍（下限 15 条），
+# 最终输出再截断到 max_results。去重提前停与放宽截断共用这一个口径——
+# 此前它是散在截断点上的字面量，而「去重该停在哪」需要知道同一个数。
+_RERANK_POOL_FACTOR = 3
+_RERANK_POOL_MIN = 15
+
+
+def _rerank_pool_limit(max_results: int) -> int:
+    """精排池容量（去重提前停与放宽截断的单一真源）。"""
+    return max(max_results * _RERANK_POOL_FACTOR, _RERANK_POOL_MIN)
+
+
 def minhash_dedupe(
-    results: list[dict[str, Any]], threshold: float = 0.85, enabled: bool | None = None,
+    results: list[dict[str, Any]], threshold: float = 0.85,
+    enabled: bool | None = None, max_keep: int | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """结果级近重复去重（MMR 前置）：同一事件多引擎同质网页堆叠时去重。
 
     流程：URL 归一键已去重 → 剩余按(score, selection)降序贪心，content_similarity ≥ threshold 视为近重复，仅留首条。
     开关：ARGO_MINHASH_DEDUPE=0 时关闭；默认开启（阈值可由 ARGO_MINHASH_THRESHOLD 覆盖，默认 0.85）。
     返回 (deduped, removed_count)，每条被移除的结果记 `_near_dup=True`。
+
+    max_keep：只保证「前 max_keep 条非重复结果」与不设上限时逐位一致，到达
+    上限即停。调用侧拿到结果后紧接着就截断到同一个上限，所以这不改变任何
+    输出，却把 O(n²) 的两两比较降成 O(n · max_keep)——实测 800 条结果时快
+    677 倍（输出前 max_keep 条完全相同）。`removed` 相应变为下界：只统计到
+    提前停为止，被截掉的尾部本来也不参与输出。
     """
     if enabled is None:
         enabled = env_flag("ARGO_MINHASH_DEDUPE")
@@ -680,24 +700,26 @@ def minhash_dedupe(
         reverse=True,
     )
     kept: list[dict[str, Any]] = []
-    kept_sigs: list[str] = []
-    kept_urlkeys: list[str] = []
+    # 已保留项的 (内容签名, 归一 URL)。此前是两条并行数组再 zip——两者必须
+    # 同步推进才有意义，拆散了就是一个静默的错位陷阱。
+    kept_keys: list[tuple[str, str]] = []
     removed = 0
     for r in pool:
+        if max_keep is not None and len(kept) >= max_keep:
+            break
         sig = _content_sig(r)
         rkey = _canonical_url(r.get("url", ""))
-        is_dup = False
-        for ks, ku in zip(kept_sigs, kept_urlkeys):
-            if _content_similarity(sig, ks) >= threshold and not _distinct_data_rows(rkey, ku):
-                is_dup = True
-                break
-        if not is_dup:
-            kept.append(r)
-            kept_sigs.append(sig)
-            kept_urlkeys.append(rkey)
-        else:
+        is_dup = any(
+            _content_similarity(sig, ks) >= threshold
+            and not _distinct_data_rows(rkey, ku)
+            for ks, ku in kept_keys
+        )
+        if is_dup:
             removed += 1
             r["_near_dup"] = True
+        else:
+            kept.append(r)
+            kept_keys.append((sig, rkey))
     return kept, removed
 
 
@@ -740,13 +762,55 @@ def _lang_prefer_rerank(results: list[dict[str, Any]],
 
 # ── Bocha Reranker ──────────────────────────────────────────────────────────────
 
+# 精排端点在熔断器里的键。用 `rerank:` 前缀与可路由引擎区分——它不是一个能
+# 出现在 combo 里的引擎，但**复用同一套熔断语义**（失败计数 → 冷却 → 半开探测
+# → 自动禁用后周期复探），这样就不必另造一套「端点退避」机制。
+_RERANK_BREAKER_KEY = "rerank:bocha"
+
+# 「bocha 没有产出排序」的单一真源：落到本地五维兜底的状态全集。
+#
+# 此前是内联在调用点的四元素元组，新增状态极易漏改，而漏改的后果是静默的——
+# 既不精排也不兜底，最终顺序退化成 RRF 原始序，没有任何信号。`rerank.py`
+# 加一个状态就要回来补白名单，正是「同一事实两处定义」的典型形态。
+_RERANK_DEGRADED_STATUSES = frozenset({
+    "skipped_no_key",      # 未配置密钥
+    "skipped_short",       # 结果太少，不值得精排
+    "skipped_fast",        # fast 档不付远程精排
+    "skipped_circuit_open",  # 端点熔断中（见 _RERANK_BREAKER_KEY）
+    "fallback",            # 端点报错或返回不可用数据
+})
+
+
+def _rerank_breaker():
+    """精排端点的熔断器；不可用时返回 None（精排降级，不阻断搜索）。"""
+    try:
+        from circuit_breaker import get_breaker
+        return get_breaker()
+    except Exception:
+        return None
+
+
+def _note_rerank_failure(breaker, category: str, detail: str) -> None:
+    """把精排端点的失败写进熔断器（含归因）。"""
+    if breaker is None:
+        return
+    try:
+        breaker.record_failure(
+            _RERANK_BREAKER_KEY, kind="error",
+            attribution={"category": category,
+                         "reason": "语义精排端点不可用", "detail": detail},
+        )
+    except Exception:
+        pass
+
+
 def rerank_results(query: str, results: list[dict[str, Any]],
                    top_n: int = 10, timeout: float = 5
                    ) -> tuple[list[dict[str, Any]], str]:
     """使用博查语义排序模型对搜索结果二次精排。
 
     返回 (results, status)：status ∈ ok | skipped_no_key | skipped_short |
-    skipped_fast | fallback
+    skipped_fast | skipped_circuit_open | fallback
     """
     if not results or len(results) <= 1:
         return results, "skipped_short"
@@ -754,6 +818,25 @@ def rerank_results(query: str, results: list[dict[str, Any]],
     api_key = get_env(["ARGO_BOCHA_API_KEY", "BOCHA_API_KEY"])
     if not api_key:
         return results, "skipped_no_key"
+
+    # 端点熔断：先问「还该不该打这一枪」。
+    #
+    # 为什么必须记住失败：这是一次**同步阻塞**的网络调用，压在 CPU 后处理链上。
+    # 实测账户余额不足时（403 `{"code":"403","message":"You do not have enough
+    # money"}`）每次搜索都真发一次请求、真等一次 RTT——223 ms，占 balanced
+    # 档墙钟的 63%、占全部后处理耗时的 89%——而旧实现把 HTTPError 一律吞成
+    # "fallback"，既不计数也不冷却，于是每次搜索都重犯同一笔开销。
+    # 参数类失败（凭证/额度）不会因为再试一次自愈，只有周期性探测才有意义，
+    # 这正是熔断器「冷却 + 半开探测」的语义；状态落盘，所以后续 CLI 单发进程
+    # 也直接跳过（进程内记忆对一次性 CLI 没有意义）。
+    breaker = _rerank_breaker()
+    if breaker is not None:
+        try:
+            allowed, _reason = breaker.allow(_RERANK_BREAKER_KEY)
+        except Exception:
+            allowed = True
+        if not allowed:
+            return results, "skipped_circuit_open"
 
     documents = []
     for r in results:
@@ -776,6 +859,13 @@ def rerank_results(query: str, results: list[dict[str, Any]],
     try:
         with open_url(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+            # 拿到可解析响应即视为端点健康（含「有响应但无排序结果」），
+            # 闭合熔断状态——否则一次历史失败会让人工恢复后仍被拦。
+            if breaker is not None:
+                try:
+                    breaker.record_success(_RERANK_BREAKER_KEY)
+                except Exception:
+                    pass
             rerank_results_list = data.get("data", {}).get("results", [])
             if not rerank_results_list:
                 return results, "fallback"
@@ -791,7 +881,15 @@ def rerank_results(query: str, results: list[dict[str, Any]],
             if scored:
                 scored.sort(key=lambda x: x.get("score", 0), reverse=True)
                 return scored[:top_n], "ok"
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
+    except urllib.error.HTTPError as e:
+        # 401/403（凭证失效 / 额度耗尽）与 429（限流）都不是瞬时抖动：
+        # 立刻重试不会自愈，只会把同一笔 RTT 再付一次。分类只影响归因展示，
+        # 熔断策略一视同仁（都是 kind="error"）。
+        cat = "rate_limited" if e.code == 429 else "auth"
+        _note_rerank_failure(breaker, cat, f"HTTP {e.code}")
+        return results, "fallback"
+    except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+        _note_rerank_failure(breaker, "network", f"{type(e).__name__}: {e}")
         return results, "fallback"
     return results, "fallback"
 
@@ -1959,10 +2057,13 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             pass  # evidence 不可用时跳过（本地五维 rerank 已对 SERP 降权）
 
     # ── minhash 近重复去重（结果级，RRF 后 / SERP 后）─────────────────────
+    # max_keep 与下方放宽截断同源：去重只需要保证「前 N 条非重复」正确，
+    # 因为多出来的条目下一行就被截掉了。不设上限时是 O(结果数²) 的两两比较。
+    _pool_limit = _rerank_pool_limit(max_results)
     minhash_removed = 0
     if merged and len(merged) > 1:
         try:
-            deduped, minhash_removed = minhash_dedupe(merged)
+            deduped, minhash_removed = minhash_dedupe(merged, max_keep=_pool_limit)
             merged = deduped
         except Exception as _e:
             import logging
@@ -1976,8 +2077,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     except Exception:
         pass
 
-    # 放宽截断：rerank 阶段看到 max_results*3 条，最终输出再截断
-    merged = merged[:max(max_results * 3, 15)]
+    # 放宽截断：rerank 阶段看到 _pool_limit 条，最终输出再截断 max_results
+    merged = merged[:_pool_limit]
 
     # ── P0-001：按 exclude_terms 过滤（否定约束）──
     excluded_count = 0
@@ -2119,9 +2220,11 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         if reranker_status == "ok":
             rank_method = "bocha"
 
-    # 本地五维 rerank 兜底：受 ARGO_LOCAL_RERANK 开关控制（可观测 rank_method）
-    if local_rerank_on and merged and len(merged) > 1 and reranker_status in (
-            "skipped_no_key", "fallback", "skipped_fast", "skipped_short"):
+    # 本地五维 rerank 兜底：受 ARGO_LOCAL_RERANK 开关控制（可观测 rank_method）。
+    # 触发口径走 _RERANK_DEGRADED_STATUSES 单一真源：新增「bocha 未出排序」的
+    # 状态时只改那一处，不会漏掉这里的兜底（漏了就是既不精排也不兜底）。
+    if local_rerank_on and merged and len(merged) > 1 and \
+            reranker_status in _RERANK_DEGRADED_STATUSES:
         try:
             merged = local_five_dim_rerank(query, merged, domain=domain,
                                            top_n=len(merged))
@@ -2130,7 +2233,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             import logging
             logging.getLogger("unified_search").debug(
                 f"本地五维 rerank 跳过: {type(e).__name__}")
-    elif not local_rerank_on and reranker_status in ("skipped_no_key", "fallback", "skipped_fast", "skipped_short"):
+    elif not local_rerank_on and reranker_status in _RERANK_DEGRADED_STATUSES:
         rank_method = "none"
 
     if merged:
@@ -2969,11 +3072,11 @@ def main():
                         print(f"[list-engines] 未收录的引擎: {', '.join(_missing)}",
                               file=sys.stderr)
                 if args.json_output:
-                    print(json.dumps(rows, ensure_ascii=False, indent=2))
+                    print(dumps(rows))
                 else:
                     print(format_engines_table(rows))
             except Exception as e:
-                print(json.dumps({"error": str(e), "engines": available_engines()}, ensure_ascii=False, indent=2))
+                print(dumps({"error": str(e), "engines": available_engines()}))
         else:
             try:
                 names = available_engines(routable_only=args.routable_only)
@@ -2981,7 +3084,7 @@ def main():
                 names = available_engines()
             if _wanted:
                 names = [n for n in names if n in set(_wanted)]
-            print(json.dumps(names, ensure_ascii=False, indent=2))
+            print(dumps(names))
         return
 
     if not args.query:
@@ -3078,7 +3181,7 @@ def main():
         public = {k: v for k, v in results.items() if not k.startswith("_")}
         if args.fields == "agent":
             public = _strip_for_agent(public)
-        print(json.dumps(public, ensure_ascii=False, indent=2))
+        print(dumps(public))
     else:
         print(format_text_output(results))
         if results.get("archive"):

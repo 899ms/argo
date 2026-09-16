@@ -22,6 +22,7 @@ import os
 import sys
 import time
 from urllib.parse import urlparse
+from cli_io import dumps
 
 _SELTZ_ANSWER_URL = "https://api.seltz.ai/v1/answer"
 
@@ -78,7 +79,7 @@ def main() -> None:
     if err:
         envelope = {"status": "error", "query": args.query, "error": err,
                     "elapsed_ms": elapsed_ms}
-        print(json.dumps(envelope, ensure_ascii=False, indent=2))
+        print(dumps(envelope))
         sys.exit(1)
 
     citations = data.get("citations") or []
@@ -98,7 +99,7 @@ def main() -> None:
         "elapsed_ms": elapsed_ms,
     }
     if args.json:
-        print(json.dumps(envelope, ensure_ascii=False, indent=2))
+        print(dumps(envelope))
         return
     # 人类可读：答案正文 + 引用清单
     print(envelope["answer"])

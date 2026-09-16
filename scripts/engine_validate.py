@@ -20,7 +20,6 @@ Stage：
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
@@ -35,6 +34,7 @@ from config import load_config  # noqa: E402
 from engine_env import missing_env_for, env_ready  # noqa: E402
 from engine_admission import record_validation, load_admission  # noqa: E402
 from engine_status import engine_detail  # noqa: E402
+from cli_io import dumps
 
 REQUIRED_KEYS = ("title", "url", "source")
 
@@ -508,7 +508,7 @@ def main() -> int:
 
     if args.json:
         payload = reports if len(reports) > 1 else reports[0]
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print(dumps(payload))
 
     return 0 if exit_ok else 1
 

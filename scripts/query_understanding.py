@@ -31,6 +31,7 @@ import functools
 import re
 from dataclasses import dataclass, field, asdict
 from typing import Any
+from cli_io import dumps
 
 
 # ── 数据结构 ──────────────────────────────────────────────────────────────────
@@ -278,7 +279,6 @@ def _understand_cached(query: str) -> QueryUnderstanding:
 # ── CLI 测试 ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import json
     import sys
 
     tests = sys.argv[1:] if len(sys.argv) > 1 else [
@@ -294,5 +294,5 @@ if __name__ == "__main__":
     ]
     for q in tests:
         qu = understand(q)
-        print(json.dumps(qu.to_dict(), ensure_ascii=False, indent=2))
+        print(dumps(qu.to_dict()))
         print("-" * 60)

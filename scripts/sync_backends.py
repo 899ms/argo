@@ -34,6 +34,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from cli_io import dumps
 
 # ── 路径 ──────────────────────────────────────────────────────────────────────
 
@@ -285,7 +286,7 @@ def main() -> int:
         except Exception:
             ready_names = {n for n, s in engines.items() if s.get("enabled", True)}
         enabled_declared = {n for n, s in engines.items() if s.get("enabled", True)}
-        print(json.dumps({
+        print(dumps({
             # 默认口径：运行时可见的引擎声明总数
             "total": declared,
             "enabled": len(ready_names),
@@ -293,7 +294,7 @@ def main() -> int:
             "enabled_declared": len(enabled_declared),
             "by_cost_tier": {k: len(v) for k, v in tiers.items()},
             "engines": sorted(engines),
-        }, ensure_ascii=False, indent=2))
+        }))
         return 0
 
     quota_cur = {}
