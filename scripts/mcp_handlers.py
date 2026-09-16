@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """mcp_handlers.py — MCP 工具执行逻辑（P2-4 拆分自 mcp_server.py）。
 
-路径引导、延迟导入缓存、结果压缩、10 个工具的 execute_tool 分派、
+路径引导、延迟导入缓存、结果压缩、14 个工具的 execute_tool 分派、
 后台预热（含 local-seek 模块导入预热，为进程内调用铺路）。
 schema 来源在 mcp_tools.py；JSON-RPC 帧处理在 mcp_transport.py。
 """
@@ -816,8 +816,13 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 extract_mod = _lazy_cached("extract")
                 fetch_mod = _lazy_cached("fetch_v3")
                 emode = arguments.get("extract_mode", "all")
-                fetch_result = fetch_mod.fetch_page_v3(arguments["url"], max_chars=50000,
-                                                       timeout=_env_int("ARGO_MCP_TIMEOUT_FETCH", int(arguments.get("timeout", 15))), raw=True)
+                # 与 schema 同计算方式（默认 8000，500..50000）；禁止硬编码 50000
+                # 把调用方 bound 顶掉——那是「上限字段被内部魔法数覆盖」一类 bug。
+                max_chars = _clamp_int(arguments.get("max_chars", 8000), 8000, 500, 50000)
+                fetch_result = fetch_mod.fetch_page_v3(
+                    arguments["url"], max_chars=max_chars,
+                    timeout=_env_int("ARGO_MCP_TIMEOUT_FETCH",
+                                     int(arguments.get("timeout", 15))), raw=True)
                 if not fetch_result["success"]:
                     return {
                         "content": [{"type": "text", "text": _dumps({"error": fetch_result.get("error", "fetch failed")})}],
@@ -858,6 +863,9 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 if len(result["content"]) > max_c:
                     result["content"] = result["content"][:max_c]
                     result["truncated"] = True
+            # 双保险：fetch_v3 公共返回已剥 html；这里再剥一次，防其他入口漏
+            if isinstance(result, dict):
+                result.pop("html", None)
             return _ok(result, pretty=pretty)
 
         elif name == "argo_screenshot":

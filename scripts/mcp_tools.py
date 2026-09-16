@@ -4,6 +4,10 @@
 14 个工具的 inputSchema 只在本模块维护；mcp_transport 的 tools/list 与
 mcp_server 的兼容导出均从本模块取。改 schema 只动这一个文件。
 
+tools/list 默认只注入 CORE 三件套（search/fetch/local_search，约 3.6KB/轮）；
+全量设 ARGO_MCP_TOOLS=all。execute_tool / --call / DSH 原生规格仍吃全量 TOOLS，
+能力不删。未知名单不回退成全量（同类：过滤失败吐全量）。
+
 schema 设计原则（质量第一，token 第二）：
 - 工具 description：第一句「做什么」，第二句「何时用 / 关键注意」。
   删除内部实现机制（引擎数、TF-IDF/RRF、协议文件引用）——模型不靠这些决策。
@@ -16,6 +20,11 @@ schema 设计原则（质量第一，token 第二）：
 """
 
 from __future__ import annotations
+
+import os
+
+# 日常 90% 调用只需要这 3 个；顺序即 tools/list 默认顺序。
+CORE_TOOL_NAMES = ("argo_search", "argo_fetch", "argo_local_search")
 
 TOOLS = [
     {
@@ -227,3 +236,31 @@ TOOLS = [
         },
     },
 ]
+
+
+def listed_tools(spec: str | None = None) -> list[dict]:
+    """tools/list 返回集。默认 CORE 三件套；all 全量；逗号名单按名取。
+
+    未知名字忽略，空结果也不回退成全量——曾经「过滤失败吐全量」把 12KB
+    schema 砸进每一轮。execute_tool 不受此限制。
+    """
+    raw = spec if spec is not None else os.environ.get("ARGO_MCP_TOOLS", "")
+    raw = (raw or "").strip().lower()
+    by_name = {t["name"]: t for t in TOOLS}
+    if raw in ("", "core", "default"):
+        return [by_name[n] for n in CORE_TOOL_NAMES if n in by_name]
+    if raw in ("all", "*"):
+        return list(TOOLS)
+    out: list[dict] = []
+    seen: set[str] = set()
+    for part in raw.split(","):
+        name = part.strip()
+        if not name:
+            continue
+        key = name if name in by_name else (
+            f"argo_{name}" if f"argo_{name}" in by_name else None
+        )
+        if key and key not in seen:
+            out.append(by_name[key])
+            seen.add(key)
+    return out

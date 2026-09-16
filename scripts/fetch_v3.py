@@ -883,6 +883,17 @@ def _cache_content_too_short(hit: dict, max_chars: int) -> bool:
         return max_chars > len(content)
 
 
+def _strip_html_unless_needed(result: dict, need_html: bool) -> dict:
+    """模型/CLI 默认只要正文。html 只在调用方声明 need_html（extract/crawl）时保留。
+
+    写缓存已经丢掉 html；若不在公共返回里剥掉，缓存未命中的第一次会把最多
+    max_chars*2 的生 HTML 泄漏给 MCP/CLI。与「内部字段不进模型可见输出」同构。
+    """
+    if not need_html and isinstance(result, dict):
+        result.pop("html", None)
+    return result
+
+
 def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
              use_browser_fallback: bool = True,
              actions: list[dict] | None = None,
@@ -917,10 +928,12 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
         from url_safety import check_url
         ok, reason = check_url(url)
         if not ok:
-            return {"url": url, "title": "", "content": "",
-                    "html": "", "length": 0, "success": False,
-                    "error": f"URL 被 SSRF 防护拦截: {reason}",
-                    "fetch_method": "blocked"}
+            return _strip_html_unless_needed({
+                "url": url, "title": "", "content": "",
+                "html": "", "length": 0, "success": False,
+                "error": f"URL 被 SSRF 防护拦截: {reason}",
+                "fetch_method": "blocked",
+            }, need_html)
     except ImportError:
         pass
 
@@ -935,7 +948,7 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                                   error="robots.txt 禁止抓取")
             result = _assess_quality(result)
             result["cached"] = False
-            return result
+            return _strip_html_unless_needed(result, need_html)
     except ImportError:
         pass
 
@@ -960,7 +973,7 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                 out["cached"] = True
                 out["cache_level"] = hit.get("_cache_level", "L?")
                 out["url"] = url
-                return out
+                return _strip_html_unless_needed(out, need_html)
         except Exception:
             pass
 
@@ -1143,7 +1156,7 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
             pass
 
     result["cached"] = False
-    return result
+    return _strip_html_unless_needed(result, need_html)
 
 
 def fetch_page_v3(url: str, max_chars: int = 3000,

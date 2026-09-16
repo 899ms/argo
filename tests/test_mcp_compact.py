@@ -90,7 +90,41 @@ def test_initialize_short_instructions_and_warm():
     assert len(r["instructions"]) < 500
     assert "argo_research" in r["instructions"]
     assert "外部 skill" in r["instructions"] or "内建" in r["instructions"]
+    assert "results[].url" in r["instructions"]
+    assert "信源在 sources" not in r["instructions"]
     print(f"  ✅ initialize instructions len={len(r['instructions'])}")
+
+
+def test_extract_respects_caller_max_chars():
+    """extract 不得把 schema 默认 8000 顶成硬编码 50000。"""
+    from unittest.mock import patch
+    import mcp_handlers
+
+    seen = {}
+
+    class FakeFetch:
+        @staticmethod
+        def fetch_page_v3(url, max_chars=8000, timeout=8, raw=False):
+            seen["max_chars"] = max_chars
+            return {"url": url, "html": "<html></html>", "success": True, "error": None}
+
+    class FakeExtract:
+        extract_tables = staticmethod(lambda h: [])
+        extract_metadata = staticmethod(lambda h: {})
+        extract_jsonld = staticmethod(lambda h: [])
+
+    def fake_lazy(name):
+        return FakeFetch if name == "fetch_v3" else FakeExtract
+
+    with patch.object(mcp_handlers, "_lazy_cached", fake_lazy):
+        mcp_handlers.execute_tool("argo_fetch", {
+            "url": "https://example.com/x", "mode": "extract", "max_chars": 1200,
+        })
+        assert seen["max_chars"] == 1200
+        mcp_handlers.execute_tool("argo_fetch", {
+            "url": "https://example.com/x", "mode": "extract",
+        })
+        assert seen["max_chars"] == 8000
 
 
 if __name__ == "__main__":
@@ -100,6 +134,7 @@ if __name__ == "__main__":
         test_compact_research_keeps_gates,
         test_resolve_topic_academic,
         test_initialize_short_instructions_and_warm,
+        test_extract_respects_caller_max_chars,
     ]
     failed = 0
     for fn in tests:

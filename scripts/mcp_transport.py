@@ -13,7 +13,7 @@ import sys
 from typing import Any
 
 from mcp_handlers import _warm_core_async, execute_tool
-from mcp_tools import TOOLS
+from mcp_tools import listed_tools
 
 try:
     import hot_state  # 代码/配置指纹自重启（失效则退化为旧行为：进程常驻）
@@ -38,19 +38,21 @@ def handle_rpc(method: str, params: dict[str, Any]) -> dict[str, Any]:
                 "name": "argo",
                 "version": ARGO_MCP_VERSION
             },
-            # 短指令：降 tools 上下文；细节在 tool schema
+            # 短指令：降 tools 上下文；细节在 tool schema。
+            # URL 在 results[].url（默认 envelope=False，不生成 sources）。
             "instructions": (
-                "Argo：日常用 argo_search（默认精简 JSON，信源在 sources）；"
-                "深度研究只用 argo_research（内建 academic/finance topic，不调用外部 skill）；"
-                "核验 argo_evidence；消歧 argo_clarify；正文 argo_fetch（mode=extract 可提取表格/元数据/JSON-LD）。"
-                "社交用 argo_social_search（mode=sentiment 做舆情聚合）。缓存+RRF+成本路由已内建。"
-                "本地文件/记录搜索用 argo_local_search（搜本机，非联网，与 argo_search 互补）。"
+                "Argo：日常 argo_search（精简 JSON，URL 在 results[].url）"
+                "、argo_fetch、argo_local_search。"
+                "深度研究只用 argo_research（内建 academic/finance topic，不调用外部 skill）。"
+                "其余默认不注入 schema，ARGO_MCP_TOOLS=all 打开："
+                "evidence/clarify/crawl/article/job/pdf/screenshot/social_search/"
+                "local_read/recompute。"
             ),
         }
 
     elif method == "tools/list":
         _warm_core_async()
-        return {"tools": TOOLS}
+        return {"tools": listed_tools()}
 
     elif method == "tools/call":
         tool_name = params.get("name", "")

@@ -50,7 +50,9 @@ def _install_http(monkeypatch, calls):
     def fn(url, max_chars=8000, timeout=8.0):
         calls.append(max_chars)
         content = _body(max_chars)
-        return {"url": url, "content": content, "html": "", "title": "t",
+        return {"url": url, "content": content,
+                "html": "<html><body>" + content[:80] + "</body></html>",
+                "title": "t",
                 "length": len(content), "success": True, "error": None,
                 "fetch_method": "http"}
     monkeypatch.setattr(fetch_v3, "_http_fetch", fn)
@@ -146,3 +148,19 @@ def test_internal_max_chars_not_leaked(clean_env, monkeypatch):
     out = _fetch(url, 2000)
     assert "_max_chars" not in out
     assert not any(str(k).startswith("_") for k in out if k != "cache_level")
+
+
+def test_html_stripped_unless_need_html(clean_env, monkeypatch):
+    """公共返回默认不含 html；need_html=True（extract/crawl）才保留。"""
+    calls = []
+    _install_http(monkeypatch, calls)
+    url = "https://example.com/regress-html"
+
+    out = fetch_v3.fetch_v3(url, max_chars=1000, use_browser_fallback=False, timeout=5.0)
+    assert "html" not in out, "text 模式不得把生 HTML 交给调用方"
+
+    raw = fetch_v3.fetch_v3(
+        url + "/raw", max_chars=1000, use_browser_fallback=False,
+        timeout=5.0, skip_cache=True, need_html=True,
+    )
+    assert raw.get("html"), "need_html=True 必须保留 html 给 extract/crawl"

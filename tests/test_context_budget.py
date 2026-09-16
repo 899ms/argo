@@ -234,6 +234,52 @@ class TestContextGuidanceIsReal(unittest.TestCase):
         self.assertEqual(list_engines_detail(engines=["__no_such_engine__"]), [])
 
 
+class TestMcpToolsListBudget(unittest.TestCase):
+    """tools/list 默认 CORE 三件套；全量仍 14；未知过滤不得吐全量。"""
+
+    CORE = ("argo_search", "argo_fetch", "argo_local_search")
+    BUDGET_CORE_BYTES = 4000
+
+    def test_default_is_core_three(self):
+        from mcp_tools import listed_tools, TOOLS
+        names = [t["name"] for t in listed_tools("")]
+        self.assertEqual(tuple(names), self.CORE)
+        self.assertEqual(len(TOOLS), 14, "全量 TOOLS 必须仍是 14——能力不删")
+
+    def test_all_returns_fourteen(self):
+        from mcp_tools import listed_tools, TOOLS
+        self.assertEqual([t["name"] for t in listed_tools("all")],
+                         [t["name"] for t in TOOLS])
+
+    def test_core_payload_within_budget(self):
+        from mcp_tools import listed_tools
+        n = _size(listed_tools("core"))
+        self.assertLessEqual(n, self.BUDGET_CORE_BYTES,
+                             f"CORE tools/list {n} B 超预算 {self.BUDGET_CORE_BYTES} B")
+
+    def test_unknown_names_do_not_fallback_to_all(self):
+        from mcp_tools import listed_tools, TOOLS
+        got = listed_tools("__no_such_tool__")
+        self.assertEqual(got, [])
+        self.assertNotEqual(len(got), len(TOOLS))
+
+    def test_comma_list_and_bare_names(self):
+        from mcp_tools import listed_tools
+        names = [t["name"] for t in listed_tools("search,argo_job")]
+        self.assertEqual(names, ["argo_search", "argo_job"])
+
+    def test_handle_rpc_tools_list_uses_listed_tools(self):
+        import os
+        from mcp_transport import handle_rpc
+        old = os.environ.pop("ARGO_MCP_TOOLS", None)
+        try:
+            r = handle_rpc("tools/list", {})
+            self.assertEqual([t["name"] for t in r["tools"]], list(self.CORE))
+        finally:
+            if old is not None:
+                os.environ["ARGO_MCP_TOOLS"] = old
+
+
 class TestStdoutJsonIsCompact(unittest.TestCase):
     """CLI 的 stdout JSON 必须走 cli_io.dumps（紧凑），不得各处写 indent=2。
 
