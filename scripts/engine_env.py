@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 # ── 密钥文件热读（平台惯例位置，多候选合并）─────────────────────────────────
-# os.environ 优先（显式覆盖/测试注入），文件兜底：进程未经 mcp_launch.sh
+# os.environ 优先（显式覆盖/测试注入），文件保底：进程未经 mcp_launch.sh
 # 注入密钥时仍能拿到，且改文件无需重启——多候选签名缓存，任一变更即重读。
 #
 # 位置按平台惯例解析（候选按优先级排列）：
@@ -93,7 +93,7 @@ def _envfile_path() -> Path:
 
 
 def _parse_envfile(text: str) -> dict[str, str]:
-    """解析 env 文件文本（export 前缀、引号、注释都按既有口径处理）。"""
+    """解析 env 文件文本（export 前缀、引号、注释都按既有计算方式处理）。"""
     data: dict[str, str] = {}
     for line in text.splitlines():
         line = line.strip()
@@ -205,6 +205,7 @@ PLACEHOLDER_ALIASES: dict[str, list[str]] = {
     "ANYSEARCH_API_KEY": ["ARGO_ANYSEARCH_API_KEY", "ANYSEARCH_API_KEY"],
     "FIRECRAWL_API_KEY": ["ARGO_FIRECRAWL_API_KEY", "FIRECRAWL_API_KEY"],
     "WEREAD_API_KEY": ["ARGO_WEREAD_API_KEY", "WEREAD_API_KEY"],
+    "UNPAYWALL_EMAIL": ["ARGO_UNPAYWALL_EMAIL", "UNPAYWALL_EMAIL"],
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{([A-Z_][A-Z0-9_]*)\}")
@@ -238,7 +239,7 @@ def _name_variants(name: str) -> list[str]:
 
 def get_env(names: str | list[str], default: str = "") -> str:
     """按优先级读取第一个非空环境变量；os.environ 优先，~/.config/argo/env
-    热读兜底（改文件即生效，无需重启）。
+    热读保底（改文件即生效，无需重启）。
 
     单名字符串会展开为「原名 + 前缀变体」候选链（见 _name_variants）；显式
     列表按调用方给定顺序与内容原样使用（调用方已写全两个名字时不做二次展开，
@@ -300,9 +301,9 @@ def env_flag(name: str, default: bool = True, *, expand: bool = True,
     保留两套写法的容忍度。
 
     strict=True 只认**明确写出的真值**（1/true/yes/on/y/t），其余一律算关。
-    授权位必须同时用 expand=False + strict=True：默认口径是「非关即开」，那对
+    授权位必须同时用 expand=False + strict=True：默认计算方式是「非关即开」，那对
     能力开关没问题（最坏是换个行为），对授权位就是「任何拼错的值都放行」——
-    `ARGO_ALLOW_RECOMPUTE=0x0`、`=maybe`、`=ture` 全都会授权。门禁见
+    `ARGO_ALLOW_RECOMPUTE=0x0`、`=maybe`、`=ture` 全都会授权。检查见
     tests/test_static_lint_gate.py（漏写任一项即报红）。
     """
     raw = get_env(_name_variants(name) if expand else [name])
@@ -317,10 +318,10 @@ def env_flag(name: str, default: bool = True, *, expand: bool = True,
 def sync_envfile_to_environ() -> list[str]:
     """把 ~/.config/argo/env 同步进 os.environ（只填缺失，不覆盖已有值）。
 
-    兼容口径：读取方保持标准 os.environ 直读不动（含其他 AGT/客户端的
+    兼容计算方式：读取方保持标准 os.environ 直读不动（含其他 AGT/客户端的
     既有集成，零改动零破坏），由入口（bin/argo / mcp_server）调用本函数
     把文件密钥「同步一份过去」。os.environ 已有变量永远优先——显式覆盖
-    与测试注入不受影响。幂等，可重复调用。
+    与测试注入不受影响。重复执行结果一致，可重复调用。
     """
     try:
         file_env = _envfile_load()

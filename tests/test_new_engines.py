@@ -447,7 +447,7 @@ class TestMultiEngineAndFallback(unittest.TestCase):
         self.assertEqual(set(out.get("engines_used", [])), set(combo))
 
     def test_empty_engines_combo_falls_back_to_anysearch(self) -> None:
-        """畸形 decision（engines_combo 全空串）不抛 IndexError，兜底 anysearch。"""
+        """畸形 decision（engines_combo 全空串）不抛 IndexError，保底 anysearch。"""
         calls: list[str] = []
 
         def fake(query: str, eng: str, n: int = 5, timeout: float = 8,
@@ -583,7 +583,7 @@ class TestLiveSingleEngines(unittest.TestCase):
 
 @unittest.skipUnless(_live_enabled(), "设置 RUN_LIVE=1 启用真实 API 测试")
 class TestLiveConnectivityScripts(unittest.TestCase):
-    """与运维脚本对齐的原始 HTTP 连通性。"""
+    """与运维脚本保持一致的原始 HTTP 连通性。"""
 
     def test_ddg_instant_answer_api(self) -> None:
         url = (

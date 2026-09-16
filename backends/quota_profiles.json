@@ -160,6 +160,16 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "cisa_kev": {
+    "label": "CISA KEV 在野利用漏洞",
+    "qps": 1,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 47
+  },
   "clawhub": {
     "label": "ClawHub 技能目录",
     "qps": 2,
@@ -529,6 +539,16 @@
     "cost_unit": "free",
     "cost_tier": "api",
     "priority": 14
+  },
+  "federal_register": {
+    "label": "Federal Register 联邦公报",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 46
   },
   "felo": {
     "label": "Felo AI搜索",
@@ -1370,6 +1390,16 @@
     "cost_tier": "free",
     "priority": 39
   },
+  "opencitations": {
+    "label": "OpenCitations 引用图谱",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 52
+  },
   "opencorporates": {
     "label": "OpenCorporates 公司注册",
     "qps": 2,
@@ -1449,6 +1479,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 31
+  },
+  "osv": {
+    "label": "OSV 开源漏洞库",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 44
   },
   "parallel": {
     "label": "Parallel搜索",
@@ -1929,6 +1969,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 12
+  },
+  "unpaywall": {
+    "label": "Unpaywall 开放获取定位",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 53
   },
   "urban_dictionary": {
     "label": "Urban Dictionary",

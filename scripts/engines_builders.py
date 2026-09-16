@@ -35,6 +35,8 @@ from engines_builders_tech import (
     _build_google_scholar_engine,
     _build_deps_dev_engine,
     _build_endoflife_engine,
+    _build_osv_engine,
+    _build_cisa_kev_engine,
     _build_v2ex_engine,
     _build_github_engine,
 )

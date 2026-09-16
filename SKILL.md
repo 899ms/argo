@@ -1,6 +1,6 @@
 ---
 name: argo
-description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；222 个源（187 个免密钥开箱可用）TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡；recovery 防污染。CLI：search|research|fetch|crawl|extract|article|job|evidence|clarify|preflight|answer|watch|mcp。
+description: Argo 阿尔戈 — 统一搜索、网页抓取与证据核验。覆盖意图：搜索/查一下/核实/抓取网页/爬取/深度研究/论文检索/新闻/舆情/公众号文章/招聘聚合。多语言检测与跨语言回退；227 个源（189 个免密钥开箱可用）TF-IDF 路由 + RRF；影视/体育/地理/组织/媒体/金融/宏观/化学等垂直源；垂直结构化模态卡；recovery 防污染。CLI：search|research|fetch|crawl|extract|article|job|evidence|clarify|preflight|answer|watch|mcp。
 version: 2.8.8
 triggers:
   - 搜索
@@ -92,13 +92,13 @@ argo watch add|check|list|remove   # 观察模式：快照+变化检测（check 
 ## Agent 执行纪律
 
 1. **高后果问题**（金融/医疗/法律/事实核查）：search → evidence（或看 `credibility_fast`）→ fetch 高分 URL → 再下结论；`fetch_required=true` 时禁止跳过核验
-2. **数字**：必须标注口径（全市场/主动/持仓市值 vs 占比）；冲突时并列，禁止口径未对齐合并
+2. **数字**：必须标注算法（全市场/主动/持仓市值 vs 占比）；冲突时并列，禁止算法未对齐就合并
 3. **SERP 链**（baidu/s、sogou/link）：禁止当正文来源
 4. **社交帖**：叙事/舆情，不进事实真值
 5. **深度研究**：先读 `references/research-protocol.md`；有决策含义就交工作包，不要靠扩词充问题树；`quality_gate_results.passed=false` 必须降级表述
 6. **上下文纪律**：Agent 搜索用 `--json --no-envelope --fields agent`、按需 `-n`（超 10 无收益）；要来源追溯或归档才用 envelope 模式（sources/candidates 只在那里）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会输出约 22 KB
 
-## 证据闭环（v2.8.0）
+## 证据流程（v2.8.0）
 
 搜索输出自带可编程判定开关，回答「现在能不能下结论」：`fetch_required`（高后果域为
 true，下结论前必须核验正文）、`evidence_loop.suggested/verified_count/pending_count`、

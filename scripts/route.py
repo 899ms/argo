@@ -100,7 +100,7 @@ def _detect_lang_override(query: str) -> str | None:
     return None
 
 def _build_engine_names() -> dict[str, str]:
-    """从 config.yaml 引擎声明的 label 构建显示名映射（唯一真源）。
+    """从 config.yaml 引擎声明的 label 构建显示名映射（唯一来源）。
 
     新增引擎只需在 config.yaml 声明 label，路由 reason 自动使用，
     不再需要手工同步本表。
@@ -133,7 +133,7 @@ def _engine_names_map() -> dict[str, str]:
 
     此前建一次就永不失效：长驻进程（MCP server / 交互式调用）里新增或改名的
     引擎要重启才可见，而同一个 diff 里的 get_registry 已经按 config_stamp 热
-    重建——同一份配置两个缓存两套失效口径，是最容易踩的那种不一致。stamp 本身
+    重建——同一份配置两个缓存两套失效计算方式，是最容易踩的那种不一致。stamp 本身
     按 TTL 记忆（见 config.config_stamp），所以只在配置真的变了才重建，热路径
     上只是一次字典构造。
     """
@@ -348,10 +348,10 @@ _ZH_LANG_GATED_DOMAINS = frozenset({
 # 语言过滤名单改由 engine_families.ENGINE_LANGS 派生（lang_allows/
 # engines_not_for_lang）：语言能力随引擎注册声明一次（config `langs` 可
 # 覆盖），四张手写冻结表（_ZH_CONTENT/_JA_KO_CN/_EN_ONLY/_ZH_ONLY）
-# 2026-09-07 收敛删除。成员忠实自原表推导，多语言契约测试验收。
+# 2026-09-07 收紧删除。成员忠实自原表推导，多语言契约测试验收。
 
 
-# ── 结构化平台语法（单一真源：config.yaml 的 social 域 patterns）─────────────
+# ── 结构化平台语法（唯一来源：config.yaml 的 social 域 patterns）─────────────
 # 查询含平台搜索语法（from:/subreddit:/lang:/filter: 等）时把 social 域提前为
 # 主域，避免查询里的实体词（GPT/Llama/api）把 model/_tech 域排前面。
 # 语法判定不再在 Python 侧复制正则（此前与 config.yaml social patterns 第三
@@ -426,7 +426,7 @@ def _diffuse_intent_guard(hits: list[dict[str, Any]], query: str,
 # 点查域 → 意图豁免词（命中即视为真正的结构化点查）。
 # 英文备选吃 \b；中文备选必须在 \b 外——CJK 字符全是 \w，「npm安装报错」
 # 这类无空格连写永远撞不上词边界（2026-09-06 审查实锤），会让真实包查询
-# 被误让位。同 _DIFFUSE_SIGNAL_RE 中文备选的既有口径。
+# 被误让位。同 _DIFFUSE_SIGNAL_RE 中文备选的既有计算方式。
 _POINTED_INTENT_RE: dict[str, str] = {
     "package_search": r"(?i)\b(install|add|uninstall|download)\b|安装|下载|替代包|包名",
     "ai_model": r"(?i)(价格|pricing|上下文|context window|token limit|vision|多模态|免费|开源|多少钱)",
@@ -451,8 +451,8 @@ def _inject_multilingual_backup(engines_combo: list[str], enabled: set[str],
     救援；日韩查询过滤掉中文源后常只剩英文/本地源，缺位=无通用主力。
 
     注：这条规则只覆盖 ja/ko。其余语言的同类问题（垂直专源占住 combo 预算、
-    通用兜底源被截断剪掉）在声明真源层修，见 config.yaml 各域 engines_combo
-    的顺序约定与 tests/test_combo_budget_coverage.py 门禁。
+    通用保底源被截断剪掉）在声明来源层修，见 config.yaml 各域 engines_combo
+    的顺序约定与 tests/test_combo_budget_coverage.py 检查。
     """
     if features.get("primary_lang") not in ("ja", "ko"):
         return engines_combo
@@ -551,7 +551,7 @@ def _expand_local_search(engine_list: list[str], features: dict | None = None) -
 
 
 def _general_fallback(enabled: set[str]) -> list[str]:
-    """本地优先 + 通用免费源兜底（清单单一真源 engine_policy.GENERAL_FREE_FALLBACK）。
+    """本地优先 + 通用免费源保底（清单唯一来源 engine_policy.GENERAL_FREE_FALLBACK）。
 
     域内引擎全被过滤 / 无匹配域时的回退组合：先 local_search（展开成本地子引擎），
     再通用免费源。清单与 recovery L3 共用同一常量，避免两处清单漂移。
@@ -567,8 +567,8 @@ def _filter_breaker_blocked(engine_list: list[str]) -> list[str]:
     """剔除确定熔断态引擎（disabled / open 且冷却未过），与 _get_engines_combo
     内的熔断感知过滤同一语义（half_open 保留探测资格）。
 
-    D4：语言引擎追加、通用兜底、TF-IDF 注入等路径在 _get_engines_combo 之外，
-    追加的引擎可能处于熔断态仍进 combo，白占并行槽位。统一收口到最终组装后。
+    D4：语言引擎追加、通用保底、TF-IDF 注入等路径在 _get_engines_combo 之外，
+    追加的引擎可能处于熔断态仍进 combo，白占并行槽位。统一统一处理到最终组装后。
     """
     if not engine_list:
         return engine_list
@@ -622,7 +622,7 @@ def _select_language_engines(features: dict | None = None) -> list[str]:
                     if e in sub_engines][:2]
         if lang_override == "zh":
             return [e for e in ["local_bing"] if e in sub_engines]
-        # en / cyrillic / 其他：中英基线本地引擎（动态 setlang 兜底多语言索引）
+        # en / cyrillic / 其他：中英基线本地引擎（动态 setlang 保底多语言索引）
         return [e for e in ["local_bing", "local_duckduckgo"] if e in sub_engines]
 
     # 日/韩：优先对应语言本地引擎。注：local_yandex 走 ddgs yandex 后端
@@ -666,7 +666,7 @@ def _select_language_engines(features: dict | None = None) -> list[str]:
 
 def _merge_language_engines(engine_list: list[str], features: dict | None,
                             lang_engines: list[str]) -> list[str]:
-    """把预选语言引擎合并进当前 combo（P2-1，三处共用、幂等）。
+    """把预选语言引擎合并进当前 combo（P2-1，三处共用、重复执行结果一致）。
 
     日/韩：中文域引擎（byted/bocha 等）是噪声源需剔除，且不因「combo 已有
       local_ 引擎」而跳过——中文引擎对日韩查询无用；
@@ -696,7 +696,7 @@ def _add_language_engines(engine_list: list[str], features: dict | None = None) 
     """为已路由的查询添加语言相关的本地引擎（补充源，兼容入口）。
 
     route_query 内已改为「先 _select_language_engines 一次、再
-    _merge_language_engines 三处共用」；本函数保留独立调用能力（幂等），
+    _merge_language_engines 三处共用」；本函数保留独立调用能力（重复执行结果一致），
     供外部或未来调用方使用。
     """
     return _merge_language_engines(engine_list, features, _select_language_engines(features))
@@ -715,9 +715,9 @@ def _maybe_add_geo_engine(engine_list: list[str], features: dict | None,
 
 
 # 语言重排的排除名单改为 engine_families.ENGINE_LANGS 派生（engines_not_for_lang），
-# 三张手写冻结表（_EN_ONLY/_ZH_ONLY/_JA_KO_CN）2026-09-07 收敛删除——
+# 三张手写冻结表（_EN_ONLY/_ZH_ONLY/_JA_KO_CN）2026-09-07 收紧删除——
 # 新源声明 langs 一次，全部分发路径自动生效。_SOCIAL_ZH_GENERAL 保留
-# （social 域中文查询的通用 web 兜底，按优先级）：平台词命中 social 域的查询
+# （social 域中文查询的通用 web 保底，按优先级）：平台词命中 social 域的查询
 # （提到「小红书/微信」≠ 搜小红书/微信），通用源覆盖真实主题，防平台噪声全占。
 # anysearch 优先：local_bing 直抓 bing.com 对长中文查询存在降级服务风险
 # （2026-08-29 实测：整条查询被 Bing 降级为单字「拍」匹配，返回字典页）。
@@ -757,9 +757,9 @@ def _lang_aware_combo_order(combo: list[str], features: dict | None,
         return combo
     zh_ratio = features.get("chinese_ratio") or 0
     primary_lang = features.get("primary_lang")
-    # 汉字占比兜底不得命中 ja/ko：假名/谚文文本里的汉字同属 CJK 区段，
+    # 汉字占比保底不得命中 ja/ko：假名/谚文文本里的汉字同属 CJK 区段，
     # 纯 ratio 判定会把日文查询（汉字占比常 >0.15）误入中文分支，
-    # 中文专用源占前排——与 query_rewriter 的语言门控口径一致。
+    # 中文专用源占前排——与 query_rewriter 的语言门控计算方式一致。
     is_zh = primary_lang == "zh" or (
         primary_lang not in ("ja", "ko") and zh_ratio > 0.15)
     if is_zh:
@@ -881,7 +881,7 @@ def _apply_intent_parallelism(engine_list: list[str], features: dict | None,
 def _select_sub_engines(sub_engines: list[str], features: dict | None = None) -> list[str]:
     """根据查询特征选择子引擎。"""
     if not features:
-        # 默认兜底：快源优先（brave/yahoo 实测 ~1.1s），ddgs 默认后端慢不主动纳入
+        # 默认保底：快源优先（brave/yahoo 实测 ~1.1s），ddgs 默认后端慢不主动纳入
         return [e for e in ["local_bing", "local_brave", "local_yahoo", "local_duckduckgo"]
                 if e in sub_engines]
 
@@ -902,7 +902,26 @@ def _select_sub_engines(sub_engines: list[str], features: dict | None = None) ->
     elif features.get("has_depth_word"):
         return [e for e in ["local_arxiv", "local_semantic_scholar", "local_bing"] if e in sub_engines]
     else:
-        return [e for e in ["local_bing", "local_duckduckgo", "local_mojeek"] if e in sub_engines]
+        # 2026-09-16 实测校正：原链条 [local_bing, local_duckduckgo, local_mojeek]
+        # 里后两个**都已损坏**——local_duckduckgo 连接失败；local_mojeek 被
+        # Mojeek 的 captcha 页拦住（HTTP 200 + <title>Captcha</title>，属静默
+        # 失败，靠 anti-bot 检测才判成 blocked）。它们占着 combo 槽位，而真正
+        # 能出结果的独立索引反而进不来（marginalia/wiby/searchmysite 实测各 10 条）。
+        #
+        # 换成可用且**更契合长尾**的独立索引：这三个都不是大厂代理，正是冲
+        # 「小网站/独立博客/非商业页面」去的，比再塞一个同类大引擎更有价值。
+        # local_bing 仍打头（唯一稳定可用的大厂 SERP）。
+        #
+        # ⚠️ 它们不是 local_* 子引擎，所以不能用 sub_engines 过滤——那会让这一支
+        # 恒等于 [local_bing]（实测英文通用查询只剩 1 个源），下面那三个名字
+        # 永远等不到。判据改成「本地子引擎 OR 已启用的顶层引擎」。
+        try:
+            from engines import available_engines
+            _available = set(available_engines())
+        except Exception:
+            _available = set()
+        return [e for e in ["local_bing", "marginalia", "wiby", "searchmysite"]
+                if e in sub_engines or e in _available]
 
 
 def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "auto",
@@ -927,7 +946,7 @@ def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "a
     # 旧逻辑只在 combo 为空时读 fallback，而 69 个域全部配置了 engines_combo，
     # 导致 22 个真备用 fallback 全部失效（备用源形同虚设）。
     # 追加到尾部 + 串行执行：正常路径 primary 先跑，early-stop 命中即不触碰
-    # fallback（零额外开销）；仅当 primary 无结果/故障时才轮到 fallback 兜底。
+    # fallback（零额外开销）；仅当 primary 无结果/故障时才轮到 fallback 保底。
     if fallback and fallback != primary and fallback in enabled and fallback not in filtered:
         filtered.append(fallback)
 
@@ -1077,7 +1096,7 @@ def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "a
     # P0-3：disabled / open+cooldown 的引擎是「确定不可用」——不再沉底保留
     # （沉底后仍会被执行，白耗一次注定失败的超时），而是直接剔除，让域内
     # 候选（fallback / combo 其他成员，天然同主题）自动顶位；域内无候选时
-    # 集合收缩，交由 route_query 尾部通用兜底 / recovery 按 family 门禁补源。
+    # 集合收缩，交由 route_query 尾部通用保底 / recovery 按 family 检查补源。
     # open 但 cooldown 已过 → half-open 探测资格，保留（与 allow() 一致）。
     # 缓存键基于 sorted(engines) 集合：剔除改变集合→键变，但 open+cooldown
     # 时负缓存已生效，键变化无损失；且故障源不再被调用。
@@ -1107,14 +1126,14 @@ def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "a
     if unusable and usable:
         filtered = usable
     elif unusable and not usable:
-        # 域内全部不可用：返回空集，由 route_query 尾部兜底（通用免费源 /
+        # 域内全部不可用：返回空集，由 route_query 尾部保底（通用免费源 /
         # modal_card 保留声明引擎供执行层返回 error item）
         filtered = []
 
     # ── 能力族去重 + 互补回填（标准化调用契约）────────────────────────
     # 全网搜索族同质化最高（byted/bocha/duckduckgo/octen 都是通用网页检索），
     # 同族堆叠纯属浪费预算位：web_general 至多保留 2 个，垂直族保留多源。
-    # config.yaml 引擎声明的 family 字段是真源（spec_lookup 传入 family_of，
+    # config.yaml 引擎声明的 family 字段是来源（spec_lookup 传入 family_of，
     # 不再只看静态覆盖表）。去重腾出的槽位由 complement_refill 用互补能力族
     # 引擎回填（与域主引擎 coverage 重叠的高优先级源），兑现「给其他族腾出
     # 预算位」；已有垂直成员的域不再追加，尊重域作者配置。
@@ -1153,7 +1172,7 @@ def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "a
 # open_library / douban_movie / musicbrainz 挤出预算），属横向替换而非净增益。
 # 故采用**加槽**（扩容）而非**顶位**，两者共存。
 #
-# 收录口径：只收「能力与既有源不重叠」的源；同能力横向重复
+# 收录计算方式：只收「能力与既有源不重叠」的源；同能力横向重复
 # （如 art_museum 的 artic vs cleveland）不收，避免用同质源挤掉同质源。
 _VERTICAL_NEW_SOURCE: dict[str, tuple[str, ...]] = {
     "species_search": ("worms",),               # 海洋分类学权威命名，无重叠
@@ -1300,7 +1319,7 @@ def _apply_policy_with_new_source_slots(
 
     正则域命中分支与 catch-all 分支此前各抄一份
     `_new_source_budget_extra(...)` + `_apply_engine_policy(...)`（参数与注释
-    逐字相同）；收敛成单一入口后，加槽口径只有一处可改。
+    逐字相同）；收紧成单一入口后，加槽计算方式只有一处可改。
 
     **为什么额度按「声明位次」而非当前 combo 算**：进到这里的 combo 已经被
     两道前置裁剪动过手——`_get_engines_combo` 的 web_general 能力族去重
@@ -1395,7 +1414,7 @@ def route_query(query: str, engine_override: str = "auto",
 
     if engine_override and engine_override != "auto":
         # 逗号多引擎与 --list-engines 路径（search.py --engine split(',')）
-        # 同一口径；此分支曾整串直通——整串被当成一个引擎名进 combo，
+        # 同一计算方式；此分支曾整串直通——整串被当成一个引擎名进 combo，
         # registry 查无 → 「未知引擎」空跑，用户显式指定的引擎全部失效。
         engines = [e.strip() for e in engine_override.split(",") if e.strip()]
         if not engines:
@@ -1435,7 +1454,7 @@ def route_query(query: str, engine_override: str = "auto",
     # P1-1：多意图路由——主域执行 + 次域按预算补充（仅域命中分支消费 secondary）
     _domain_hits = match_domains(query, domains_cfg,
                                  primary_lang=features.get("primary_lang"))
-    # 结构化域优先：social 域 patterns（config.yaml 单一真源）命中即提前，
+    # 结构化域优先：social 域 patterns（config.yaml 唯一来源）命中即提前，
     # 避免被 query 里的实体词（GPT/Llama/api）误抢到模型库/技术域。
     _domain_hits = _social_domain_first(_domain_hits)
     # 面查意图守卫：长主题句 + 无意图词时点查域让位（防 pypi/models_dev 词面误抢）
@@ -1547,7 +1566,7 @@ def route_query(query: str, engine_override: str = "auto",
                 except ImportError:
                     engines_combo = declared
             if not engines_combo:
-                # 域内引擎全被过滤，回退（本地优先 + 通用免费源单一真源）
+                # 域内引擎全被过滤，回退（本地优先 + 通用免费源唯一来源）
                 engines_combo = _general_fallback(enabled)
                 if not engines_combo:
                     engines_combo = sorted(enabled)[:2] if enabled else ["anysearch"]
@@ -1584,7 +1603,7 @@ def route_query(query: str, engine_override: str = "auto",
             engines_combo = _maybe_add_geo_engine(engines_combo, features, enabled)
 
         # P1-1：多意图补充——次域 primary 在预算内补充（追加尾部，不占主位）。
-        # 预算截断由 _apply_engine_policy 完成；web_general 族计数门禁防同质堆叠
+        # 预算截断由 _apply_engine_policy 完成；web_general 族计数检查防同质堆叠
         # （与 _get_engines_combo 的能力族去重语义一致）。modal_card 纯结构化路径
         # 不混入次域源。次域引擎不受 must_keep 保护，预算紧张时自然被裁。
         if secondary and not _pure_combo:
@@ -1689,11 +1708,11 @@ def route_query(query: str, engine_override: str = "auto",
                 and tfidf_best in enabled:
             engines_combo = [tfidf_best] + [e for e in engines_combo if e != tfidf_best]
             confidence = 0.9
-        # D4：统一熔断收口——语言/geo/次域/TF-IDF 追加的引擎也可能处于熔断态
+        # D4：统一熔断统一处理——语言/geo/次域/TF-IDF 追加的引擎也可能处于熔断态
         engines_combo = _filter_breaker_blocked(engines_combo)
         if not engines_combo:
             engines_combo = [e for e in ["anysearch", "duckduckgo"] if e in enabled] or ["anysearch"]
-        # budget 截断后对齐 parallel，避免短 combo 仍开多余并行
+        # budget 截断后保持一致 parallel，避免短 combo 仍开多余并行
         # research 语境例外：子查询跑满 combo（no_early_stop），串行会拖垮
         # 整条研究管线，强制并行
         if (mode == "fast" and context != "research") or len(engines_combo) <= 1:
@@ -1709,7 +1728,7 @@ def route_query(query: str, engine_override: str = "auto",
             engines=engines_combo,
             engines_combo=engines_combo,
             # 恢复链 L3 候选：域声明但被预算截掉的成员优先（域最清楚自己
-            # 的兜底次序，实测 macro_data 六成员被截成两个、恰好截掉国家
+            # 的保底次序，实测 macro_data 六成员被截成两个、恰好截掉国家
             # 统计局），其余 enabled 引擎殿后
             engines_fallback=(
                 [e for e in (domain.get("engines_combo") or [])
@@ -1767,11 +1786,11 @@ def route_query(query: str, engine_override: str = "auto",
             mode=mode, depth=depth, context=context,
             enabled=enabled, engines_boost=engines_boost, must_keep=must_keep,
         )
-        # ja/ko catch-all 与主域分支同口径：anysearch 前二（TF-IDF 直选路径
+        # ja/ko catch-all 与主域分支同计算方式：anysearch 前二（TF-IDF 直选路径
         # 也会把多语言主力挤掉）
         engines_combo = _inject_multilingual_backup(engines_combo, enabled,
                                                     features)
-        # D4：统一熔断收口（TF-IDF 注入/语言追加可能绕过 _get_engines_combo）
+        # D4：统一熔断统一处理（TF-IDF 注入/语言追加可能绕过 _get_engines_combo）
         engines_combo = _filter_breaker_blocked(engines_combo)
         if not engines_combo:
             engines_combo = [e for e in ["anysearch", "duckduckgo"] if e in enabled] or ["anysearch"]
@@ -1796,7 +1815,7 @@ def route_query(query: str, engine_override: str = "auto",
             login_hint=_detect_login_intent(query, None),
         )
 
-    # 兜底：免费通用引擎（零分 TF-IDF 也走这里）——本地优先 + 通用免费源单一真源
+    # 保底：免费通用引擎（零分 TF-IDF 也走这里）——本地优先 + 通用免费源唯一来源
     fallback_combo = _general_fallback(enabled)
     if not fallback_combo:
         fallback_combo = sorted(enabled)[:2] if enabled else ["anysearch"]
@@ -1826,7 +1845,7 @@ def route_query(query: str, engine_override: str = "auto",
         fallback_combo, mode=mode, depth=depth, context=context,
         engines_boost=engines_boost, enabled=enabled, must_keep=must_keep_fb,
     )
-    # D4：统一熔断收口（兜底组合可能含熔断引擎）
+    # D4：统一熔断统一处理（保底组合可能含熔断引擎）
     fallback_combo = _filter_breaker_blocked(fallback_combo)
     if not fallback_combo:
         fallback_combo = ["anysearch"]
@@ -1847,7 +1866,7 @@ def route_query(query: str, engine_override: str = "auto",
         confidence=0.35 if low else 0.3,
         features=features, domain="general_search",
         parallel=False if mode == "fast" else len(fallback_combo) > 1,
-        # 兜底路径 tfidf_best 必为空（否则已走 TF-IDF 分支）：低于阈值的
+        # 保底路径 tfidf_best 必为空（否则已走 TF-IDF 分支）：低于阈值的
         # 候选分不是路由依据，输出只会误导，一律空表。
         tfidf_scores=[{"engine": n, "score": s} for n, s, _ in tfidf_scores]
         if tfidf_best else [],

@@ -268,9 +268,13 @@ domains:
   - (?i)\b(protein|gene|genome|amino\s+acid|sequence|uniprot|rcsb|pdb)\b
   - (?i)\b(p53|tp53|brca1|brca2|egfr|her2|pdl1|pd-1|hemoglobin|insulin|p21)\b
   primary: uniprot
-- desc: 美国法律判例（CourtListener）
+- desc: 美国法律判例与联邦法规（CourtListener + Federal Register）
+  # 2026-09-16 接入 federal_register：补「美国行政法规原文」这块盲区。
+  # 原先 us_legal 只覆盖法院判例，而 rules / proposed rules / notices 属行政
+  # 法规体系，是另一类一手证据（搜「AI 监管新规」时判例源给不出法规原文）。
   engines_combo:
   - courtlistener
+  - federal_register
   - anysearch
   fallback: courtlistener
   name: us_legal
@@ -279,6 +283,8 @@ domains:
   - (?i)(supreme\s+court|court\s+of\s+appeals|circuit\s+court|case\s+law|precedent|docket\s+number|courtlistener)
   - (?i)\b(roe\s+v\.?\s*wade|marbury\s+v\.?\s*madison|brown\s+v\.?\s*board|miranda\s+v\.?\s*arizona)\b
   - (美国判例|美国最高法院|判例法|联邦法院|美国法律)
+  - (?i)(federal\s+register|proposed\s+rule|final\s+rule|federal\s+regulation|\bCFR\b|\bFR\s+\d+)
+  - (美国联邦公报|联邦法规|行政法规|拟议规则|公开征求意见)
   primary: courtlistener
 - desc: 地球科学/遥感数据（USGS 地震 + GDACS 多灾种 + NASA CMR/图像）
   # combo_budget(fast)=2 只取前 2 位。GDACS 是多灾种预警（洪水/台风/野火/
@@ -300,22 +306,38 @@ domains:
   - (地震|震级|余震|地质|遥感|卫星数据|震中)
   - (?i)(earthquake|seismic|usgs|geology|remote\s+sensing|satellite\s+data)
   primary: usgs
-- desc: 安全漏洞情报（NVD 漏洞 + crt.sh 证书/子域情报）
+- desc: 安全漏洞情报（NVD + OSV 开源漏洞 + CISA KEV 在野利用 + crt.sh 证书情报）
   # 通用兜底源 anysearch 必须留在前 2 位：combo_budget(depth=fast)=2，
   # 截断只按声明顺序取前 N 个。原先 [nvd, crt_sh, anysearch] 使两个
   # 窄模态源吃满预算，中文自然语言查询（如「log4j 漏洞 影响」）两源
   # 均返回 0（实测 2026-09-12），而 anysearch 有 10 条。
+  #
+  # 2026-09-16 接入 osv / cisa_kev，放在 anysearch 之后（位次 3、4）：
+  #   nvd      —— CVE 编号 + CVSS 严重度（官方口径）
+  #   osv      —— 按包查，聚合 GHSA/PyPA/Go/RustSec，给出**影响版本区间**
+  #   cisa_kev —— 官方确认「已被真实攻击利用」，是修复优先级最高的一档
+  # 三者互补构成完整判断链（严重度 → 影响范围 → 是否在野利用），彼此不重复。
+  # 位置放在兜底源之后是刻意的：它们在小预算下不参与通用路由，只在 deep/
+  # research 或用户显式点名时生效——避免用 1KB+ 的结构化事实挤掉中文召回。
   engines_combo:
   - nvd
   - anysearch
+  - osv
+  - cisa_kev
   - crt_sh
   fallback: anysearch
   name: security_search
   parallel: false
   patterns:
-  - (?i)\bCVE-\d{4}-\d{4,7}\b
-  - (?i)(安全漏洞|漏洞公告|漏洞情报|漏洞利用|漏洞评分|CVSS|安全通告|zero.?day|零日漏洞)
+  # 裸 CVE 此前不认：第一条要求写成完整的 CVE-2024-1234，于是「CVE 漏洞」
+  # 这种最自然的说法一个域都不命中，掉进通用兜底、nvd 选不上。
+  - (?i)\bCVE(-|\b)
+  - (?i)(安全漏洞|漏洞公告|漏洞情报|漏洞利用|漏洞评分|漏洞扫描|漏洞修复|CVSS|CVE|NVD|安全通告|zero.?day|零日漏洞|0day)
   - (?i)(security (advisory|vulnerability|bulletin)|cisa kev)
+  - (?i)(在野利用|已被利用|kev|exploited in the wild)
+  - (?i)(依赖漏洞|组件漏洞|包漏洞|\bOSV\b|供应链攻击|软件成分分析|SBOM)
+  # 常见漏洞类型：用户往往直接说类型而不是「漏洞」二字
+  - (?i)(SQL\s*注入|命令注入|代码注入|反序列化|远程代码执行|\bRCE\b|权限提升|提权|越权访问|跨站脚本|\bXSS\b|\bCSRF\b|目录穿越|路径穿越)
   primary: nvd
 - desc: 产品生命周期（endoflife.date）
   engines_combo:
@@ -1015,8 +1037,23 @@ domains:
   - (?i)(知乎|怎么看待|如何评价|体验|评测|对比|推荐|哪个好|值得买|好不好|要不要|推荐吗|求推荐|有什么)
   primary: zhihu
 - desc: 学术论文搜索
+  # openreview/biorxiv 曾长期是「已实现但无域引用」的孤儿源：只能靠
+  # `--engine` 显式调用，自动路由永远选不中。AI/ML 顶会评审（OpenReview）
+  # 与生物医学预印本（bioRxiv/medRxiv）是通用学术检索补不上的盲区——
+  # 普通网页搜索在这个问题上给的是博客和二手解读。
+  #
+  # 排序由 fast 档的真实约束决定，不是审美问题：budget=2 且 must_keep=[primary]
+  # 会「腾位」（挤掉末位非保底成员），最终只有 2 个源能跑。实测三种排法：
+  #   primary=arxiv      + [arxiv, openreview, biorxiv, ...] → arxiv + openreview
+  #   primary=openreview + [openreview, biorxiv, arxiv, ...] → openreview + biorxiv
+  #   primary=arxiv      + [arxiv, openalex, ..., openreview] → arxiv + openalex（丢新源）
+  # 取第一种：保住 arxiv（覆盖最广），同时把 openreview 顶进可见位；biorxiv 留第 3
+  # 位，deep/research 不截断时参与（实测 deep 跑 openreview+arxiv+biorxiv）。
+  # primary 必须落在前 2 位内，否则 must_keep 腾位反会把新源挤出去。
   engines_combo:
   - arxiv
+  - openreview
+  - biorxiv
   - openalex
   - crossref
   - europepmc
@@ -1026,7 +1063,10 @@ domains:
   name: academic
   parallel: true
   patterns:
-  - (?i)(论文|paper|arXiv|preprint|DOI|引用|citation|学术|openalex|crossref|europe pmc|dblp)
+  # 中文论文语境词此前是缺口：规则里有英文 preprint，却没有「预印本」。
+  # 实测「生物医学预印本」因此一个域都不命中，掉进通用兜底（combo 变成
+  # bocha+anysearch），biorxiv/openreview 这些已实现的源永远轮不上。
+  - (?i)(论文|paper|预印本|preprint|arXiv|bioRxiv|medRxiv|DOI|引用|citation|学术|文献|期刊|学报|综述|同行评议|影响因子|openalex|crossref|europe pmc|dblp|PubMed|知网|万方|维普)
   - \b\d{4}\.\d{4,5}\b
   - (?i)(transformer|attention\s+mechanism|neural\s+network|deep\s+learning|machine\s+learning|BERT|GPT)
   primary: arxiv
@@ -3003,8 +3043,16 @@ engines:
     timeout: 8
   local_mojeek:
     type: html
-    enabled: true
+    # 2026-09-16 实测停用：Mojeek 对自动化查询返回 captcha 页——先 HTTP 403
+    # 「your network appears to be sending automated queries」，随后变成
+    # HTTP 200 + <title>Captcha</title>（更隐蔽：状态码正常但正文无结果）。
+    # 换浏览器 UA / curl UA / 无 UA 都一样；首页与 /about 正常 200，仅 /search
+    # 被拦，且无免 key 的官方 API（services/search 404、api.mojeek.com 403）。
+    # 属上游策略限制，非本地可修。
+    # 长尾召回已由 marginalia/wiby/searchmysite 承担（三者实测均 10 条可用）。
+    enabled: false
     label: Mojeek本地
+    note: 上游对自动化查询返回 captcha（403→200+captcha 页）；无免 key API。长尾改由 marginalia/wiby/searchmysite 承担
     cost_tier: free
     qps: 3
     priority: 22
@@ -3031,8 +3079,12 @@ engines:
     timeout: 10
   local_startpage:
     type: html
-    enabled: true
+    # 2026-09-16 实测停用：Startpage 返回 anti-bot 拦截页（引擎如实判为
+    # blocked，非静默空结果）。Startpage 是 Google 结果的代理层，反爬强度高，
+    # 且同类能力已由 local_bing（实测 10 条）覆盖，维护收益低。
+    enabled: false
     label: Startpage本地
+    note: 上游 anti-bot 拦截页；Google 类结果已由 local_bing 覆盖，不再维护
     cost_tier: free
     qps: 3
     priority: 24

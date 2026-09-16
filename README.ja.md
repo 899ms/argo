@@ -25,7 +25,7 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
-  <img alt="engines" src="https://img.shields.io/badge/engines-222-orange">
+  <img alt="engines" src="https://img.shields.io/badge/engines-227-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
 
@@ -60,7 +60,7 @@
 4. **無料オープン生態系で足りる。** 政府・学術・標準・セキュリティの公開 API とキーレス エンジンで大部分をカバー（184 ソースが無設定）。
 5. **品質は測定可能。** ランキング金標・融合利得アブレーション・負のルーティング制御。
 
-> v2.8.8 はこの全てを実装：222 ソース / 90 ドメイン / 187 無設定。
+> v2.8.8 はこの全てを実装：227 ソース / 90 ドメイン / 189 無設定。
 
 ---
 
@@ -144,7 +144,7 @@ freshness  ≈ 公開時刻（「2015 年以来」のような歴史比較年は
 ### エージェント利用の規律（推奨）
 
 1. **高影響の問い**（ポジション、安全、真偽）：search → 速評を見る → top を `fetch` → 結論  
-2. **数字**：口径（定義・範囲）を明示し、矛盾は並列表示、無理に合成しない  
+2. **数字**：计算方式（定義・範囲）を明示し、矛盾は並列表示、無理に合成しない  
 3. **SERP / リダイレクト**：本文ソースにしない  
 4. **SNS**：世論・物語として扱い、事実の真値にしない  
 5. **ファクトチェック**：ソース / 比較 / 主体など層化したクエリを足す
@@ -153,7 +153,7 @@ freshness  ≈ 公開時刻（「2015 年以来」のような歴史比較年は
 
 ## クイックスタート
 
-どれか 1 つで十分です。**インストールの真源は GitHub のみ**（`npx github:taxueseek/argo` または `install.sh`）、現在推奨 **v2.8.8**。**`npm install argo-search` は使わないでください**——npm registry 上のそれは**非公式の古い v1.0.1**（本リポジトリ外、機能不足、更新されない）。本パッケージは `private: true` で npm 誤公開を防ぎます。
+どれか 1 つで十分です。**インストールの来源は GitHub のみ**（`npx github:taxueseek/argo` または `install.sh`）、現在推奨 **v2.8.8**。**`npm install argo-search` は使わないでください**——npm registry 上のそれは**非公式の古い v1.0.1**（本リポジトリ外、機能不足、更新されない）。本パッケージは `private: true` で npm 誤公開を防ぎます。
 
 **ゼロ設定で動く**：API Key なしなら無料エンジン + ローカル `local_*`。Key があるソースは品質が上がりやすく、無いものは自動スキップ。
 
@@ -253,7 +253,7 @@ bash scripts/install.sh --link ~/.claude/skills/argo   # 任意
 python3 scripts/search.py --list-engines
 ```
 
-### 方法五：Skill ディレクトリへ（シンボリックリンク、単一真源）
+### 方法五：Skill ディレクトリへ（シンボリックリンク、単一来源）
 
 ```bash
 python3 scripts/link_source.py --to ~/.claude/skills/argo
@@ -334,10 +334,10 @@ python3 scripts/search.py --list-engines
 ### 現時点の能力概要（v2.8.8）
 
 - **ローカルデータ融合（v2.8.4 新）**：研究作業パッケージに `file_inputs`（手元一次データ、sha256/血統を登記）+ `recompute`（サンドボックス再計算）；dossier は `local_sources` を出す
-- **MCP 一発注入（v2.8.4 新）**：`argo mcp inject` で Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline（アトミック書き込み + バックアップ + 可逆。真源 `mcp/clients.yaml`）
+- **MCP 一発注入（v2.8.4 新）**：`argo mcp inject` で Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline（アトミック書き込み + バックアップ + 可逆。来源 `mcp/clients.yaml`）
 - **構造化検索の強化（v2.8.4 新）**：クエリ正規化 + 変体 + 複雑さゲート；SNS 構文優先；TF-IDF は中国語エンジンを捨てた後も候補を見る；`--include-local`
 - **Keenable（v2.8.4 新）**：汎用ウェブ検索エンジン追加（L1 宣言的 HTTP、無料体験、`ARGO_KEENABLE_API_KEY`）
-- **222 ソース、90 ドメイン**（187 は設定不要）：一般ウェブ + 金融 / マクロ / 映像 / スポーツ / 地理 / 組織 / メディア / 化学 / 学術 / コード（真源：`config.yaml`）
+- **227 ソース、90 ドメイン**（189 は設定不要）：一般ウェブ + 金融 / マクロ / 映像 / スポーツ / 地理 / 組織 / メディア / 化学 / 学術 / コード（来源：`config.yaml`）
 - **12 の MCP ツール**：検索、研究、証拠、曖昧さ解消、取得、スクショ、PDF、SNS、ローカル、クロール、ローカルプレビュー、再計算
 - **多言語検索**：中・英・日・韓・キリル・タイ・アラビア・ヘブライ・ギリシャ・デーヴァナーガリーなど。ルーティングとエンジンパラメータが言語に追従。非中国語クエリは知乎 / 搜狗微信 / A 株スナップショットなど中国語専用源を避ける
 - **垂直復旧の門禁**：空結果復旧で pypi / npm / 速報などを映像・スポーツへ「混ぜない」
@@ -474,7 +474,7 @@ export ARGO_KEENABLE_API_KEY="your_key"   # 任意；Keenable 無料体験
 `python3 scripts/search.py --list-engines`、または `--explain`。
 
 **コードが複数コピーされる？**  
-しません。`link_source.py` で単一真源 + シンボリックリンクを推奨。rsync 複製はしない。
+しません。`link_source.py` で単一来源 + シンボリックリンクを推奨。rsync 複製はしない。
 
 ---
 
@@ -501,8 +501,8 @@ python3 scripts/search.py [options] クエリ
 1. **エージェントが吸収できることを先に、リンク数は後。**  
 2. **無料とローカルを先に、有料は任意の上乗せ。**  
 3. **失敗は観測可能に**：空結果 / タイムアウト / ブレーカを分け、黙って飲み込まない。  
-4. **設定駆動でエンジン拡張**、`config.yaml` が単一真源。  
-5. **単一真源インストール**：リンクし、rsync しない。  
+4. **設定駆動でエンジン拡張**、`config.yaml` が単一来源。  
+5. **単一来源インストール**：リンクし、rsync しない。  
 6. **SNS を真理庫にしない**；拡張と世論向きで、単独の真値には不向き。
 
 ---
@@ -531,10 +531,10 @@ argo/
 ├── package.json             # npx 入口
 ├── bin/argo.js              # Node MCP 起動
 ├── bin/argo                 # Python CLI
-├── config.yaml              # エンジンとドメイン（真源）
+├── config.yaml              # エンジンとドメイン（来源）
 ├── assets/readme/           # README ビジュアル
 ├── backends/
-├── mcp/                     # 多クライアント MCP 注入の真源（clients.yaml）
+├── mcp/                     # 多クライアント MCP 注入の来源（clients.yaml）
 ├── scripts/                 # search / research / mcp / install …
 ├── sub-skills/local-search/
 ├── sub-skills/ego-search/      # ログイン態の専門検索（既定オフ）
@@ -559,7 +559,7 @@ argo/
 
 ### v2.8.5：DSH プラグインツールのネイティブ化 + MCP 既定オフ + Windows 対応
 
-- **プラグインツールのネイティブ化**：`argo_search` / `argo_fetch` がネイティブの一等ツールとして登録され、MCP 接続なしで既定使用可能；スキーマは唯一の真源 `mcp_tools.py` から自動生成され、両側で零ドリフト；`argo_research` 以外の 13 ツールは `nativeTools` で随時有効化可能
+- **プラグインツールのネイティブ化**：`argo_search` / `argo_fetch` がネイティブの一等ツールとして登録され、MCP 接続なしで既定使用可能；スキーマは唯一の来源 `mcp_tools.py` から自動生成され、両側で零ドリフト；`argo_research` 以外の 13 ツールは `nativeTools` で随時有効化可能
 - **MCP 既定オフ**：3 形態の接続（随時マウントの MCP / 既定入口のネイティブツール / web_search seam）；普段は常駐トークン消費ゼロ、14 ツール全量が必要なときは profile patch 1 枚で開く
 - **Windows 互換**（コミュニティ PR #11）：一時パスはシステム temp、GBK エンコード修正、`python3`/`python` の実行時解決、symlink は権限なしで junction にフォールバック、PowerShell 一括インストール `install.ps1` を追加
 - **クォータ自己修復**：HTTP 200 に隠れたリモートクォータ枯渇を検出し、ルーティングがそのエンジンを除外してバックアップ源へ切替、次クォータ期間で自動復帰
@@ -582,9 +582,9 @@ argo/
 | 版 | 内容 |
 |----|------|
 | **v2.8.8** | **実ユーザー報告の修正（キー別名の無言失敗 #12、プロキシ非対応の取得 #13）+ 直答／観測の 2 サブコマンド + parallel_free·seltz エンジン**：出口ディスパッチを統一（`ARGO_PROXY` / ドメイン別ルール / 標準プロキシ変数の三経路、`NO_PROXY` を尊重）；キー読み取り 16 箇所を別名チェーンに統一しソーススキャン門禁を追加；取得チェーンに Parallel 無料レンダリング段を追加；ソース 218 → 220。詳細は [リリースノート](docs/RELEASE_NOTES_v2.8.8.md) |
-| **v2.8.7** | **218 ソース / 89 ドメイン + 本文直出 3 チャネル + ルーティング発火規律 + macro ゼロ結果修正**：バッチ 7/8/9 で累計 50 の新ソース（法令／規格／セキュリティ情報／学術／ニュース／エンタメ／エネルギー交通／法務行政）、stackexchange と doi エンジン；取得チェーン第 0 段に llms.txt と `.md` 直出プローブ、r.jina.ai リーダー段を追加；`--engine` カンマ複数指定の修正、tfidf 口径と route_reason、負方向ルーティング制御マトリクス、ランキング金標と融合利得アブレーション門禁；中国マクロ照会は国家統計局を前置、全域ゼロ結果リカバリが L3 を解放、救援エンジンを正直に記帳。詳細は [リリースノート](docs/RELEASE_NOTES_v2.8.7.md) |
+| **v2.8.7** | **218 ソース / 89 ドメイン + 本文直出 3 チャネル + ルーティング発火規律 + macro ゼロ結果修正**：バッチ 7/8/9 で累計 50 の新ソース（法令／規格／セキュリティ情報／学術／ニュース／エンタメ／エネルギー交通／法務行政）、stackexchange と doi エンジン；取得チェーン第 0 段に llms.txt と `.md` 直出プローブ、r.jina.ai リーダー段を追加；`--engine` カンマ複数指定の修正、tfidf 计算方式と route_reason、負方向ルーティング制御マトリクス、ランキング金標と融合利得アブレーション門禁；中国マクロ照会は国家統計局を前置、全域ゼロ結果リカバリが L3 を解放、救援エンジンを正直に記帳。詳細は [リリースノート](docs/RELEASE_NOTES_v2.8.7.md) |
 | **v2.8.6** | **hedged 競速 + 知乎三源分担 + 宣言的言語ディスパッチ + 到達性ゲート + 学術検索プロトコル**：先頭エンジンに猶予窓を設けた競速（速いエンジンは呼び出し 1 回で済む）、zhihu の全网検索／個人データ接続と餓死防止、サブクエリの言語・学術ディスパッチ（英語源と 17 の学術源を研究収集に接続）、エンジン言語メタデータと到達性ゲート（死に源の可視化）、geo 尾部 −56%、学術検索クエリ構築プロトコル。詳細は [リリースノート](docs/RELEASE_NOTES_v2.8.6.md) |
-| **v2.8.5** | **DSH プラグインツールのネイティブ化 + MCP 既定オフ + Windows 互換 + クォータ自己修復 + フェッチ deadline**：`argo_search`/`argo_fetch` がネイティブ一等ツールで既定可用（CLI 単発は MCP と同エンジン同ガード、スキーマ単一真源 + ドリフト門禁）；3 形態接続、MCP は随時マウント既定オフ；Windows 互換（temp パス / GBK / インタプリタ解決 / junction / `install.ps1`、PR #11）；クォータ自己修復ループ（200 業務エラー封筒検出 + ルート除外 + 周期自己修復）；フェッチ全体 deadline（`ARGO_FETCH_DEADLINE_S`）+ tinyfish レンダリング + `.md` 変体プローブ；ホットリロード env と状態ディレクトリ単一真源。[リリースノート](docs/RELEASE_NOTES_v2.8.5.md) |
+| **v2.8.5** | **DSH プラグインツールのネイティブ化 + MCP 既定オフ + Windows 互換 + クォータ自己修復 + フェッチ deadline**：`argo_search`/`argo_fetch` がネイティブ一等ツールで既定可用（CLI 単発は MCP と同エンジン同ガード、スキーマ単一来源 + ドリフト門禁）；3 形態接続、MCP は随時マウント既定オフ；Windows 互換（temp パス / GBK / インタプリタ解決 / junction / `install.ps1`、PR #11）；クォータ自己修復ループ（200 業務エラー封筒検出 + ルート除外 + 周期自己修復）；フェッチ全体 deadline（`ARGO_FETCH_DEADLINE_S`）+ tinyfish レンダリング + `.md` 変体プローブ；ホットリロード env と状態ディレクトリ単一来源。[リリースノート](docs/RELEASE_NOTES_v2.8.5.md) |
 | **v2.8.4** | **ローカルデータ融合 + 多クライアント MCP 注入 + 構造化検索 + Keenable**：研究 L1 の手元一次データ（`file_inputs` + `recompute` + `local_sources`）；`argo mcp inject`（宣言的 `mcp/clients.yaml`）；クエリ正規化 / 変体 / 複雑さゲート / SNS 構文優先 / TF-IDF 修正 / `--include-local`；Keenable（無料体験）；セキュリティ強化。[リリースノート](docs/RELEASE_NOTES_v2.8.4.md) |
 | **v2.8.3** | **多言語ルーティング修正 + プロセス内 anysearch + weighted RRF**：ja/ko が対象言語を返す；独仏西伊は anysearch；weakest-link 降権（論文 2508.01405）。[リリースノート](docs/RELEASE_NOTES_v2.8.3.md) |
 | **v2.8.2** | **Windows + 証拠セマンティクス統一**：npm `os` 制限撤去；GBK クラッシュ対策の UTF-8；メインパッケージ `dsh.bundle`；`wide_research` 品質門禁。[リリースノート](docs/RELEASE_NOTES_v2.8.2.md) |

@@ -167,7 +167,7 @@ def test_refill_excludes_noise_families():
 
 
 def test_refill_picks_best_priority_not_worst():
-    """回填必须取 priority 数字小（更优先）的源，与 family_candidates 同口径。
+    """回填必须取 priority 数字小（更优先）的源，与 family_candidates 同计算方式。
 
     回归：此前 complement_refill 用 `sort(-priority)` 且缺省按 0 处理，
     与同文件 family_candidates 的「升序=优先」相反——回填进来的永远是
@@ -185,7 +185,7 @@ def test_refill_picks_best_priority_not_worst():
 
 
 def test_refill_missing_priority_treated_as_worst():
-    """缺 priority 的候选排在有显式 priority 的之后（按 999 兜底）。"""
+    """缺 priority 的候选排在有显式 priority 的之后（按 999 保底）。"""
     eng = {
         "bocha": {"priority": 20, "coverage": ["chinese", "general"]},
         "has_prio": {"priority": 80, "coverage": ["chinese"], "family": "knowledge"},

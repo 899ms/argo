@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """engines.py — Unified Search v2 引擎适配层（门面）
 
-配置驱动 + 声明式 output_map 字段提取 + 通用 parser 兜底。
+配置驱动 + 声明式 output_map 字段提取 + 通用 parser 保底。
 实现拆分：
   - engines_base.py      公共工具 / cli / http / html / 通用解析
   - engines_builders.py  专用引擎构建器
@@ -137,6 +137,8 @@ from engines_builders import (
     _build_twitter_syndication_engine,
     _build_deps_dev_engine,
     _build_endoflife_engine,
+    _build_osv_engine,
+    _build_cisa_kev_engine,
     _build_biorxiv_engine,
     _build_un_comtrade_engine,
     _build_uniprot_engine,
@@ -292,6 +294,8 @@ _BUILDERS = {
     "twitter_syndication": _build_twitter_syndication_engine,
     "deps_dev": _build_deps_dev_engine,
     "endoflife": _build_endoflife_engine,
+    "osv": _build_osv_engine,
+    "cisa_kev": _build_cisa_kev_engine,
     "biorxiv": _build_biorxiv_engine,
     "un_comtrade": _build_un_comtrade_engine,
     "em_global_news": _build_em_global_news_engine,
@@ -478,8 +482,8 @@ def _load_registry():
         # local_search 走进程内 builder（config 里 type=cli，这里显式路由到专用实现）
         if name == "local_search":
             spec["type"] = "local_search"
-        # anysearch：type 已在 config.yaml 显式声明（引擎声明真源），
-        # 不再运行时硬覆盖；若旧配置缺 type 字段，兜底路由到进程内 builder。
+        # anysearch：type 已在 config.yaml 显式声明（引擎声明来源），
+        # 不再运行时硬覆盖；若旧配置缺 type 字段，保底路由到进程内 builder。
         if name == "anysearch" and spec.get("type", "cli") not in _BUILDERS:
             spec["type"] = "anysearch"
         builder = _BUILDERS.get(spec.get("type", "cli"))

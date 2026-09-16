@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""test_new_source_reachability.py — 新专源「声明即可达」门禁（2026-09-13 新增）。
+"""test_new_source_reachability.py — 新专源「声明即可达」检查（2026-09-13 新增）。
 
 ## 守的是什么缺陷
 
-批次九新增 25 个免密钥源，全部通过收录门禁（health+quality pass）、
+批次九新增 25 个免密钥源，全部通过收录检查（health+quality pass）、
 `--engine` 显式调用也能出结果，但**日常自动路由里永远轮不到它们**：
 
   - `combo_budget` 在 auto/balanced 只留 3 个引擎、fast 只留 2 个；
   - 新源声明在 combo 后排（位次 3~6），截断时被整段裁掉。
 
-实测（加门禁前的真实输出）：
+实测（加检查前的真实输出）：
   「海洋物种观测」→ combo=[gbif, wikipedia]（obis/worms 不在）
   「电视剧 元数据」→ combo=[imdb, douban_movie]（tvmaze 不在）
   「音乐 艺人」   → combo=[itunes, musicbrainz]（deezer/listenbrainz 不在）
 
 这与批次九已修的「准入粘滞 bug」是**同一症状、不同成因**：引擎装好了、
-没坏、也没被拉黑，只是路由根本没带上它。任一门禁只看单层（health/quality/
+没坏、也没被拉黑，只是路由根本没带上它。任一检查只看单层（health/quality/
 blocked）时，这类「跨层结论不一致」不会被发现。
 
 ## 判据
@@ -39,8 +39,8 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 # 域 → 该域声明待接入的新专源。
-# **单一真源**：直接读 route._VERTICAL_NEW_SOURCE，不再在测试里复制一份。
-# 复制版是本门禁最大的漏洞——测试锁的是自己抄的表，生产表改了它不知道。
+# **唯一来源**：直接读 route._VERTICAL_NEW_SOURCE，不再在测试里复制一份。
+# 复制版是本检查最大的漏洞——测试锁的是自己抄的表，生产表改了它不知道。
 # 旧版更用 `assert f'"{domain}"' in inspect.getsource(route)` 冒充一致性校验：
 # 那只是子串匹配，把表整段删掉也能通过（域名字还在注释里）。
 def _new_sources() -> dict[str, tuple[str, ...]]:
@@ -48,7 +48,7 @@ def _new_sources() -> dict[str, tuple[str, ...]]:
     return {k: tuple(v) for k, v in route._VERTICAL_NEW_SOURCE.items()}
 
 
-# 模块级展开（parametrize 需在收集期取值），来源仍是 route 的真源
+# 模块级展开（parametrize 需在收集期取值），来源仍是 route 的来源
 NEW_SOURCES: dict[str, tuple[str, ...]] = _new_sources()
 
 
@@ -71,7 +71,7 @@ def _enabled(name: str) -> set[str]:
 
 @pytest.fixture(scope="module")
 def new_sources():
-    """模块级 NEW_SOURCES 的镜像，便于检查真源未被清空。"""
+    """模块级 NEW_SOURCES 的镜像，便于检查来源未被清空。"""
     return _new_sources()
 
 
@@ -91,18 +91,18 @@ class TestNewSourcesReachable:
     @pytest.mark.parametrize("mode,depth", [("auto", "balanced"), ("deep", "deep")])
     def test_new_source_within_budget(self, domain, mode, depth):
         from engine_policy import filter_combo_by_policy
-        # 注意：这里的 combo 用**声明顺序**，与 route 的加槽额度同口径
+        # 注意：这里的 combo 用**声明顺序**，与 route 的加槽额度同计算方式
         # （额度按声明位次算，见 route._apply_policy_with_new_source_slots）。
         # 旧版写成 `if e in _enabled(domain) or True`——`or True` 让 enabled
-        # 过滤彻底失效，于是「引擎未启用/已下线」这类问题在本门禁下不可见。
+        # 过滤彻底失效，于是「引擎未启用/已下线」这类问题在本检查下不可见。
         combo = [e for e in _domain_combo(domain) if e in _enabled(domain)]
-        # 复刻 route 的加槽口径
+        # 复刻 route 的加槽计算方式
         pending = [e for e in NEW_SOURCES[domain] if e in combo]
         assert pending, f"{domain} 的声明新源不在 combo 中：{NEW_SOURCES[domain]}"
         from engine_policy import combo_budget
         base = combo_budget(mode=mode, depth=depth, context="search") or len(combo)
         deepest = max(combo.index(e) + 1 for e in pending)
-        # 与 route 同口径：fast/budget 或 depth=fast 上限 2（串行，加槽直接乘延迟），
+        # 与 route 同计算方式：fast/budget 或 depth=fast 上限 2（串行，加槽直接乘延迟），
         # 其余 4（并行，加槽不显著拖慢）
         cap = 2 if (mode in ("fast", "budget") or depth == "fast") else 4
         extra = min(max(deepest - base, 0), cap)
@@ -149,11 +149,11 @@ class TestVerticalKeepMapConsistency:
                 assert e in combo, f"{domain} 声明新源 {e}，但不在其 combo 中"
 
     def test_route_table_is_the_single_source(self, new_sources):
-        """本文件的判据必须来自 route 的真源，且真源非空。
+        """本文件的判据必须来自 route 的来源，且来源非空。
 
         旧版用 `inspect.getsource(route)` 子串检查冒充一致性校验：把
         `_VERTICAL_NEW_SOURCE` 整段删掉，只要域名字还出现在注释里就照样通过。
-        现在直接读真源对象，删表即失败。
+        现在直接读来源对象，删表即失败。
         """
         assert new_sources, "route._VERTICAL_NEW_SOURCE 为空——加槽机制被移除"
         assert set(new_sources) == set(NEW_SOURCES)
@@ -162,7 +162,7 @@ class TestVerticalKeepMapConsistency:
 class TestProbeActuallyRoutesToNewSource:
     """端到端：声明了新专源的域，用典型查询真的要把该源选出来。
 
-    上面的 test_new_source_within_budget 只在**策略函数**层面复刻口径，它
+    上面的 test_new_source_within_budget 只在**策略函数**层面复刻计算方式，它
     无法发现「域根本没被任何 pattern 选中」（kor_law 的实例：引擎声明齐全、
     能 --engine 单跑，但没有任何 pattern 能把查询送进它所在的域，于是永远
     --engine 才可达）。这一层补的正是「路由真跑一遍」。
@@ -216,8 +216,8 @@ class TestFastModeNotBloated:
 
 
 # ── 全仓「位置性休眠」台账（防循环信任）────────────────────────────────────────
-# 上面所有判据都以 route._VERTICAL_NEW_SOURCE 为单一真源——这有个盲区：
-# 表里漏掉的源，门禁连「该查它」都不知道（jikan/listenbrainz 实测漏网：
+# 上面所有判据都以 route._VERTICAL_NEW_SOURCE 为唯一来源——这有个盲区：
+# 表里漏掉的源，检查连「该查它」都不知道（jikan/listenbrainz 实测漏网：
 # auto 预算 3、声明位次 4/5、不在加槽表 → 日常路由永不可达，而本文件当时
 # 全绿）。本节把「哪些引擎落在它出现的每一个域的预算外」变成显式台账：
 # 新增休眠引擎必须自觉登记（接线或写明原因），接线后休眠解除必须撤账。
@@ -225,9 +225,22 @@ _DORMANT_ALLOWLIST: dict[str, str] = {
     # engine → 为什么允许它位置性休眠（一句话，供下一批接线决策用）
     "cleveland": "art_museum 同质重复备份（与 artic 同能力，故意不加槽）",
     "cn_ai_news": "待接线：chinese_tech_deep 位次 4",
-    "dblp": "待接线：academic 位次 5",
+    # 2026-09-16：academic 域接入 openreview/biorxiv 后，原第 3 位的 crossref
+    # 被推到第 5 位因而休眠。这与 dblp/europepmc 是同一笔账：academic 的
+    # combo 有 8 个源，而 fast 档 budget=2（must_keep 腾位后实际只留 2 个），
+    # 排在 3 位之后一律不参与自动路由，只在 deep/research 不截断时才跑。
+    # 若要恢复 crossref 的自动可见性，需给它加槽（_VERTICAL_NEW_SOURCE）或
+    # 调高 academic 域预算——两者都会挤掉 openreview/biorxiv，属权衡而非纯收益。
+    "crossref": "待接线：academic 位次 5（fast 档 budget=2，位次 3+ 不参与自动路由）",
+    # 2026-09-16：security_search 接入 osv/cisa_kev 后，crt_sh 由第 3 位降到第 5 位。
+    # 与 crossref 同一笔账：该域声明 5 个源而 fast 档 budget=2，位次 3+ 不参与
+    # 自动路由。cisa_kev 是本次新接的源，天然排在兜底源之后（见 config 注释：
+    # 结构化事实不应挤掉中文召回），故同样登记。
+    "cisa_kev": "待接线：security_search 位次 4（fast 档 budget=2，位次 3+ 不参与自动路由）",
+    "crt_sh": "待接线：security_search 位次 5（原第 3 位，接入 osv/cisa_kev 后顺延）",
+    "dblp": "待接线：academic 位次 7",
     "docker_hub": "待接线：package_search 位次 4",
-    "europepmc": "待接线：academic 位次 4；tech_deep 位次 5",
+    "europepmc": "待接线：academic 位次 6；tech_deep 位次 5",
     "eurostat": "待接线：macro_data 位次 4",
     "fx_rate": "待接线：macro_data 位次 5",
     "fxtwitter": "social 域位次 6：社交引擎另有专用通道，待核实是否真休眠",

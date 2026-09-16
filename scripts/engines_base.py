@@ -80,7 +80,7 @@ def pop_failure_note(engine: str) -> dict[str, Any] | None:
 
 
 def _lang_param(param: str, query: str) -> str:
-    """按查询主语言返回引擎语言参数；表在 lang_detect 单真源维护。
+    """按查询主语言返回引擎语言参数；表在 lang_detect 单来源维护。
 
     弱信号查询（mixed/other）时注入 lang_pref 的 engine_lang（习惯/系统/中英基线），
     强查询信号仍由 detect_language 主导，不因系统 locale 覆盖。
@@ -192,7 +192,7 @@ def _resolve(template: list[str] | str, query: str, n: int, **extra: Any) -> lis
     # 保留字面量会把 `Authorization: token {GITHUB_TOKEN}` 原样发出 → 401；
     # 空串 + 调用方过滤空头 = 未配置 key 的引擎自动退化为匿名请求。
     # 经 engine_env 按候选链解析（PLACEHOLDER_ALIASES：ARGO_ 推荐名优先 +
-    # 历史兼容名）：os.environ 优先 + ~/.config/argo/env 热读兜底
+    # 历史兼容名）：os.environ 优先 + ~/.config/argo/env 热读保底
     # （密钥轮换改文件即生效，无需重启）。
     try:
         from engine_env import PLACEHOLDER_ALIASES as _PA, get_env as _get_env
@@ -359,7 +359,7 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
     GET 请求走 HttpClient（UA 轮换 + Cookie 积累 + 429/503 Retry-After 尊重 +
     指数退避重试 + 重定向跟随 + 域族节流）；POST 走 http_open（与 GET 共用同一
     归因路径；POST 型引擎均为 JSON API，无进程内节流需求）。开关
-    ARGO_ENGINE_HTTP_CLIENT=0 可整体回退 GET 到 urllib（灰度/诊断用）。
+    ARGO_ENGINE_HTTP_CLIENT=0 可整体回退 GET 到 urllib（小范围试运行/诊断用）。
     spec 显式声明的 max_concurrency / min_interval_ms 覆盖域族默认节流。
     """
     url_template = spec.get("url", "")
@@ -435,7 +435,7 @@ def _build_http_engine(spec: dict[str, Any]) -> Any:
                             body[k] = float(resolved)
                         except ValueError:
                             body[k] = resolved
-            # 与 GET 路径对齐：过滤空/认证前缀残留头（未配置的 {ENV} 不发送，
+            # 与 GET 路径保持一致：过滤空/认证前缀残留头（未配置的 {ENV} 不发送，
             # POST 型可选密钥引擎如 firecrawl 才能 keyless 直连）
             resolved_headers = {
                 k: v for k, v in (
@@ -473,7 +473,7 @@ def _http_get_raw(url: str, headers: dict, timeout: float,
             from http_client import HttpClient
             # max_retries=0：引擎内不做连接级重试——死源一次超时已耗尽预算，
             # 重试把最坏代价翻倍（OSM 6s 声明实测 11.3s=两次尝试）；重试语义
-            # 上移到编排层（hedged race 换引擎 / 熔断降权 / 串行救援链）
+            # 上移到调度层（hedged race 换引擎 / 熔断降权 / 串行救援链）
             resp = HttpClient(timeout=timeout, max_retries=0, jitter=False).get(
                 url, extra_headers=headers, follow_redirects=True, engine=engine,
             )
@@ -497,7 +497,7 @@ def _http_get_raw(url: str, headers: dict, timeout: float,
             return None
     # 回退 urllib（原行为）。出口仍须经 net_proxy——否则设
     # ARGO_ENGINE_HTTP_CLIENT=0 就顺带关掉了代理支持，在必须走代理的环境里
-    # 这条兜底路径会一直连不上（issue #13 的形态）。
+    # 这条保底路径会一直连不上（issue #13 的形态）。
     try:
         from net_proxy import open_url as _proxy_open
         req = urllib.request.Request(url, headers=headers)
@@ -521,7 +521,7 @@ def _http_get_raw(url: str, headers: dict, timeout: float,
 def _note_http_failure(engine: str, status: int, body: str) -> None:
     """按状态码 + 响应体特征归因，写入寄存器。
 
-    判定委托给 engine_failure.classify（唯一真源）。此前这里复刻了一份状态码
+    判定委托给 engine_failure.classify（唯一来源）。此前这里复刻了一份状态码
     分支表，与 classify 在 97/201 个状态码上给出不同答案（503 一边说限流、
     一边说上游改版），同一引擎的归因会随「你看哪个界面」而变。
     """
@@ -553,14 +553,14 @@ def http_open(req: Any, timeout: float = 10.0, engine: str = ""):
       - HTTPError 的响应体被归因读走后回挂一份 `BytesIO`，调用方 `e.read()`
         仍能拿到错误体（博查的 `_bocha_http_error` 依赖它）。
 
-    归因分类委托 `_note_http_failure`（唯一真源=engine_failure.classify）：
+    归因分类委托 `_note_http_failure`（唯一来源=engine_failure.classify）：
     403+额度文案→rate_limited、403+登录文案→auth、429→rate_limited 等。
     engine 传空串时不写寄存器（测试直调 builder 未标引擎名时保持惰性）。
     """
     if isinstance(req, str):
         req = urllib.request.Request(req)
     # 出口调度（issue #13）：统一走 net_proxy.open_url——代理解析（argo 级
-    # rules / ARGO_PROXY / config url + 标准环境变量）的唯一真源。此前这里
+    # rules / ARGO_PROXY / config url + 标准环境变量）的唯一来源。此前这里
     # 自带一份 opener 拼装，与 fetch/job 等处的 urlopen 各写一份，于是 issue
     # #13 只修了本函数覆盖的引擎路径，其余出口仍然直接调用。
     from net_proxy import open_url
@@ -591,7 +591,7 @@ def http_open(req: Any, timeout: float = 10.0, engine: str = ""):
     except Exception as e:
         # http.client.HTTPException（BadStatusLine / IncompleteRead 等）与
         # ValueError 既不是 URLError 也不是 OSError，不兜这一层就会穿透归因，
-        # 与该函数的契约不符，也比 _http_get_raw 的兜底更窄。归因后原样抛出。
+        # 与该函数的契约不符，也比 _http_get_raw 的保底更窄。归因后原样抛出。
         logger.warning(f"HTTP 引擎失败: {type(e).__name__} {e}")
         note_failure(engine, "network", "exception",
                      f"{type(e).__name__}: {e}")
@@ -1132,7 +1132,7 @@ def _ensure_engine_source(
       - source 既不等于引擎名、也不以「引擎名/」开头 → 纠正为引擎名
       - wigolo_npx 允许保留 wigolo/... 子源标注
       - preserve=True（声明式 spec 的 preserve_source）时保留 API 返回的
-        真实来源标注（如聚合资讯引擎的上游发布方），只对空/generic 兜底
+        真实来源标注（如聚合资讯引擎的上游发布方），只对空/generic 保底
     """
     if not isinstance(results, list) or not engine_name:
         return results if isinstance(results, list) else []
@@ -1235,6 +1235,49 @@ def _parse_semantic_scholar(data: dict[str, Any]) -> list[dict[str, Any]]:
     return results[:10]
 
 
+def _parse_unpaywall(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """解析 Unpaywall 响应（单对象根，嵌套 best_oa_location）。
+
+    为什么需要专用解析器：与 doi 同理，响应是**一个对象**而非数组，而声明式
+    output_map 只支持数组根（`_extract_items` 对 dict 根返回空）。且「有没有
+    合法免费全文」这个答案藏在嵌套字段里（is_oa / best_oa_location.url），
+    需要展开成人可读的一条结果。
+
+    本引擎的价值不是「再给一篇论文」，而是回答「这篇论文有没有合法免费全文、
+    在哪」——所以把 OA 状态写进标题，让人一眼可判。
+    """
+    if not isinstance(data, dict):
+        return []
+    title = str(data.get("title") or "").strip()
+    doi = str(data.get("doi") or "").strip()
+    if not title:
+        return []
+    is_oa = data.get("is_oa") is True
+    best = data.get("best_oa_location") or {}
+    oa_url = ""
+    if isinstance(best, dict):
+        oa_url = str(best.get("url") or best.get("url_for_pdf") or "").strip()
+    # 无 OA 全文时回落到 DOI 落地页：保证 url 非空（下游会过滤掉无 url 的条目，
+    # 而那会表现为「引擎明明有记录却是 0 条」的静默空结果）。
+    url = oa_url or (f"https://doi.org/{doi}" if doi else "")
+    if not url:
+        return []
+    journal = str(data.get("journal_name") or "").strip()
+    year = str(data.get("year") or "").strip()
+    host = str(best.get("host_type") or "").strip() if isinstance(best, dict) else ""
+    status = ("有合法免费全文" if (is_oa and oa_url)
+              else "有 OA 记录但未给出链接" if is_oa
+              else "无开放获取版本（需订阅或文献互助）")
+    parts = [p for p in (journal, year, host, status) if p]
+    return [{
+        "title": f"{title} — {status}"[:500],
+        "url": url,
+        "snippet": " · ".join(parts)[:300],
+        "source": "unpaywall",
+        "published_at": year,
+    }]
+
+
 def _parse_doi(data: dict[str, Any]) -> list[dict[str, Any]]:
     """解析 doi.org 内容协商响应（CSL JSON，单对象根）。
 
@@ -1288,6 +1331,7 @@ _CUSTOM_JSON_PARSERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]
     "uapi": _parse_uapi,
     "semantic_scholar": _parse_semantic_scholar,
     "doi": _parse_doi,
+    "unpaywall": _parse_unpaywall,
 }
 
 
@@ -1312,7 +1356,7 @@ def mcp_error_of(data: Any, source: str = "mcp") -> str | None:
 
     这类「失败伪装成成功」在本仓已出现多次（V2EX 旧实现产出幻觉、
     缓存软命中跨引擎串味、juejin/qiita 返回热榜、you/parallel 状态说谎）。
-    本函数把 MCP 错误判定收敛成单一真源，供所有 MCP 消费者复用。
+    本函数把 MCP 错误判定收紧成唯一来源，供所有 MCP 消费者复用。
 
     ## 覆盖三类错误
 

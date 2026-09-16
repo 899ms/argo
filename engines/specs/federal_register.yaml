@@ -1,0 +1,57 @@
+# Federal Register — 美国联邦公报（免 key、免注册）
+#
+# 补的盲区：**美国联邦法规原文与提案**。已有的 courtlistener 覆盖法院判例、
+# gov_regulations/flk_law 覆盖中国法规、eurlex 类覆盖欧盟，而美国行政法规
+# （rules / proposed rules / notices）此前没有一手源——这类问题搜索引擎只能
+# 给新闻与二手解读，而法规原文本身就是权威证据。
+#
+# 端点语义（实测 2026-09-16）：
+#   /api/v1/documents.json?conditions[term]=<q>  → 全文检索，返回 count + results
+#   实测 "artificial intelligence" → 1565 条
+# 免 key；官方建议加 User-Agent 标识（argo 已统一带）。
+#
+# 验证:
+#   python3 scripts/engine_validate.py --engine federal_register --stage health --admit
+#   python3 scripts/search.py "artificial intelligence" --engine federal_register --json
+
+engine_id: federal_register
+type: http
+enabled: true
+cost_tier: free
+label: Federal Register 联邦公报
+family: legal
+priority: 46
+qps: 2
+period: second
+cost_per_call: 0.0
+cost_unit: free
+method: GET
+url: https://www.federalregister.gov/api/v1/documents.json
+query_param: "conditions[term]"
+extra_params:
+  per_page: "10"
+# 刻意**不声明 fields[]**：该 API 的字段裁剪只认「重复的 fields[] 参数」
+# （fields[]=title&fields[]=html_url），而 extra_params 会把值 str() 后当成
+# 单个参数发送（列表会变成 "['title', ...]" 触发 400；逗号形式亦不认）。
+# 不裁剪的代价是响应多带 excerpts 字段，但结果正确——宁可多几 KB，也不要
+# 「拿到 10 条却因 html_url 被裁掉而静默变 0 条」。
+timeout: 15
+format: json
+canary_query: "artificial intelligence"
+coverage:
+- legal
+- regulation
+- us
+desc: "美国联邦公报全文检索（行政法规/提案/通告原文，免 key；一手法规源）"
+output_map:
+  items: results
+  item_title: title
+  item_summary: abstract
+  item_url: html_url
+  item_published_at: publication_date
+recommended: false
+latency_ms: 1200
+
+quality_queries:
+  - query: "artificial intelligence"
+  - query: "data privacy"

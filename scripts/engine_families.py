@@ -42,9 +42,9 @@ from __future__ import annotations
 
 from typing import Any
 
-# ── 引擎 → 能力族 映射（config.yaml 引擎声明的 family 字段优先，本表兜底） ──
+# ── 引擎 → 能力族 映射（config.yaml 引擎声明的 family 字段优先，本表保底） ──
 
-# 默认族：未声明 family 的引擎归 web_general（全网搜索是通用兜底）
+# 默认族：未声明 family 的引擎归 web_general（全网搜索是通用保底）
 DEFAULT_FAMILY = "web_general"
 
 # 引擎名 → family（显式覆盖表；config.yaml 声明 family 时以其为准）
@@ -217,6 +217,97 @@ _ENGINE_FAMILY_OVERRIDES: dict[str, str] = {
     "gov_policy": "legal",
     "qiita": "social",
     "fr_opendata": "misc_vertical",
+    # ── 补录：此前未归类、靠 DEFAULT_FAMILY 静默落到 web_general 的引擎 ──────
+    #
+    # 2026-09-16：实测 222 个引擎里有 69 个从未被本表或 config 标注过，于是
+    # 全部保底成 web_general（该族一度占 41%）。后果不是「统计计算方式难看」，而是
+    # **这些源永远选不中**——route 按 family 组 combo，一个被误判为「全网搜索」
+    # 的垂直源在通用查询里被同族上限挤掉，在它真正该服务的垂直域里又不被认作
+    # 该族成员。实测：查「生物医学预印本」combo 里没有 biorxiv、查「SEC 监管
+    # 文件」没有 sec_edgar、查「CVE 漏洞」没有 nvd，而它们其实都已接入且可用。
+    #
+    # 归族判据只有一条：**这个源回答的是哪一类问题**。判断依据取自各源 spec 的
+    # desc（本表的注释即该源的自我描述摘要），不按数据形态（JSON/HTML）分。
+    #
+    # 学术文献
+    "biorxiv": "academic",
+    "openreview": "academic",
+    "datacite": "academic",
+    "zenodo": "academic",
+    "tinyfish_paper": "academic",
+    "k10plus": "academic",     # 德国最大联合目录：书目/馆藏
+    # 代码/包
+    "deps_dev": "code",
+    "endoflife": "code",
+    # 百科/实体
+    "ror": "knowledge",        # 研究机构标识
+    "opencorporates": "knowledge",
+    "wikisource": "knowledge",
+    "zdic": "knowledge",       # 汉典：字义/音韵/字源
+    # 媒体/图书/艺术
+    "bangumi": "media_book",
+    "jikan": "media_book",
+    "tvmaze": "media_book",
+    "douban_movie": "media_book",
+    "deezer": "media_book",
+    "listenbrainz": "media_book",
+    "netease_music": "media_book",
+    "local_goodreads": "media_book",
+    "artic": "media_book",     # 芝加哥艺术博物馆馆藏
+    "cleveland": "media_book",
+    "met_museum": "media_book",
+    "nasa_images": "media_book",
+    # 生物/医药
+    "obis": "science_bio",
+    "worms": "science_bio",
+    "who_don": "science_bio",  # WHO 疫情暴发通报
+    "who_gho": "science_bio",  # WHO 全球卫生指标
+    # 地球/空间
+    "soilgrids": "science_geo",
+    "noaa_swpc": "science_geo",
+    "satnogs": "science_geo",
+    "tle_mirror": "science_geo",
+    "gdacs": "science_geo",    # 全球多灾种预警
+    "carbon_intensity": "science_geo",
+    "energy_charts": "science_geo",
+    # 法律/标准
+    "egov_law": "legal",
+    "flk_law": "legal",
+    "gov_regulations": "legal",
+    "openstd": "legal",        # 国标全文公开系统
+    "std_samr": "legal",       # 全国标准信息公共服务平台
+    "nhtsa_vpic": "legal",     # 车辆型式认证（法规型数据，非行情）
+    # 安全情报（NVD 原被默认成全网搜索，实测 CVE 查询选不中）
+    "nvd": "security",
+    "crt_sh": "security",      # 证书透明度日志：子域名/证书情报
+    # 宏观/贸易
+    "un_comtrade": "finance_macro",
+    "gdelt": "news_flash",     # 全球新闻事件数据库
+    "people_daily": "news_flash",
+    "sspai": "social",
+    "redskill": "social",
+    "zhihu_hot_app": "hot_trending",
+    # 归档
+    "marginalia": "web_general",   # 独立爬虫索引，确属全网搜索
+    "wiby": "web_general",         # 老式手工网页索引，同上
+    # 独立/新兴全网搜索（显式登记，避免再来一轮静默保底）
+    "brave": "web_general",
+    "felo": "web_general",
+    "firecrawl": "web_general",
+    "keenable": "web_general",
+    "metaso": "web_general",
+    "parallel": "web_general",
+    "parallel_free": "web_general",
+    "seltz": "web_general",
+    "tinyfish": "web_general",
+    "tinyfish_news": "news_flash",
+    "you": "web_general",
+    "google_news": "news_flash",
+    "wolframalpha": "structured_card",
+    "google_patents": "misc_vertical",
+    "realtime_index": "misc_vertical",
+    "gbfs_nyc": "misc_vertical",   # 共享单车站点
+    "twitter_syndication": "social",
 }
 
 # 族 → 展示名
@@ -240,6 +331,9 @@ FAMILY_LABELS: dict[str, str] = {
     "structured_card": "垂直结构化模态卡",
     "personal_data": "个人数据（本人创作/收藏/关注）",
     "misc_vertical": "其他垂直",
+    # 安全情报（CVE/漏洞/证书）：与「代码/包」区分开——回答的是「这个组件
+    # 有没有已知漏洞」，不是「这个库怎么用」，路由与组合策略也不同。
+    "security": "安全情报",
 }
 
 
@@ -247,7 +341,7 @@ def family_of(engine: str, spec: dict[str, Any] | None = None) -> str:
     """返回引擎的能力族。
 
     优先级：config.yaml 引擎声明的 `family` 字段 > 本表显式覆盖 > 默认 web_general。
-    spec 传入时优先读 spec["family"]（声明式，config 是真源）。
+    spec 传入时优先读 spec["family"]（声明式，config 是来源）。
     """
     if spec and isinstance(spec, dict):
         f = spec.get("family")
@@ -256,7 +350,7 @@ def family_of(engine: str, spec: dict[str, Any] | None = None) -> str:
     return _ENGINE_FAMILY_OVERRIDES.get(engine, DEFAULT_FAMILY)
 
 
-# ── 语言维度（2026-09-07 从 route.py 三张手写冻结表忠实推导收敛）──────────
+# ── 语言维度（2026-09-07 从 route.py 三张手写冻结表忠实推导收紧）──────────
 # 语义：查询语言 lang 下，engine_langs 不含 lang 且不含 "*" → 该引擎对该
 # 语言无召回价值（语言重排移尾 / ja-ko 组合过滤 / research 语言 boost /
 # 可达性门统一从这里取）。config.yaml 引擎声明 `langs` 时以其为准；
@@ -349,7 +443,7 @@ def family_candidates(family: str, lang: str = "*",
                       limit: int | None = None) -> list[str]:
     """能力族 × 语言 × 模式 → 可用源排序（分发层单一取源口）。
 
-    research 语言/学术 boost、recovery 兜底、可达性门、DSH 子代理面都应
+    research 语言/学术 boost、recovery 保底、可达性门、DSH 子代理面都应
     从这里派生——新源注册一次（registry + family/langs）全路径可见，
     不再有「源存在但任何分发路径都到不了」的死源。priority 升序=优先。
     """
@@ -457,7 +551,7 @@ def complement_refill(
       - 排除 _REFILL_EXCLUDED_FAMILIES（热榜/策展/归档等噪声族）
       - 与域主引擎 coverage 标签至少重叠 1 个（主题相关性的数据信号）；
         主引擎无 coverage 标签时不回填（无主题信号，不猜测）
-      - 按 config priority 升序（数字小=优先，与 family_candidates 同口径），
+      - 按 config priority 升序（数字小=优先，与 family_candidates 同计算方式），
         最多 max_slots 个，保序追加
 
     返回新列表，绝不重排或删减入参 combo。
@@ -485,7 +579,7 @@ def complement_refill(
         if set(spec.get("coverage") or []) & primary_cov:
             p = spec.get("priority")
             # 缺 priority 视为最差（999），与 family_candidates._prio 一致。
-            # 此前是 `or 0` + 降序，且 docstring 写「降序」——三条口径互相矛盾，
+            # 此前是 `or 0` + 降序，且 docstring 写「降序」——三条计算方式互相矛盾，
             # 实际效果是专挑优先级数字最大（最差）的源回填。
             prio = p if isinstance(p, (int, float)) else 999
             candidates.append(((prio, name), name))

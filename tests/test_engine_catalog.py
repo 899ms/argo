@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""test_engine_catalog.py — 搜索源使用文档的防漂移门禁。
+"""test_engine_catalog.py — 搜索源使用文档的防漂移检查。
 
 文档是生成的（scripts/gen_engine_catalog.py），本测试确保它**与当前引擎声明
 一致**。没有这道门，文档会退化成「某天写过一次的说明」——本仓真实发生过：
 README 写「12 个 MCP 工具」而实际 14 个、写「150+ 引擎」而分不清收录与可用。
 
-门禁从真实入口取事实（运行时函数 + CLI），不读文档里的自述数字。
+检查从真实入口取事实（运行时函数 + CLI），不读文档里的自述数字。
 """
 
 import json
@@ -44,8 +44,8 @@ def test_doc_not_stale():
 def test_declared_totals_match_runtime():
     """文档里的「收录 / 开箱可用」必须等于照声明算出来的数。
 
-    只比声明口径：文档要能跨机器生成复核，不能把「本机此刻配没配密钥、
-    有没有被熔断」写进去——那样换个环境生成就会与磁盘不符，门禁随机变红。
+    只比声明计算方式：文档要能跨机器生成复核，不能把「本机此刻配没配密钥、
+    有没有被熔断」写进去——那样换个环境生成就会与磁盘不符，检查随机变红。
     """
     from config import load_config
     cfg = load_config()
@@ -80,7 +80,7 @@ def test_dead_sources_are_zero_or_declared_explicit_only():
     """可达性门：没有未声明的死源。
 
     真死源（既不可达、又没声明 explicit_only）会让这条测试失败——这是
-    「新增引擎忘了接线」的兜底网。
+    「新增引擎忘了接线」的保底网。
     """
     from config import load_config, get_engines, get_domains
     from engine_policy import GENERAL_FREE_FALLBACK

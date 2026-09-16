@@ -1,0 +1,54 @@
+# Unpaywall — 开放获取全文定位（免 key，但**必须带真实邮箱**）
+#
+# 补的盲区：这不是搜索源，而是「论文 → 合法免费全文」的**后置解析器**。
+# 用户搜到一篇论文后，真正的问题常是「有没有免费合法全文」。Unpaywall 专门
+# 解决这件事，是 argo 学术链路从「找到论文」升级到「找到合法全文」的关键一环：
+#     paper_found → DOI → Unpaywall → 合法 OA 全文 → fetch
+#
+# 端点语义（实测 2026-09-16）：
+#   /v2/{doi}?email=<邮箱>  → 单对象：is_oa / best_oa_location.url / title ...
+#   邮箱是**硬要求**：上游校验邮箱真实性，测试域名会被 422 拒（实测
+#   "Please use your own email address"）。故走环境变量注入，不写死在仓里。
+#
+# 用法：显式专用（explicit_only）——查询词传裸 DOI，不参与自动路由。
+#
+# 验证（需先设 ARGO_UNPAYWALL_EMAIL）:
+#   ARGO_UNPAYWALL_EMAIL=you@example.org python3 scripts/search.py \
+#     "10.1038/nature12373" --engine unpaywall --json
+
+engine_id: unpaywall
+type: http
+enabled: true
+# 按 DOI 精查，不参与关键词路由
+explicit_only: true
+cost_tier: free
+label: Unpaywall 开放获取定位
+family: academic
+priority: 53
+qps: 2
+period: second
+cost_per_call: 0.0
+cost_unit: free
+method: GET
+# 邮箱从环境变量注入。占位符写**裸名** UNPAYWALL_EMAIL：engine_env 的
+# PLACEHOLDER_ALIASES 会按 [ARGO_UNPAYWALL_EMAIL, UNPAYWALL_EMAIL] 顺序解析；
+# 若这里直接写 ARGO_UNPAYWALL_EMAIL，别名表未命中时会再补一次 ARGO_ 前缀，
+# 报错信息会变成难懂的 ARGO_ARGO_UNPAYWALL_EMAIL（已实测）。
+# 未设置时引擎报 skipped-missing-env（如实提示），而非静默空结果。
+url: https://api.unpaywall.org/v2/{query}?email={UNPAYWALL_EMAIL}
+query_param: ""
+timeout: 12
+format: json
+canary_query: "10.1038/nature12373"
+coverage:
+- academic
+- open_access
+desc: "Unpaywall 开放获取定位（DOI → 是否有合法免费全文及链接；需 ARGO_UNPAYWALL_EMAIL）"
+# 不写 output_map：响应是单对象根、且答案在嵌套字段里，声明式 output_map 只
+# 支持数组根。由 scripts/engines_base.py 的 _CUSTOM_JSON_PARSERS["unpaywall"]
+# 专用解析（与 doi 同一机制）。
+recommended: false
+latency_ms: 900
+
+quality_queries:
+  - query: "10.1038/nature12373"

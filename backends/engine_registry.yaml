@@ -1,6 +1,6 @@
 _generated: 由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。
 version: 2
-last_updated: '2026-09-15'
+last_updated: '2026-09-16'
 engines:
 - name: anysearch
   tier: T1
@@ -206,6 +206,17 @@ engines:
   recommended: false
   explicit_only: false
   desc: 英国电网碳强度与发电结构（国家电网官方，免认证）
+- name: cisa_kev
+  tier: T1
+  type: cisa_kev
+  coverage:
+  - security
+  latency_ms: 4000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: CISA 已知被在野利用漏洞目录（官方确认已被实际攻击利用的 CVE；全量 1.35MB 本地过滤）
 - name: clawhub
   tier: T1
   type: http
@@ -668,6 +679,19 @@ engines:
   recommended: true
   explicit_only: false
   desc: Exa 语义搜索（embedding 匹配 + 内容摘要，新户 $20 赠金 + 每月 $10 赠金）
+- name: federal_register
+  tier: T1
+  type: http
+  coverage:
+  - legal
+  - regulation
+  - us
+  latency_ms: 1200
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 美国联邦公报全文检索（行政法规/提案/通告原文，免 key；一手法规源）
 - name: felo
   tier: T1
   type: http
@@ -1300,7 +1324,7 @@ engines:
   - general
   latency_ms: 2000
   cost: free
-  status: ok
+  status: disabled
   recommended: true
   explicit_only: false
   desc: Mojeek本地（html）
@@ -1390,7 +1414,7 @@ engines:
   - general
   latency_ms: 2000
   cost: free
-  status: ok
+  status: disabled
   recommended: true
   explicit_only: false
   desc: Startpage本地（html）
@@ -1710,6 +1734,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: OpenAlex 2.5亿+论文索引（免认证，礼貌池 mailto）
+- name: opencitations
+  tier: T1
+  type: http
+  coverage:
+  - academic
+  - citation
+  latency_ms: 800
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: true
+  desc: OpenCitations 引用计数（DOI → 被引次数，免 key 无限次；查询词传裸 DOI）
 - name: opencorporates
   tier: T1
   type: opencorporates
@@ -1811,6 +1847,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: Openverse 开放版权图库（免认证，CC 素材）
+- name: osv
+  tier: T1
+  type: osv
+  coverage:
+  - security
+  - package
+  latency_ms: 1500
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: OSV.dev 开源漏洞库（按包查已知漏洞与影响版本区间，免 key；生态 PyPI/npm/Go/crates 等）
 - name: parallel
   tier: T1
   type: parallel
@@ -2411,6 +2459,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: UniProt 蛋白质/基因组检索（rest.uniprot.org 免认证）
+- name: unpaywall
+  tier: T1
+  type: http
+  coverage:
+  - academic
+  - open_access
+  latency_ms: 900
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: true
+  desc: Unpaywall 开放获取定位（DOI → 是否有合法免费全文及链接；需 ARGO_UNPAYWALL_EMAIL）
 - name: urban_dictionary
   tier: T1
   type: http

@@ -123,7 +123,7 @@ class TestPlanOffline(unittest.TestCase):
         self.assertTrue(any(s.get("action") == "search" for s in p["steps"]))
         # 日常 plan 不含 verify 步骤暗示
         self.assertFalse(any(s.get("action") == "optional_verify_top_k" for s in p["steps"]))
-        # 与 route 对齐
+        # 与 route 保持一致
         d = route_query("贵州茅台股价")
         self.assertEqual(p["decision"]["domain"], d.get("domain"))
 
@@ -325,9 +325,12 @@ class TestNoRegressionRoute(unittest.TestCase):
     def test_academic(self):
         d = route_query("transformer attention paper")
         # 学术主源可为 arxiv/s2/openalex/crossref 等（budget 后首位仍属学术系）
+        # openreview/biorxiv 于 2026-09-16 补入 academic 域并置于 combo 前两位：
+        # 二者此前是「已实现但无域引用」的孤儿源，只能靠 --engine 显式调用。
         academic = {
             "arxiv", "semantic_scholar", "openalex", "crossref",
             "europepmc", "dblp", "local_arxiv", "local_semantic_scholar",
+            "openreview", "biorxiv",
         }
         self.assertIn(d["engine"], academic)
 

@@ -1,0 +1,52 @@
+# OpenCitations — 引用图谱（免 key、免注册、无限次）
+#
+# 补的盲区：论文的**引用关系与溯源**。Crossref/OpenAlex 给的是出版物元数据，
+# 而「这篇被谁引用 / 引了谁」是另一类问题——用于判断一篇工作的影响力与谱系，
+# 也是证据链里「这个说法有没有后续验证」的入口。
+#
+# 端点语义（实测 2026-09-16）：
+#   /index/api/v1/citation-count/{doi}   → [{"count": "1806"}]  被引数
+#   /index/api/v1/citations/{doi}        → 引用它的 DOI 列表
+#   /index/api/v1/references/{doi}       → 它引用的 DOI 列表
+# 本引擎走 citation-count（单值、稳定、体积小），查询词传**裸 DOI**。
+#
+# 验证:
+#   python3 scripts/engine_validate.py --engine opencitations --stage health --admit
+#   python3 scripts/search.py "10.1038/nature12373" --engine opencitations --json
+
+engine_id: opencitations
+type: http
+enabled: true
+# 按 DOI 精查而非关键词检索：传裸 DOI，不参与自动路由
+explicit_only: true
+cost_tier: free
+label: OpenCitations 引用图谱
+family: academic
+priority: 52
+qps: 2
+period: second
+cost_per_call: 0.0
+cost_unit: free
+method: GET
+url: https://opencitations.net/index/api/v1/citation-count/{query}
+query_param: ""
+timeout: 12
+format: json
+canary_query: "10.1038/nature12373"
+coverage:
+- academic
+- citation
+desc: "OpenCitations 引用计数（DOI → 被引次数，免 key 无限次；查询词传裸 DOI）"
+# 响应是单元素数组 [{"count": "N"}]，没有标题/URL 字段。url_template 的 {..}
+# 占位符取自 **item** 而非 query，写 {query} 会渲染成空串，故用静态入口页
+# （与 carbon_intensity 同做法）。
+output_map:
+  items: "."
+  item_title: "count"
+  item_summary: "count"
+  url_template: "https://opencitations.net/"
+recommended: false
+latency_ms: 800
+
+quality_queries:
+  - query: "10.1038/nature12373"

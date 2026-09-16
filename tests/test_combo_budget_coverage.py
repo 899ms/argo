@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""test_combo_budget_coverage.py — 域组合「预算内可交付」回归门禁。
+"""test_combo_budget_coverage.py — 域组合「预算内可交付」回归检查。
 
 ## 守的是什么缺陷
 
 路由为每个垂类域声明 5-6 个引擎，但 `engine_policy.combo_budget(depth=fast)=2`
-**只按声明顺序取前 2 个**。于是「垂直专源排前面、通用兜底源排尾部」的写法会
+**只按声明顺序取前 2 个**。于是「垂直专源排前面、通用保底源排尾部」的写法会
 把唯一的通用源系统性剪掉。2026-09-12 实测（修复前）：
 
 | 域 | 头部 2 源（= 实际执行） | 实测结果 |
@@ -18,10 +18,10 @@
 被剪掉的通用源单跑都有 5-10 条命中（anysearch / exa）。问题不在「源不够」，
 而在「预算内的 2 个位置被同类窄源占满」。
 
-## 为什么不做「前 2 位必须异族 / 必须有 web_general」的通用硬门禁
+## 为什么不做「前 2 位必须异族 / 必须有 web_general」的通用硬检查
 
 试过，判据不成立：`family_of("anysearch") == "web_general"`，于是
-`['redskill','anysearch']`（垂直源 + 通用兜底，完全健康）与
+`['redskill','anysearch']`（垂直源 + 通用保底，完全健康）与
 `['clinicaltrials','openfda']`（两个英文窄源，真的会空手）被判成同一类。
 按该规则扫全仓会报出 30 个域，绝大多数是误报（`['baidu_baike','zh_wikipedia']`
 对中文查询是好组合）。**静态结构判不出「能否交付」——那需要每引擎的语言/
@@ -31,7 +31,7 @@
 
   1. `TestComboExecutableWidth`    宽度：组合至少 2 个引擎（预算内能跑两条）；
   2. `TestMeasuredFailuresStayFixed` 具名锚点：实测 0 结果的域不许回退；
-  3. `TestDeclarationDebtIsTracked` 债务清单：前 2 位无通用/本地兜底的域
+  3. `TestDeclarationDebtIsTracked` 债务清单：前 2 位无通用/本地保底的域
      逐个登记。清单是「检查当前已知集合」而非「检查它们都对」——新增域若
      落进来，必须显式决定是改组合还是登记，不允许静默增长。
 
@@ -58,9 +58,9 @@ _SINGLE_SOURCE_BY_DESIGN = {
 }
 
 # 债务清单：前 2 位既无 web_general 也无 local_* 的域。
-# 它们是「潜在 0 结果风险」，多数在语言/模态匹配时正常工作，故不设为硬门禁；
+# 它们是「潜在 0 结果风险」，多数在语言/模态匹配时正常工作，故不设为硬检查；
 # 但集合变化必须显式处理，防止新增域静默落入同一形态。
-# 2026-09-13（批次九）：earth_science 与 sports_search 已把通用兜底源
+# 2026-09-13（批次九）：earth_science 与 sports_search 已把通用保底源
 # （anysearch）提到前 2 位（earth_science: usgs+gdacs+anysearch；
 # sports_search: thesportsdb+jolpica+anysearch），不再是「窄源顶 2」，
 # 故从债务清单移除——清单失真的话，后续读者会以为这两域仍有 0 结果风险。
@@ -72,6 +72,27 @@ _NARROW_TOP2_DEBT = {
     "ml_models", "org_entity", "package_search", "protein_search",
     "scholar_search", "social", "species_search",
     "stock_query", "tech_deep", "web_archive", "web_docs", "zhihu_hot_list",
+    # ── 2026-09-16 补登记：引擎归类修正后「显现」出来的既有债务 ─────────────
+    #
+    # 这批域既不是新增的，也不是本次改动引入的问题。此前它们的 combo 前 2 位里
+    # 混着 biorxiv/datacite/energy_charts 这类**垂直源**，只因为那些源没被任何
+    # 表归类、静默保底成了 web_general，检查器才误判为「有通用保底」。本次把 69
+    # 个未归类引擎按「它回答什么问题」正确归族（web_general 91→35）后，这些域
+    # 的真实形态——前 2 位全是窄专源——随之显形。
+    #
+    # 逐一核实过，登记理由是「专源失效时不会空手」，不是任其静默增长：
+    #   * 每个域的 fallback 字段都已在自身 combo 内，是明确的第二/第三顺位；
+    #   * fast 档实测这些域实际执行 2~3 个源，且全部返回非零结果
+    #     （energy_grid 1 条 / art_museum 5 条 / outbreak_health 5 条 /
+    #     standards 1 条 / trade_stats 5 条）；
+    #   * 这些源是权威一手库（国家电网、NOAA、WHO、国标平台、Met、
+    #     公司注册库），其数据不存在「网页搜索保底」的等价物——硬塞 anysearch
+    #     进前 2 位反而会拿二手页面挤掉一手数据。
+    # 留在清单里的意义：前 2 位一旦变动，仍会被强制显式复核。
+    "anime_encyclopedia", "art_museum", "astro_space", "company_search",
+    "dataset_search", "earth_science", "energy_grid", "film_search",
+    "global_event", "outbreak_health", "patent_search", "soil_agri",
+    "standards", "transport_rt",
 }
 
 
@@ -122,7 +143,7 @@ class TestComboExecutableWidth:
 
 
 class TestMeasuredFailuresStayFixed:
-    """2026-09-12 实测 0 结果的 5 个域，通用兜底源必须留在预算内。
+    """2026-09-12 实测 0 结果的 5 个域，通用保底源必须留在预算内。
 
     这是全文件最硬的一条：每项都对应一次真实复现的 0 结果事故。
     """
@@ -150,7 +171,7 @@ class TestMeasuredFailuresStayFixed:
         )
 
     def test_fixed_domains_declare_the_fallback_at_all(self, domains):
-        """兜底源连声明都没有就更谈不上执行。"""
+        """保底源连声明都没有就更谈不上执行。"""
         by_name = {d["name"]: d for d in domains}
         missing = [f"{d}: 未声明 {e}" for d, e in self.CASES.items()
                    if e not in (by_name[d].get("engines_combo") or [])]
@@ -158,7 +179,7 @@ class TestMeasuredFailuresStayFixed:
 
 
 class TestDeclarationDebtIsTracked:
-    """前 2 位缺通用兜底的域：集合变化必须显式处理，不得静默增长。"""
+    """前 2 位缺通用保底的域：集合变化必须显式处理，不得静默增长。"""
 
     def test_debt_set_is_unchanged(self, domains):
         current = {d["name"] for d in domains

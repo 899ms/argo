@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""test_consistency_gates.py — 一致性与入口门禁。
+"""test_consistency_gates.py — 一致性与入口检查。
 
-这个文件守的是一类具体缺陷：**门禁全绿但能力实际不可用**。它们各自都很低级，
+这个文件守的是一类具体缺陷：**检查全绿但能力实际不可用**。它们各自都很低级，
 却都真实发生过（2026-09-12 审查轮），共同点是「测试没往那里看一眼」：
 
   1. `argo --help` 直接 NameError 崩溃（f-string 里漏转义的花括号）——
      1500 个测试全绿，因为没有任何测试真的执行过 CLI 入口。
   2. `argo fetch` 写在 SKILL.md 里但 dispatcher 里不存在——文档承诺了
      一个不存在的子命令。
-  3. 派生件（registry / quota / domain）与运行时真源脱钩：外置 spec 声明的
+  3. 派生件（registry / quota / domain）与运行时来源脱钩：外置 spec 声明的
      引擎在派生件里缺席；`--check` 拿派生结果跟自己比，永远绿。
   4. 失败归因有两份实现（归因寄存器 + engine_failure），在 97/201 个状态码上
      给出不同答案，同一引擎的解释随界面而变。
   5. 同批次的两个功能互相打架：preflight 判推文 URL 需要登录，而同一批次
      刚上线的 syndication 通道能免登录抓它。
 
-设计原则：这些门禁全部**从真实入口取事实**（执行 CLI、读磁盘派生件、
+设计原则：这些检查全部**从真实入口取事实**（执行 CLI、读磁盘派生件、
 调用真实函数），不读中间变量的自述——上面第 3 条正是「用实现验证实现」的产物。
 """
 
@@ -140,10 +140,10 @@ def _dispatch_table() -> dict:
     return table
 
 
-# ── 3. 文档口径 == 代码事实 ──────────────────────────────────────────────────
+# ── 3. 文档计算方式 == 代码事实 ──────────────────────────────────────────────────
 
 def _catalog_counts() -> tuple[str, str]:
-    """搜索源文档里的「收录 N 个源 / 开箱可用 M 个」——引擎数的唯一真源。"""
+    """搜索源文档里的「收录 N 个源 / 开箱可用 M 个」——引擎数的唯一来源。"""
     doc = (SKILL_DIR / "docs" / "ENGINE_CATALOG.md").read_text(encoding="utf-8")
     m_doc = re.search(r"收录 (\d+) 个源", doc)
     m_usable = re.search(r"开箱可用 (\d+) 个", doc)
@@ -164,16 +164,16 @@ def _skill_version() -> str:
 
 
 class TestDocNumbersMatchCode:
-    # 全部 README 变体：此前门禁只查 SKILL.md 与 README.md，其余 4 个语种
+    # 全部 README 变体：此前检查只查 SKILL.md 与 README.md，其余 4 个语种
     # 版本长期落后（es/ja/ko 停在 v2.8.5 + engines-150+，en 停在 175 源），
-    # 而门禁全绿。语言变体是同一份对外承诺，必须同源同校。
+    # 而检查全绿。语言变体是同一份对外承诺，必须同源同校。
     README_VARIANTS = ("README.md", "README.en.md", "README.es.md",
                        "README.ja.md", "README.ko.md")
 
     def test_engine_counts_agree_with_catalog(self):
-        """全部 README 变体的引擎数必须与搜索源文档（本身有门禁）一致。
+        """全部 README 变体的引擎数必须与搜索源文档（本身有检查）一致。
 
-        口径是声明口径：收录 N 个源、M 个免密钥开箱可用。运行时「此刻能路由
+        计算方式是声明计算方式：收录 N 个源、M 个免密钥开箱可用。运行时「此刻能路由
         几个」随密钥与熔断状态变，不写进文档。
         """
         doc = (SKILL_DIR / "docs" / "ENGINE_CATALOG.md").read_text(encoding="utf-8")
@@ -188,7 +188,7 @@ class TestDocNumbersMatchCode:
             assert usable in text, f"{rel} 未写免密钥可用数 {usable}"
 
     def test_english_readme_numbers_match_catalog(self):
-        """README.en.md 用英文口径（sources / usable with no key / domains），
+        """README.en.md 用英文计算方式（sources / usable with no key / domains），
         正则不同于中文，历史上因此漏网。两处写法都要覆盖：
         要点列表 `**N sources (M usable with no key), K domains**`
         与正文 `**N** sources (**M** usable with no key) and **K** domains`。
@@ -251,7 +251,7 @@ class TestDocNumbersMatchCode:
         assert not problems, "翻译版 README 数字不一致：\n  " + "\n  ".join(problems)
 
     def test_badge_numbers_match_truth(self):
-        """README 徽章数字必须与真源一致（中英之外的四语种此前只写 150+）。"""
+        """README 徽章数字必须与来源一致（中英之外的四语种此前只写 150+）。"""
         from mcp_tools import TOOLS
         doc = (SKILL_DIR / "docs" / "ENGINE_CATALOG.md").read_text(encoding="utf-8")
         total = re.search(r"收录 (\d+) 个源", doc).group(1)
@@ -297,7 +297,7 @@ class TestDocNumbersMatchCode:
         assert m, "SKILL.md 缺 version"
         assert pkg["version"] == m.group(1) == plug["version"], \
             f"版本不一致: package={pkg['version']} skill={m.group(1)} plugin={plug['version']}"
-        # mcp_transport.ARGO_MCP_VERSION 自称版本真源之一，此前发布升版漏改
+        # mcp_transport.ARGO_MCP_VERSION 自称版本来源之一，此前发布升版漏改
         # （2.8.8 发布时仍停在 2.8.6）——纳入对账，正则读取避免 import 副作用
         mt = (SKILL_DIR / "scripts/mcp_transport.py").read_text(encoding="utf-8")
         mm = re.search(r'^ARGO_MCP_VERSION\s*=\s*"(\S+)"', mt, re.M)
@@ -305,7 +305,7 @@ class TestDocNumbersMatchCode:
         assert mm.group(1) == pkg["version"], \
             f"版本不一致: mcp_transport={mm.group(1)} package={pkg['version']}"
         # 第五面：DSH 插件在 MCP 握手时自报的 clientInfo.version。
-        # 此前是硬编码 '2.8.5'，而门禁只对账上面四处，于是一路漂到 2.8.8
+        # 此前是硬编码 '2.8.5'，而检查只对账上面四处，于是一路漂到 2.8.8
         # 都没人发现——向 argo server 报了不存在的客户端版本。现在插件从自己的
         # package.json 读（见 dsh/index.js 的 PLUGIN_VERSION），这里确保它
         # **不再出现硬编码版本字面量**：写法一旦回退，立刻报红。
@@ -322,7 +322,7 @@ class TestDocNumbersMatchCode:
 
 @pytest.fixture(scope="module")
 def sb():
-    """sync_backends 模块：派生件的唯一生成者，门禁直接用它的校验器。"""
+    """sync_backends 模块：派生件的唯一生成者，检查直接用它的校验器。"""
     import sync_backends
     return sync_backends
 
@@ -330,7 +330,7 @@ def sb():
 class TestDerivedArtifactsInSync:
     """registry / quota / domain 三份派生件必须覆盖运行时可见的全部引擎。
 
-    守的是「人工改文档件、真源没跟上」：新增引擎只写进 registry（死文档），
+    守的是「人工改文档件、来源没跟上」：新增引擎只写进 registry（死文档），
     配额与领域画像漏侧，且 --check 自比永远绿。
     """
 
@@ -397,7 +397,7 @@ class TestDerivedArtifactsInSync:
         assert declared_specs > 0, "没有任何引擎声明配额，检查取样逻辑"
 
 
-# ── 5. 失败归因单一真源 ──────────────────────────────────────────────────────
+# ── 5. 失败归因唯一来源 ──────────────────────────────────────────────────────
 
 class TestFailureAttributionSingleSource:
     def test_register_and_classifier_agree_on_all_status_codes(self):
