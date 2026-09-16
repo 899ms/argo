@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from cli_io import dumps_pretty
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -66,7 +67,7 @@ def build_native_tools() -> dict:
 
 
 def render(native_tools: dict) -> str:
-    body = json.dumps(native_tools, ensure_ascii=False, indent=2)
+    body = dumps_pretty(native_tools)
     return HEADER + "export const NATIVE_TOOLS = " + body + ";\n"
 
 

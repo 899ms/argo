@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""query_signals.py — 查询改写与「结果够不够」的判定。
+
+从 search.py 中外提。这里放的全是**本地启发式**判断，不发起网络请求、
+不依赖搜索编排状态，因此可以被搜索之外的层（评测、路由、批量任务）复用。
+
+两类信号：
+  - 查询改写（apply_query_rewrite）：把口语化查询换成更适合检索的形式
+  - 早停判定（results_sufficient / cumulative_sufficient / query_coverage_ok）：
+    结果是否已经够用、可以不再等慢源
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def apply_query_rewrite(query: str) -> tuple[str, dict | None]:
+    """统一查询改写逻辑，返回 (改写后的查询, 改写结果字典)。
+
+    改写失败时静默返回原查询，不影响搜索流程。
+    """
+    try:
+        from query_rewriter import rewrite_query as do_rewrite
+        result = do_rewrite(query)
+        if result["rewritten"] and result["confidence"] >= 0.7:
+            return result["rewritten"], result
+    except ImportError:
+        pass  # query_rewriter 模块不可用，使用原查询
+    except Exception as e:
+        import logging
+        logging.getLogger("unified_search").debug(f"查询改写跳过: {type(e).__name__}")
+    return query, None
+
+
+def results_sufficient(
+    results: list[dict[str, Any]],
+    mode: str = "auto",
+    min_results: int | None = None,
+    query: str = "",
+) -> bool:
+    return _sufficient_internal(results, mode, min_results, query)
+
+
+def cumulative_sufficient(raw_results: dict[str, list[dict[str, Any]]],
+                          mode: str = "auto",
+                          min_results: int | None = None,
+                          query: str = "") -> bool:
+    """跨引擎累计结果是否已够（wave-2 提前终止判定）。
+
+    与 results_sufficient 同阈值，但把 raw_results 里所有已完成的
+    引擎结果合并成一条列表再判，避免单一引擎不足时重复等待慢源。
+    """
+    merged: list[dict[str, Any]] = []
+    for res in raw_results.values():
+        if not res:
+            continue
+        merged.extend(
+            r for r in res if isinstance(r, dict) and "error" not in r
+        )
+    return _sufficient_internal(merged, mode, min_results, query)
+
+
+def query_coverage_ok(results: list[dict[str, Any]], query: str) -> bool:
+    """查询-结果词面覆盖守卫（fast/auto 早停质量门槛）。
+
+    2026-09-02 实测教训：fast 早停原只看计数+snippet，首引擎上游波动时
+    返回 5 条高计数但不相关结果（查询 Crawl4AI 却返回无关 MDN 页），
+    早停吞掉 wave-2，单引擎垃圾即成最终答案。本守卫只在极端场景（多数
+    结果与查询零词面交集）拒绝早停，让既有 wave-2/串行次引擎补跑——
+    只影响「是否停」，不丢弃任何结果，最坏代价是多跑一个引擎。
+
+    CJK 说明：中文查询分词为单字，覆盖判定在字符级——结果与查询零字符
+    交集同样会被拒早停（弱信号但非空）；同义词改写场景（如「电脑」vs
+    「计算机」）可能多跑一个引擎，属可接受代价：宁可多一次调用，不放走
+    单引擎垃圾。
+    """
+    if not query or not query.strip():
+        return True
+    try:
+        from tfidf_router import tokenize
+    except ImportError:
+        return True  # 分词不可用不设卡（fail-open）
+    q_set = set(tokenize(query))
+    if not q_set:
+        return True
+    # 同构垃圾检测：结构性包索引被域外查询误抢时，会把查询切词后逐词
+    # 返回单 token 包名（title≈1 词、URL=/project/<word>），词面覆盖因此
+    # 虚高（垃圾包名恰好是查询关键词）→ 覆盖守卫被骗过、垃圾即成最终
+    # 答案。多数结果标题 ≤1 token 且查询有 ≥3 token 时，视为索引噪声，
+    # 拒绝早停、放行串行次引擎补跑。
+    single_token_titles = sum(
+        1 for r in results if len(set(tokenize(r.get("title") or ""))) <= 1
+    )
+    if len(q_set) >= 3 and single_token_titles * 2 > len(results):
+        return False
+    covered = 0
+    for r in results:
+        text = f"{r.get('title') or ''} {r.get('snippet') or ''}"
+        if q_set & set(tokenize(text)):
+            covered += 1
+    return covered >= max(1, (len(results) + 1) // 2)
+
+
+def _sufficient_internal(
+    results: list[dict[str, Any]],
+    mode: str,
+    min_results: int | None,
+    query: str = "",
+) -> bool:
+    """渐进检索 early-stop：结果是否已够用。
+
+    轻量启发式（不依赖网络/LLM）：
+      - 默认 auto：至少 3 条非错误 + 2 条有 snippet
+      - 默认 fast：至少 2 条 + 1 个 snippet
+      - min_results：域配置覆盖（答案型源 1 条快照即够用，计数语义不动）
+      - 通用路径叠加词面覆盖守卫（query_coverage_ok）：结果与查询几乎
+        无交集时不许早停
+    """
+    goods = [r for r in results if isinstance(r, dict) and "error" not in r]
+    if not goods:
+        return False
+    with_snippet = sum(
+        1 for r in goods
+        if (r.get("snippet") or r.get("title") or "").strip()
+    )
+    if min_results is not None:
+        try:
+            need = max(1, int(min_results))
+        except (TypeError, ValueError):
+            need = 1
+        # 答案型 1 条要求有可展示正文；≥3 条时至少 2 条有 snippet
+        need_snip = 1 if need <= 2 else max(2, need - 1)
+        return len(goods) >= need and with_snippet >= min(need_snip, len(goods))
+    if mode == "fast":
+        ok = len(goods) >= 2 and with_snippet >= 1
+    else:
+        ok = len(goods) >= 3 and with_snippet >= 2
+    return ok and query_coverage_ok(goods, query)

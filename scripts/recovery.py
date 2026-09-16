@@ -223,7 +223,17 @@ _RECOVERY_SAFE_FAMILIES = frozenset({"web_general", "knowledge"})
 def _engine_family(name: str) -> str:
     try:
         from engine_families import family_of
-        return family_of(name)
+        try:
+            from config import get_engines
+            spec = (get_engines() or {}).get(name)
+        except Exception:
+            spec = None
+        # 必须把引擎声明传进去：config.yaml 的 family 字段才是来源。不传时
+        # family_of 会退回静态覆盖表、再退到默认值 web_general——而恢复链正好
+        # 把 web_general 列为「安全族」，于是那些只在 config 里声明了族的垂直源
+        # （如 doi=academic）会被误判成通用源放行进来，正是 _RECOVERY_SAFE_FAMILIES
+        # 想挡住的东西。
+        return family_of(name, spec)
     except Exception:
         return "web_general"
 

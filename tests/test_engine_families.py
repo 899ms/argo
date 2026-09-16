@@ -36,6 +36,32 @@ def test_all_engines_have_family():
     print(f"  ✅ {len(eng)} 引擎全部映射到 {len(FAMILY_LABELS)} 个能力族")
 
 
+def test_every_engine_declares_family_explicitly():
+    """每个引擎都必须**显式**声明能力族，不许静默落到默认的 web_general。
+
+    上面那条只检查「族名合法」，而 web_general 本身合法——于是漏掉归属的引擎
+    全部悄悄过关。实测代价：16 个引擎（含新接入的 osv / cisa_kev /
+    federal_register / unpaywall / opencitations、sports 三个、weather 两个）
+    因此被当成通用源，在「同族按分数排序」里跟 anysearch 同族被挤到后面，
+    还被恢复链当成安全族误放行。
+
+    判据是「有没有显式声明」（config.yaml 的 family 字段，或静态覆盖表），
+    不是「算出来的族叫什么」。这样下一个新引擎不可能再默默漏进 web_general。
+    """
+    from engine_families import _ENGINE_FAMILY_OVERRIDES
+
+    cfg = load_config()
+    eng = get_engines(cfg, routable_only=False)
+    silent = [
+        name for name, spec in eng.items()
+        if not (isinstance(spec, dict) and spec.get("family"))
+        and name not in _ENGINE_FAMILY_OVERRIDES
+    ]
+    assert not silent, (
+        "这些引擎没有显式声明能力族，会被静默当成 web_general，"
+        f"请补 config.yaml 的 family 字段或 engine_families 覆盖表：{sorted(silent)}")
+
+
 def test_zhihu_global_is_web_general():
     """zhihu_global 是真全网搜索（Filter host== 可搜非知乎站），归 web_general。"""
     cfg = load_config()

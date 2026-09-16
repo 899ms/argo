@@ -76,7 +76,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 
 状态含义：**可直接用** = 自动路由会用上；**需自配密钥 / 需装后端工具** = 配好后即可用；**被上游封锁** = 源站当前拒绝；**已停用** = 配置层面关闭。
 
-### 全网搜索（35）
+### 全网搜索（34）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
 |---|---|---|---|---|---|---|
@@ -92,7 +92,6 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `marginalia` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | Marginalia 独立爬虫索引（非大厂代理，专挖长尾非商业页面，JSON 免认证） |
 | `parallel_free` | 可直接用 | 免费 | 不限 | — | 通用兜底链 | Parallel 免费搜索（官方免费 MCP 端点 search.parallel.ai，无账号无 key；excerpts 长文摘录省 fetch；与按量计费的 parallel REST 通道分立，作其缺位时的补位） |
 | `searchmysite` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 人工审核准入的个人独立站索引（非商业博客，HTML 解析） |
-| `sec_edgar` | 可直接用 | 免费 | 不限 | — | 域 sec_filings | SEC EDGAR 美国证监会官方全文检索（公司/财报/申报，免认证） |
 | `uapi` | 可直接用 | 免费 | 不限 | — | 语义画像命中、通用兜底链 | UAPI 聚合搜索 |
 | `wechat_sogou` | 可直接用 | 免费 | 不限 | — | 域 chinese_general、域 wechat_search | 搜狗微信搜索引擎（公众号文章，免登录） |
 | `wiby` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | Wiby 老式手工网页索引（专收非商业化页面，JSON 免认证） |
@@ -310,6 +309,20 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `usgs` | 可直接用 | 免费 | 不限 | — | 域 earth_science | USGS 地震目录（最近 30 天 M2.5+，earthquake.usgs.gov 免认证） |
 | `soilgrids` | 已停用 | 免费 | 不限 | — | 域 earth_science、域 soil_agri | 全球土壤属性（ISRIC SoilGrids，逐点栅格，免认证） |
 
+### 行情 / 资金（9）
+
+| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
+|---|---|---|---|---|---|---|
+| `cninfo` | 可直接用 | 免费 | 不限 | — | 域 company_search、域 financial_news | 巨潮资讯网官方公告（A股公告第一官方源，免认证） |
+| `eastmoney` | 可直接用 | 免费 | 不限 | — | 域 financial_news、域 fund_query、域 stock_query、域 us_stock、语义画像命中 | 东方财富，金融数据首选 |
+| `em_flow` | 可直接用 | 免费 | 不限 | — | 域 stock_query | 东财资金流向（个股主力/北向/板块，push2.eastmoney.com 免认证） |
+| `finviz` | 可直接用 | 免费 | 不限 | — | 域 us_stock | Finviz 美股快照（HTML，免认证） |
+| `sec_edgar` | 可直接用 | 免费 | 不限 | — | 域 sec_filings | SEC EDGAR 美国证监会官方全文检索（公司/财报/申报，免认证） |
+| `seeking_alpha` | 可直接用 | 免费 | 不限 | — | 域 us_stock | Seeking Alpha 美股分析（HTML，反爬较强） |
+| `sina_quote` | 可直接用 | 免费 | 不限 | — | 域 stock_query | 新浪实时行情快照（现价/涨跌/成交量，免认证） |
+| `tencent_kline` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 腾讯财经前复权日 K 线（A股+港股+美股） |
+| `tencent_quote` | 可直接用 | 免费 | 不限 | — | 域 stock_query | 腾讯实时行情（qt.gtimg.cn 免认证，含换手率/市盈率/五档） |
+
 ### 热榜（8）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
@@ -335,19 +348,6 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `who_don` | 可直接用 | 免费 | 不限 | — | 域 medical、域 outbreak_health | WHO 疫情暴发通报（世卫官方公共卫生事件，免认证 OData） |
 | `who_gho` | 可直接用 | 免费 | 不限 | — | 域 medical、域 outbreak_health | WHO GHO 全球卫生指标（世卫官方统计目录，免认证） |
 | `worms` | 可直接用 | 免费 | 不限 | — | 域 species_search | WoRMS 海洋物种权威命名（分类学标准，免认证） |
-
-### 行情 / 资金（8）
-
-| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
-|---|---|---|---|---|---|---|
-| `cninfo` | 可直接用 | 免费 | 不限 | — | 域 company_search、域 financial_news | 巨潮资讯网官方公告（A股公告第一官方源，免认证） |
-| `eastmoney` | 可直接用 | 免费 | 不限 | — | 域 financial_news、域 fund_query、域 stock_query、域 us_stock、语义画像命中 | 东方财富，金融数据首选 |
-| `em_flow` | 可直接用 | 免费 | 不限 | — | 域 stock_query | 东财资金流向（个股主力/北向/板块，push2.eastmoney.com 免认证） |
-| `finviz` | 可直接用 | 免费 | 不限 | — | 域 us_stock | Finviz 美股快照（HTML，免认证） |
-| `seeking_alpha` | 可直接用 | 免费 | 不限 | — | 域 us_stock | Seeking Alpha 美股分析（HTML，反爬较强） |
-| `sina_quote` | 可直接用 | 免费 | 不限 | — | 域 stock_query | 新浪实时行情快照（现价/涨跌/成交量，免认证） |
-| `tencent_kline` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 腾讯财经前复权日 K 线（A股+港股+美股） |
-| `tencent_quote` | 可直接用 | 免费 | 不限 | — | 域 stock_query | 腾讯实时行情（qt.gtimg.cn 免认证，含换手率/市盈率/五档） |
 
 ### 宏观数据（6）
 

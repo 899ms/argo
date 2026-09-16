@@ -118,7 +118,7 @@ def main():
     print(f"  cold_ms={cold} warm1_ms={warm1} warm2_ms={warm2}")
     print(f"  cold_engine={r1.get('engine')} count={r1.get('count')} "
           f"reranker={r1.get('reranker')} wasted={r1.get('wasted_engine_ms')}")
-    print(f"  outcomes={json.dumps(r1.get('engine_outcomes'), ensure_ascii=False)[:300]}")
+    print(f"  outcomes={dumps(r1.get('engine_outcomes'))[:300]}")
     print(f"  warm_cached={r2.get('cached')}/{r3.get('cached')} "
           f"level={r2.get('cache_level')}/{r3.get('cache_level')}")
 

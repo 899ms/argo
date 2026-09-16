@@ -2,6 +2,7 @@
 """extract.py — 结构化数据提取（抓取走 fetch_v3 降级链）"""
 import json, re, sys
 from html.parser import HTMLParser
+from cli_io import dumps, dumps_pretty
 # fetch_v3：UA 轮换 + TLS 指纹 + Wayback/浏览器降级，反爬站可抓。
 # 单页场景保留浏览器降级（use_browser_fallback=True 默认）。
 from fetch_v3 import fetch_v3 as _fetch3
@@ -89,11 +90,11 @@ if __name__ == '__main__':
     if not url:
         p.error('需要 URL：argo extract <url>，或 --url <url>')
     result = _extract_fetch(url, 50000, 15)
-    if not result['success']: print(json.dumps({'error': result.get('error')})); sys.exit(1)
+    if not result['success']: print(dumps({'error': result.get('error')})); sys.exit(1)
     html = result.get('html') or result.get('content') or ''
     output = {}
     if args.mode in ('tables','all'): output['tables'] = extract_tables(html)
     if args.mode in ('metadata','all'): output['metadata'] = extract_metadata(html)
     if args.mode in ('jsonld','all'): output['jsonld'] = extract_jsonld(html)
-    out = json.dumps(output, ensure_ascii=False, indent=2)
+    out = dumps(output)
     print(out if args.json else out[:3000])

@@ -937,7 +937,7 @@ def _cli():
     cache = SearchCache()
     if args.cmd == "get":
         hit = cache.get(args.query, args.engine, args.max_results, domain=args.domain)
-        print(json.dumps({"hit": hit is not None, "data": hit}, ensure_ascii=False))
+        print(dumps({"hit": hit is not None, "data": hit}))
     elif args.cmd == "set":
         cache.set(args.query, args.engine, args.max_results, json.loads(args.value_json), domain=args.domain)
         print('{"ok": true}')

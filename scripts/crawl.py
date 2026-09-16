@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """crawl.py — 站点级爬取（fetch_v3 降级链：增强 HTTP → TLS 指纹 → Wayback）"""
-import json, re, time
+import re, time
 from urllib.parse import urljoin, urlparse
 from bounded_run import run_bounded, TaskError
+from cli_io import dumps
 # fetch_v3 而非裸 urllib fetch：UA 轮换 + Cookie 积累 + curl_cffi 指纹伪造，
 # 反爬站（CF 保护等）从必然失败到大概率成功。批量场景禁浏览器降级
 # （BFS 可能爬几十页，每页启动 Chrome CDP 会拖慢整体）。
@@ -107,5 +108,5 @@ if __name__ == '__main__':
         r = crawl_sitemap(args.url, args.max_pages)
     else:
         r = crawl_bfs(args.url, args.max_pages, args.max_depth)
-    out = json.dumps(r, ensure_ascii=False, indent=2)
+    out = dumps(r)
     print(out if args.json else out[:2000])

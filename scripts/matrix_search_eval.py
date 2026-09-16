@@ -22,6 +22,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from cli_io import dumps, dumps_pretty
 
 _SCRIPTS = Path(__file__).resolve().parent
 _ROOT = _SCRIPTS.parent
@@ -1090,14 +1091,11 @@ def main() -> int:
     }
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    report_path.write_text(dumps_pretty(report), encoding="utf-8")
     print(f"  report → {report_path}")
 
     if args.json:
-        print(json.dumps(summary, ensure_ascii=False))
+        print(dumps(summary))
     return 1 if c.fail else 0
 
 

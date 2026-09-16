@@ -23,7 +23,7 @@ import re
 import sys
 import time
 from typing import Any
-from cli_io import dumps
+from cli_io import dumps, dumps_pretty
 
 _SNAP_CAP = 10  # 每个 URL 保留的快照历史上限（旧的丢弃）
 
@@ -49,8 +49,7 @@ def _load() -> dict[str, Any]:
 def _save(data: dict[str, Any]) -> None:
     p = _store_path()
     tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1),
-                   encoding="utf-8")
+    tmp.write_text(dumps_pretty(data), encoding="utf-8")
     tmp.replace(p)
 
 
@@ -171,8 +170,7 @@ def main() -> None:
 
     if args.action == "add":
         if not args.url:
-            print(json.dumps({"status": "error", "error": "用法: argo watch add <url>"},
-                             ensure_ascii=False))
+            print(dumps({"status": "error", "error": "用法: argo watch add <url>"}))
             sys.exit(1)
         r = cmd_add(args.url, args.note)
         payload = {"status": "completed", **r}
@@ -182,9 +180,8 @@ def main() -> None:
         payload = {"status": "completed", "results": cmd_list()}
     else:
         if not args.url or not cmd_remove(args.url):
-            print(json.dumps({"status": "error",
-                              "error": f"未找到观察目标: {args.url}"},
-                             ensure_ascii=False))
+            print(dumps({"status": "error",
+                         "error": f"未找到观察目标: {args.url}"}))
             sys.exit(1)
         payload = {"status": "completed", "removed": args.url}
 

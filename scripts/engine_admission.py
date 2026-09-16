@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from cli_io import dumps_pretty
+
 # 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 
@@ -156,7 +158,7 @@ def save_admission(engine_id: str, record: dict[str, Any]) -> dict[str, Any]:
         "health": record.get("health"),
         "quality": record.get("quality"),
     }
-    path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(dumps_pretty(out), encoding="utf-8")
     # 写完即失效：缓存与文件是一对状态，只更新一半会让本进程读到自己没写的旧值
     _admission_read_cache.pop(str(path), None)
     return out

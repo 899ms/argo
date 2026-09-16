@@ -1027,12 +1027,23 @@ def _get_engines_combo(domain: dict[str, Any], enabled: set[str], mode: str = "a
         primary = domain.get("primary")
         try:
             from engine_families import family_of
+            # 引擎声明必须传下去：config.yaml 的 family 字段才是来源。
+            # 不传时 family_of 会退回静态覆盖表、再退到默认值 web_general——
+            # 实测 16 个引擎（含本次新接的 osv / cisa_kev / federal_register /
+            # unpaywall / opencitations，以及 sports 三个、weather 两个）因此
+            # 被当成通用源，在下面「同族按分数排序」里跟 anysearch(0.886) 同族，
+            # 于是一个个被挤到后面（us_legal 的 federal_register 就是这么掉到
+            # 第三位的，而它的域声明顺序本来是第二位）。
+            _specs = get_engines()
+            if not isinstance(_specs, dict):
+                _specs = {}
         except ImportError:
             family_of = None
+            _specs = {}
 
         def _fam(e: str) -> str:
             try:
-                return family_of(e) if family_of else "?"
+                return family_of(e, _specs.get(e)) if family_of else "?"
             except Exception:
                 return "?"
 
@@ -1617,9 +1628,15 @@ def route_query(query: str, engine_override: str = "auto",
         if secondary and not _pure_combo:
             try:
                 from engine_families import family_of
+                # 同 _get_engines_combo 的排序：必须把引擎声明传下去，否则
+                # config.yaml 里声明的族被忽略、一律算成 web_general，这里的
+                # 「同族已达 2 个就不再补」会误判，把次域的专业源挡在外面。
+                _sec_specs = get_engines()
+                if not isinstance(_sec_specs, dict):
+                    _sec_specs = {}
                 fam_count: dict[str, int] = {}
                 for _e in engines_combo:
-                    _f = family_of(_e)
+                    _f = family_of(_e, _sec_specs.get(_e))
                     fam_count[_f] = fam_count.get(_f, 0) + 1
             except Exception:
                 fam_count = None
@@ -1628,7 +1645,7 @@ def route_query(query: str, engine_override: str = "auto",
                 if not _sp or _sp not in enabled or _sp in engines_combo:
                     continue
                 if fam_count is not None:
-                    _f = family_of(_sp)
+                    _f = family_of(_sp, _sec_specs.get(_sp))
                     if _f == "web_general" and fam_count.get(_f, 0) >= 2:
                         continue
                     fam_count[_f] = fam_count.get(_f, 0) + 1

@@ -115,7 +115,7 @@ def main():
         print(str(e), file=sys.stderr)
         sys.exit(1)
     if not out["ok"]:
-        print(json.dumps(out, ensure_ascii=False))
+        print(dumps(out))
         sys.exit(1)
 
     if args.json:

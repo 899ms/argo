@@ -272,7 +272,14 @@ class TestStdoutJsonIsCompact(unittest.TestCase):
                          cli_io.dumps_pretty(probe))
 
     def test_no_pretty_stdout_in_scripts(self):
-        """源码检查：不得新增 `print(json.dumps(..., indent=...))`。"""
+        """源码检查：stdout 不得输出缩进 JSON。
+
+        认两种写法：老的 `print(json.dumps(..., indent=))`，和改用统一入口后的
+        `print(dumps_pretty(...))`。只认前一种的话，后者会从检查底下溜过去——
+        实测 crawl.py / extract.py 就是这么把 stdout 又变回美化格式的
+        （`argo crawl` 每次多占约三成体积）。
+        写盘文件不在此列：那是给人翻的，用 dumps_pretty 是对的。
+        """
         offenders = []
         for path in sorted((ROOT / "scripts").rglob("*.py")):
             if "__pycache__" in path.parts:
@@ -287,10 +294,16 @@ class TestStdoutJsonIsCompact(unittest.TestCase):
                         and node.func.id == "print"):
                     continue
                 for inner in ast.walk(node):
-                    if (isinstance(inner, ast.Call)
-                            and isinstance(inner.func, ast.Attribute)
-                            and inner.func.attr == "dumps"
-                            and any(k.arg == "indent" for k in inner.keywords)):
+                    pretty_by_indent = (
+                        isinstance(inner, ast.Call)
+                        and isinstance(inner.func, ast.Attribute)
+                        and inner.func.attr == "dumps"
+                        and any(k.arg == "indent" for k in inner.keywords))
+                    pretty_by_helper = (
+                        isinstance(inner, ast.Call)
+                        and isinstance(inner.func, ast.Name)
+                        and inner.func.id == "dumps_pretty")
+                    if pretty_by_indent or pretty_by_helper:
                         offenders.append(f"{path.relative_to(ROOT)}:{inner.lineno}")
         self.assertEqual(
             offenders, [],

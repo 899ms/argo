@@ -405,6 +405,63 @@ class TestAdaptive(unittest.TestCase):
         self.assertLessEqual(score, 1.0)
 
 
+class TestAdaptiveEmptyVsFailure(unittest.TestCase):
+    """「这个查询它没东西」与「这个源坏了」必须分开记账。
+
+    混在一起的代价是实打实的：github 窗口内 63 次调用的失败归因全是 empty
+    （它只覆盖代码仓库，被丢去答别的查询自然没结果），分数因此掉到 0.06，
+    于是它被从 `local_code` / `package_search` 这些**声明要用它**的域里整个
+    剔除；同类还有 wikipedia 0.17 / openalex 0.29 / hackernews 0.10 等，
+    共 16 个域受影响。
+
+    判定口径：成功率只按「有明确结果」的调用算（empty=0）；空结果既不记成功
+    也不记失败——它对「源健康与否」不提供信息。真失败照旧降权。
+    """
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        import adaptive
+        self._adaptive = adaptive
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = adaptive.DB_PATH
+        adaptive.DB_PATH = Path(self._tmp.name) / "adaptive.db"
+        self.learner = AdaptiveLearner()
+
+    def tearDown(self):
+        self._adaptive.DB_PATH = self._old
+        self._tmp.cleanup()
+
+    def _record(self, engine, *, n, success=False, empty=False):
+        for _ in range(n):
+            self.learner.record(engine, success=success, latency_ms=500,
+                                cost=0.0, empty=empty)
+
+    def test_all_empty_keeps_neutral_score(self):
+        """全是不带错误的空结果 → 中性分，不会被剔除。"""
+        self._record("only_empty", n=20, success=False, empty=True)
+        self.assertEqual(self.learner.get_score("only_empty"), 0.5)
+
+    def test_real_failures_still_penalize(self):
+        """真失败照旧降权：3 成成功率不该被当成健康源。"""
+        for i in range(10):
+            self.learner.record("half_bad", success=(i < 3), latency_ms=500)
+        self.assertLess(self.learner.get_score("half_bad"), 0.35)
+
+    def test_empty_does_not_dilute_real_failures(self):
+        """空结果不参与成功率计算，不能把真失败「稀释」成健康。"""
+        self._record("mixed", n=50, success=False, empty=True)
+        self._record("mixed", n=2, success=False, empty=False)
+        self.assertEqual(self.learner.get_score("mixed"), 0.0,
+                         "2 次真失败被 50 次空结果稀释成了高分")
+
+    def test_empty_flag_defaults_off(self):
+        """不传 empty 时按旧口径（算失败），老调用方行为不变。"""
+        self._record("legacy", n=10, success=False)
+        self.assertEqual(self.learner.get_score("legacy"), 0.0)
+
+
 class TestLocalSearchRegistry(unittest.TestCase):
     def test_registry_loads_engines(self):
         reg = EngineRegistry()

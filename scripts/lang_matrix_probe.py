@@ -36,6 +36,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from cli_io import dumps_pretty
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -248,8 +249,7 @@ def _flush_matrix(cells: dict, langs: list[str], engines: list[str],
         if row:
             matrix[lang] = row
     out = {"matrix": matrix, "summary": summarize(matrix), "meta": meta}
-    Path(out_path).write_text(
-        json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(out_path).write_text(dumps_pretty(out), encoding="utf-8")
 
 
 def summarize(matrix: dict) -> dict:

@@ -34,7 +34,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
-from cli_io import dumps
+from cli_io import dumps, dumps_pretty
 
 # ── 路径 ──────────────────────────────────────────────────────────────────────
 
@@ -248,8 +248,7 @@ def collect_issues(engines: dict[str, dict[str, Any]],
 
 
 def write_quota(quota: dict[str, Any]) -> None:
-    QUOTA_PROFILES_PATH.write_text(
-        json.dumps(quota, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    QUOTA_PROFILES_PATH.write_text(dumps_pretty(quota) + "\n", encoding="utf-8")
 
 
 def write_registry(registry: dict[str, Any]) -> None:
@@ -260,8 +259,7 @@ def write_registry(registry: dict[str, Any]) -> None:
 
 
 def write_domain(domain: dict[str, Any]) -> None:
-    DOMAIN_PROFILES_PATH.write_text(
-        json.dumps(domain, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    DOMAIN_PROFILES_PATH.write_text(dumps_pretty(domain) + "\n", encoding="utf-8")
 
 
 def main() -> int:

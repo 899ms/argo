@@ -27,6 +27,8 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
+from cli_io import dumps  # noqa: E402
+
 
 class Checker:
     def __init__(self) -> None:
@@ -268,7 +270,7 @@ def main() -> int:
 
     print(f"\n== summary: {c.ok} PASS / {c.fail} FAIL ==")
     if args.json:
-        print(json.dumps({"ok": c.ok, "fail": c.fail, "rows": c.rows}, ensure_ascii=False))
+        print(dumps({"ok": c.ok, "fail": c.fail, "rows": c.rows}))
     return 1 if c.fail else 0
 
 

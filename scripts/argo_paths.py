@@ -28,7 +28,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Iterable, Mapping
-from cli_io import dumps
+from cli_io import dumps, dumps_pretty
 
 # 环境变量覆盖：优先级最高，用于测试隔离与只读环境
 ENV_STATE_DIR = "ARGO_STATE_DIR"
@@ -642,7 +642,8 @@ def atomic_write_json(path: Path, payload: Any, *, indent: int | None = 2) -> No
     系统 rename 语义），失败路径清理自己的 tmp，绝不触碰别人的。
     实现在 atomic_write_text；本函数只负责序列化。
     """
-    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=indent))
+    content = dumps_pretty(payload) if indent else dumps(payload)
+    atomic_write_text(path, content)
 
 
 def isolate_state_dir(tag: str = "argo-dev") -> Path:

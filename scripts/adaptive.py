@@ -78,7 +78,8 @@ class AdaptiveLearner:
                 success INTEGER NOT NULL,
                 latency_ms REAL NOT NULL,
                 cost REAL NOT NULL DEFAULT 0.0,
-                created_at REAL NOT NULL
+                created_at REAL NOT NULL,
+                empty INTEGER NOT NULL DEFAULT 0
             )
         """)
         cols = [r[1] for r in conn.execute("PRAGMA table_info(engine_perf)")]
@@ -86,6 +87,10 @@ class AdaptiveLearner:
             conn.execute("ALTER TABLE engine_perf ADD COLUMN created_at REAL DEFAULT 0")
         if "cost" not in cols:
             conn.execute("ALTER TABLE engine_perf ADD COLUMN cost REAL DEFAULT 0.0")
+        if "empty" not in cols:
+            # 老库补列：历史行 empty=0，等价于旧口径（空结果也算失败），
+            # 不做回溯改写——我们无法知道那些行当时到底是「空」还是「错」。
+            conn.execute("ALTER TABLE engine_perf ADD COLUMN empty INTEGER DEFAULT 0")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_perf_engine_time ON engine_perf(engine, created_at)"
         )
@@ -93,19 +98,40 @@ class AdaptiveLearner:
         conn.execute("DELETE FROM engine_perf WHERE created_at < ?", (cutoff,))
         conn.commit()
 
-    def record(self, engine: str, success: bool, latency_ms: float, cost: float = 0.0):
-        """记录一次引擎调用结果。"""
+    def record(self, engine: str, success: bool, latency_ms: float, cost: float = 0.0,
+               empty: bool = False):
+        """记录一次引擎调用结果。
+
+        ``empty=True`` 表示「引擎正常，但这次查询它没有结果」——与「失败」是
+        两回事，见 `get_score` 的说明。默认 False 保持旧调用方行为不变。
+        """
         with self._lock:
             conn = self._connect()
             conn.execute(
-                "INSERT INTO engine_perf (engine, success, latency_ms, cost, created_at) VALUES (?, ?, ?, ?, ?)",
-                (engine, 1 if success else 0, latency_ms, cost, time.time()),
+                "INSERT INTO engine_perf "
+                "(engine, success, latency_ms, cost, created_at, empty) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (engine, 1 if success else 0, latency_ms, cost, time.time(),
+                 1 if empty else 0),
             )
             conn.commit()
             self._score_cache.pop(engine, None)
 
     def get_score(self, engine: str) -> float:
-        """获取引擎的综合推荐分数（0.0 ~ 1.0）。"""
+        """获取引擎的综合推荐分数（0.0 ~ 1.0）。
+
+        **只按「有明确结果」的调用算成功率**（`empty=0`）。
+
+        为什么要把空结果排除：分数被用来决定「这个源该不该继续用」，
+        而「这次查询它没东西」说明的是**查询与源不匹配**，不是源坏了。
+        两者混在一起会误杀：实测 github 在窗口内 63 次调用、成功率 6%，
+        失败归因全是 empty——它被用来回答各种查询，只有少数落进它的覆盖范围；
+        而它却在 `local_code` / `package_search` 这些**声明要用它**的域里
+        因分数低于 0.3 被整个剔除。同类还有 wikipedia(0.17)、
+        openalex(0.29)、hackernews(0.10)、twitter(0.17)、open_library(0.17)。
+
+        延迟与成本仍按全部调用统计——空结果也是真实开销。
+        """
         now = time.time()
         cached = self._score_cache.get(engine)
         if cached and cached[1] > now:
@@ -118,12 +144,17 @@ class AdaptiveLearner:
             cutoff = now - WINDOW_DAYS * 86400
             conn = self._connect()
             row = conn.execute(
-                "SELECT COUNT(*), AVG(success), AVG(latency_ms), AVG(cost) "
+                "SELECT COUNT(*), "
+                "       SUM(CASE WHEN empty = 0 THEN 1 ELSE 0 END), "
+                "       SUM(CASE WHEN empty = 0 THEN success ELSE 0 END), "
+                "       AVG(latency_ms), AVG(cost) "
                 "FROM engine_perf WHERE engine = ? AND created_at > ?",
                 (engine, cutoff),
             ).fetchone()
-        total, avg_success, avg_latency, avg_cost = row
-        if not total or total == 0:
+        total, judged, judged_ok, avg_latency, avg_cost = row
+        total = int(total or 0)
+        judged = int(judged or 0)
+        if not total:
             score = 0.5  # 无数据时中性分
         else:
             # 数据过时恢复：最后一次调用距今过久 → 中性分，给恢复探测机会
@@ -134,8 +165,12 @@ class AdaptiveLearner:
             last_ts = float(last_row[0] or 0)
             if last_ts and (now - last_ts) > STALE_AFTER_SECONDS:
                 score = 0.5
+            elif judged == 0:
+                # 窗口内全是空结果：没有任何可判定健康与否的调用 → 中性分。
+                # 给中性分而不是 0：否则「每次都只是没搜到」会把源打死。
+                score = 0.5
             else:
-                success_rate = avg_success or 0.5
+                success_rate = (judged_ok or 0) / judged
                 latency_factor = min(1.0, 2000.0 / max(avg_latency or 2000, 1))
                 cost_factor = max(0.3, 1.0 - (avg_cost or 0.0) * 10)
                 score = round(success_rate * latency_factor * cost_factor, 4)
@@ -144,21 +179,24 @@ class AdaptiveLearner:
         return score
 
     def get_ranking(self) -> list[tuple[str, float]]:
-        """获取所有引擎的推荐排名（降序）。"""
+        """获取所有引擎的推荐排名（降序）。空结果的排除口径同 `get_score`。"""
         with self._lock:
             cutoff = time.time() - WINDOW_DAYS * 86400
             conn = self._connect()
             rows = conn.execute(
-                "SELECT engine, COUNT(*), AVG(success), AVG(latency_ms), AVG(cost) "
+                "SELECT engine, "
+                "       SUM(CASE WHEN empty = 0 THEN 1 ELSE 0 END), "
+                "       SUM(CASE WHEN empty = 0 THEN success ELSE 0 END), "
+                "       AVG(latency_ms), AVG(cost) "
                 "FROM engine_perf WHERE created_at > ? GROUP BY engine",
                 (cutoff,),
             ).fetchall()
 
         results = []
-        for engine, total, avg_success, avg_latency, avg_cost in rows:
-            if not total:
+        for engine, judged, judged_ok, avg_latency, avg_cost in rows:
+            if not judged:
                 continue
-            success_rate = avg_success or 0.5
+            success_rate = (judged_ok or 0) / judged
             latency_factor = min(1.0, 2000.0 / max(avg_latency or 2000, 1))
             cost_factor = max(0.3, 1.0 - (avg_cost or 0.0) * 10)
             score = round(success_rate * latency_factor * cost_factor, 4)

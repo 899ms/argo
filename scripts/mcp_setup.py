@@ -28,6 +28,7 @@ import os
 import shutil
 import sys
 from datetime import datetime
+from cli_io import dumps_pretty
 from pathlib import Path
 from typing import Any
 
@@ -173,7 +174,7 @@ def _inject_json(client: dict[str, Any], entry: dict[str, Any]) -> str:
     if not isinstance(config.get(servers_key), dict):
         config[servers_key] = {}
     config[servers_key][ENTRY_NAME] = entry
-    return json.dumps(config, ensure_ascii=False, indent=2) + "\n"
+    return dumps_pretty(config) + "\n"
 
 
 def _remove_json(client: dict[str, Any]) -> str | None:
@@ -185,7 +186,7 @@ def _remove_json(client: dict[str, Any]) -> str | None:
     servers = config.get(client["servers_key"])
     if isinstance(servers, dict) and ENTRY_NAME in servers:
         del servers[ENTRY_NAME]
-        return json.dumps(config, ensure_ascii=False, indent=2) + "\n"
+        return dumps_pretty(config) + "\n"
     return None
 
 

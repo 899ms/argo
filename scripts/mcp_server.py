@@ -121,10 +121,10 @@ def call_mode(tool: str, payload: str) -> int:
     try:
         arguments = json.loads(payload) if payload.strip() else {}
     except json.JSONDecodeError as e:
-        print(json.dumps({"error": f"invalid --call payload: {e}"}, ensure_ascii=False))
+        print(_dumps({"error": f"invalid --call payload: {e}"}))
         return 2
     if not isinstance(arguments, dict):
-        print(json.dumps({"error": "--call payload must be a JSON object"}, ensure_ascii=False))
+        print(_dumps({"error": "--call payload must be a JSON object"}))
         return 2
     result = execute_tool(tool, arguments)
     print(_dumps(result))
@@ -160,8 +160,7 @@ if __name__ == "__main__":
         _i = sys.argv.index("--call")
         _tool = sys.argv[_i + 1] if len(sys.argv) > _i + 1 else ""
         if not _tool:
-            print(json.dumps({"error": "usage: mcp_server.py --call <tool> [json-args]"},
-                             ensure_ascii=False))
+            print(_dumps({"error": "usage: mcp_server.py --call <tool> [json-args]"}))
             sys.exit(2)
         _payload = sys.argv[_i + 2] if len(sys.argv) > _i + 2 else "{}"
         sys.exit(call_mode(_tool, _payload))
