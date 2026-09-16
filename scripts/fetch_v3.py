@@ -860,6 +860,29 @@ def _optimize_url(url: str) -> str:
     return url
 
 
+def _cache_content_too_short(hit: dict, max_chars: int) -> bool:
+    """缓存正文是否因写入时 max_chars 更小而不够本次使用。
+
+    缓存存的是「写入时按 max_chars 裁剪后」的正文（不是完整副本），所以
+    本次请求更大时必须视为 miss 回源，否则调用方会静默拿到被截短的正文
+    （实测：--max-chars 60000 命中 8000 字缓存，正文反而比首次更短）。
+    与 search 侧 _max_results 柔性命中同构：不够用就 miss 去升级，够用才截断。
+
+    老条目（修复前写入，无 _max_chars）长度不可信，退回按 content 实际
+    长度判断；首轮回源后会写入带 _max_chars 的条目，之后即精确判定。
+    """
+    if not max_chars:
+        return False
+    content = hit.get("content") or ""
+    cached_max = hit.get("_max_chars")
+    if cached_max is None:
+        return max_chars > len(content)
+    try:
+        return max_chars > int(cached_max)
+    except (TypeError, ValueError):
+        return max_chars > len(content)
+
+
 def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
              use_browser_fallback: bool = True,
              actions: list[dict] | None = None,
@@ -884,7 +907,9 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
     工具超时。每级升级前检查剩余预算，耗尽即停链返回当前最优结果
     （失败结果 + deadline_exhausted 标记），不再无限叠加。
 
-    URL 级缓存：无 actions 的成功结果写入 SearchCache（L1+L2）。
+    URL 级缓存：无 actions 的成功结果写入 SearchCache（L1+L2），正文按本次
+    max_chars 裁剪并记录 _max_chars；后续请求更大 max_chars 时判为 miss 回源
+    重抓，避免静默返回被截短的正文。
     need_html：调用方需要原始 HTML（如爬取提取链接）时置 True，跳过 tinyfish
     （仅产 markdown 无 raw html），避免降级链在爬取场景行为漂移。
     """
@@ -924,7 +949,8 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
         try:
             from cache import SearchCache
             hit = SearchCache().get_fetch(url)
-            if hit and hit.get("success"):
+            # 缓存正文是按写入时 max_chars 裁剪的，本次要得更多 → 判 miss 走抓取链
+            if hit and hit.get("success") and not _cache_content_too_short(hit, max_chars):
                 # 缓存内容可能比本次 max_chars 更长 → 截断
                 out = {k: v for k, v in hit.items() if not str(k).startswith("_")}
                 content = out.get("content") or ""
@@ -1091,6 +1117,10 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                 k: v for k, v in result.items()
                 if k not in ("html",) and not str(k).startswith("_")
             }
+            # 记录本次裁剪上限：后续请求更大 max_chars 时据此判缓存不够用
+            # （读缓存侧 _cache_content_too_short）。下划线字段读时会被过滤，
+            # 不会泄漏给调用方。
+            to_store["_max_chars"] = max_chars
             # 按内容类型粗略 TTL：新闻短、文档长
             ttl = FETCH_DEFAULT_TTL
             st = (result.get("source_type") or result.get("page_type") or "")
