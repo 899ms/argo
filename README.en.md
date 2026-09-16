@@ -502,6 +502,13 @@ argo/
 
 ---
 
+### v2.8.8: real-user fixes + across-the-board speedups + 232 sources
+
+- **Fixes**: engines silently returning nothing when keys were set under the documented recommended names (#12); fetch chain ignoring proxies so proxy-required sites like GitHub always failed (#13) — now `ARGO_PROXY`, per-domain config rules and standard proxy env vars all work, with `NO_PROXY` respected
+- **Faster**: command cold start 2.1s → 0.55s; cross-process config cache 50–82ms → 16–18ms; every search reports per-stage timings and budget spend, so "where is it slow" needs no guessing (`--no-timing` to disable)
+- **New**: sources 218 → 232 (keyless out-of-the-box 184 → 194, all key-free: CN trending boards, security advisories, open-access scholarship, skill directories, agent search), `argo answer` (cited direct answers), `argo watch` (webpage change watching), CLI/MCP tool surfaces aligned
+- **More robust**: platform-conventional paths on all three OSes (new `argo paths` introspection), Python 3.9 supported, silent degradations now reported; see [release notes](docs/RELEASE_NOTES_v2.8.8.md)
+
 ## Recent updates
 
 ### v2.8.7: sources expanded to 218 + a batch of fixes
@@ -537,7 +544,7 @@ argo/
 
 | Version | Notes |
 |---------|-------|
-| **v2.8.8** | **Real-user fixes (key-alias silence #12, proxy-less fetch #13) + answer/watch subcommands + parallel_free/seltz engines**: unified egress dispatch (`ARGO_PROXY` / per-domain rules / standard env + `NO_PROXY`), 16 key-read sites migrated to alias chain with source-scan gate, Parallel free MCP fetch level, cited-answer & webpage-watch CLIs. 218 → 220 sources. See [release notes](docs/RELEASE_NOTES_v2.8.8.md) |
+| **v2.8.8** | **Real-user fixes (#12 key-alias silence, #13 proxy-less fetch) + across-the-board speedups + sources 218 → 232**: unified egress dispatch (`ARGO_PROXY` / per-domain rules / standard proxy env, `NO_PROXY` respected); 16 key-read sites unified on the alias chain; command cold start 2.1s→0.55s, cross-process config cache 50–82ms→16–18ms, QPP flatness-gated early stop, `--list-engines --detail` slimmed 152KB→51KB; new `argo answer` (cited direct answers) and `argo watch` (webpage change watching), 14 keyless sources (CN trending & lifestyle / security advisories / open-access scholarship / skill directories / agent search), 69 engines re-classified (`web_general` fallback share 41%→20%, new security domain); platform-conventional paths (`argo paths`) + Python 3.9 + bounded concurrency making timeouts real; search.py split into modules 3351→2526 lines, relevance golden over 22 engines, static-defect & output-contract gates. See [release notes](docs/RELEASE_NOTES_v2.8.8.md) |
 | **v2.8.7** | **218 sources / 89 domains + three fetch direct-out channels + routing trigger discipline + macro zero-result fix**: 50 new sources across batches 7/8/9 (statutes, standards, security intel, academia, news, entertainment, energy/transport, legal), stackexchange & doi engines; fetch chain level-0 llms.txt and `.md` variant probing plus r.jina.ai reader level; `--engine` comma-list fix, tfidf scope & route_reason, negative routing-control matrix, ranking golden & fusion-ablation gates; China macro queries promote national statistics first, zero-result recovery unlocks L3, rescue engines recorded. See [release notes](docs/RELEASE_NOTES_v2.8.7.md) |
 | **v2.8.6** | **Hedged racing + Zhihu three-source split + declarative language dispatch + reachability gate + academic search protocol**: first-engine grace-window racing (fast engines pay 1 call), Zhihu global-search/personal-data onboarding with starvation fix, per-sub-query language/academic dispatch (English + 17 academic sources in research collection), engine language metadata & reachability gate (dead sources surface), geo tail −56%, academic query-construction protocol. See [release notes](docs/RELEASE_NOTES_v2.8.6.md) |
 | **v2.8.5** | **Native DSH plugin tools + MCP off by default + Windows compat + quota self-healing + fetch deadline**: `argo_search`/`argo_fetch` as first-class native tools (CLI one-shot, same engine & guards as MCP, schema single-source + drift gate); three plugin shapes, MCP on-demand; Windows compatibility (temp paths / GBK / interpreter resolution / junction / `install.ps1`, PR #11); quota self-healing loop (HTTP 200 envelope detection + route exclusion + period self-heal); global fetch deadline (`ARGO_FETCH_DEADLINE_S`) + tinyfish rendering + `.md` variant probes; hot-reload env & state-dir single source. See [release notes](docs/RELEASE_NOTES_v2.8.5.md) |
