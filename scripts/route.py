@@ -38,11 +38,12 @@ except ImportError:
 
 # 世界银行国家表：macro_data 域按国家词分流（非美国国家查询让 worldbank 优先，
 # 避免 FRED 美国序列冒充「中国GDP」这类答案）
-try:
-    from engines_builders_data_macro import is_foreign_macro_query
-except Exception:
-    def is_foreign_macro_query(query: str) -> bool:
-        return False
+#
+# 从 macro_countries 直接取，**不从 engines_builders_data_macro 转出**：后者会
+# 连带来 engines_base → http_client 整条 HTTP 栈（实测 36 ms，占 import route
+# 的绝大部分）。路由是每次调用的必经路径（缓存命中也要走），HTTP 栈只有真正
+# 打网才需要——为了一个 8 行的纯文本谓词付这笔钱不值得。
+from macro_countries import is_foreign_macro_query
 
 # 自适应学习（可选依赖）
 try:
