@@ -540,6 +540,9 @@ domains:
   engines_combo:
   - em_miaoxiang
   - cninfo
+  # wallstreetcn 排在 byted 之前：财经快讯是这一域的专源，byted 是通用搜索；
+  # auto 档 budget=3，排在 byted 之后会被挤到预算外（实测「财经」选不中它）。
+  - wallstreetcn
   - byted
   - eastmoney
   - anysearch
@@ -561,11 +564,12 @@ domains:
   parallel: false
   patterns:
   - (?i)(metar|taf|aviation\s*weather|airport\s*weather|aviationweather\.gov|航空气象|机场天气|机场气象|飞行气象|通航气象)
-- desc: 天气查询（和风天气 + 免 Key 天气引擎）
+- desc: 天气查询（和风天气 + 免 Key 天气引擎 + 中国天气网）
   engines_combo:
   - qweather
   - byted
   - weather
+  - weather_cn
   fallback: qweather
   name: weather_query
   parallel: false
@@ -620,6 +624,8 @@ domains:
   - baidu_hot
   - toutiao_hot
   - bilibili_hot
+  - weibo_hot
+  - douyin_hot
   - ths_hot
   - zhihu_hot
   - zhihu_hot_app
@@ -709,11 +715,12 @@ domains:
   - (?i)(模型|model).{0,24}(价格|pricing|多少钱|上下文|context|token|支持视觉|vision|能力|对比|免费|开源)
   - (?i)(API price|pricing|context window|token limit|vision model|tool call)
   primary: models_dev
-- desc: 中文技术社区文章（掘金 + V2EX + 少数派）
+- desc: 中文技术社区文章（掘金 + V2EX + 少数派 + CSDN）
   engines_combo:
   - juejin
   - v2ex
   - sspai
+  - csdn
   fallback: juejin
   name: cn_tech_community
   parallel: true
@@ -3685,6 +3692,50 @@ engines:
     - trending
     - realtime
     desc: 今日头条热榜（hot-board JSON，免认证）
+    # 热榜/榜单型源按设计忽略查询词，相关性判据不适用（标准不降，只是问对问题）
+    relevance_check: false
+    timeout: 10
+  weibo_hot:
+    type: weibo_hot
+    family: hot_trending
+    enabled: true
+    label: 微博热搜
+    cost_tier: free
+    qps: 2
+    priority: 26
+    period: second
+    cost_per_call: 0.0
+    cost_unit: free
+    coverage:
+    - chinese
+    - hot
+    - trending
+    - realtime
+    - social
+    desc: 微博热搜榜（side/hotSearch JSON，免登录，需 Referer）
+    # 热榜/榜单型源按设计忽略查询词，相关性判据不适用（标准不降，只是问对问题）
+    relevance_check: false
+    timeout: 10
+  douyin_hot:
+    type: douyin_hot
+    family: hot_trending
+    enabled: true
+    label: 抖音热榜
+    cost_tier: free
+    qps: 2
+    priority: 29
+    period: second
+    cost_per_call: 0.0
+    cost_unit: free
+    coverage:
+    - chinese
+    - hot
+    - trending
+    - realtime
+    - video
+    desc: 抖音热榜（iesdouyin word_list JSON，免认证）
+    # 热榜/榜单型源按设计忽略查询词，相关性判据不适用（标准不降，只是问对问题）
+    relevance_check: false
     timeout: 10
   bilibili_hot:
     type: bilibili_hot
@@ -4541,6 +4592,81 @@ engines:
       item_summary: Summary
     timeout: 8
     url: https://developer.zhihu.com/api/v1/content/hot_list
+  csdn:
+    type: csdn
+    family: social
+    enabled: true
+    label: CSDN
+    cost_tier: free
+    qps: 2
+    priority: 30
+    period: second
+    cost_per_call: 0.0
+    cost_unit: free
+    coverage:
+    - chinese
+    - tech
+    - community
+    - blog
+    desc: CSDN 搜索（so.csdn.net v3 JSON，免认证；标题与摘要的高亮标签、URL 追踪参数在引擎内清洗）
+    timeout: 12
+  wallstreetcn:
+    type: wallstreetcn
+    family: news_flash
+    enabled: true
+    label: 华尔街见闻
+    cost_tier: free
+    qps: 2
+    priority: 59
+    period: second
+    cost_per_call: 0.0
+    cost_unit: free
+    coverage:
+    - chinese
+    - finance
+    - news
+    - telegraph
+    desc: 华尔街见闻快讯（lives 直播流 JSON，免认证；全量流 + 本地关键词过滤）
+    # 准入校验用查询：本引擎是「全量快讯流 + 关键词过滤」，通用探针词（英文/技术词）
+    # 会把 100 条快讯滤空，被判成空结果 fail。财经属触发词，走全量榜单。
+    canary_query: 财经
+    # 质量基准查询集：本引擎是「全量快讯流 + 本地关键词过滤」，通用探针词会被过滤成
+    # 空结果，把「检索模式不匹配」误判成引擎质量差。故与 v2ex 同法，声明本引擎
+    # 实际适用的查询形态（触发词走全量榜单）作为准入基准。
+    quality_queries:
+    - id: wallstreetcn_finance
+      query: 财经
+      category: finance
+    - id: wallstreetcn_us
+      query: 美股
+      category: finance
+    timeout: 10
+  weather_cn:
+    type: weather_cn
+    family: misc_vertical
+    enabled: true
+    label: 中国天气网
+    cost_tier: free
+    qps: 2
+    priority: 59
+    period: second
+    cost_per_call: 0.0
+    cost_unit: free
+    coverage:
+    - chinese
+    - weather
+    - realtime
+    desc: 中国天气网城市实况（城市联想取 cityid → sk JSON，免认证，两步）
+    # 准入校验用查询：本引擎按城市名查询，通用探针词取不到 cityid，会被判 empty。
+    canary_query: 上海天气
+    quality_queries:
+    - id: weather_cn_sh
+      query: 上海天气
+      category: weather
+    - id: weather_cn_bj
+      query: 北京气温
+      category: weather
+    timeout: 10
 execution:
   default_timeout: 8
   max_parallel_engines: 3

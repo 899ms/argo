@@ -290,6 +290,16 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "csdn": {
+    "label": "CSDN",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 30
+  },
   "datacite": {
     "label": "datacite",
     "qps": 2,
@@ -399,6 +409,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 50
+  },
+  "douyin_hot": {
+    "label": "抖音热榜",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 29
   },
   "duckduckgo": {
     "label": "DuckDuckGo",
@@ -2020,6 +2040,16 @@
     "cost_tier": "free",
     "priority": 19
   },
+  "wallstreetcn": {
+    "label": "华尔街见闻",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 59
+  },
   "wayback_cdx": {
     "label": "Wayback CDX 快照",
     "qps": 2,
@@ -2040,6 +2070,16 @@
     "cost_tier": "free",
     "priority": 50
   },
+  "weather_cn": {
+    "label": "中国天气网",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 59
+  },
   "wechat_sogou": {
     "label": "搜狗微信搜索",
     "qps": 2,
@@ -2059,6 +2099,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 50
+  },
+  "weibo_hot": {
+    "label": "微博热搜",
+    "qps": 2,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 26
   },
   "wenshu": {
     "label": "裁判文书网",

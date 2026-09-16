@@ -6,8 +6,8 @@
 
 ## 一、总量与口径
 
-- **收录 227 个源**（config.yaml + `engines/specs/*.yaml` 声明合并后的总数）
-- **开箱可用 189 个**：不需要你配任何密钥或装额外工具，自动路由就会用上
+- **收录 232 个源**（config.yaml + `engines/specs/*.yaml` 声明合并后的总数）
+- **开箱可用 194 个**：不需要你配任何密钥或装额外工具，自动路由就会用上
 - **需自备密钥 21 个**：`bocha`、`bocha_ai`、`byted`、`em_miaoxiang`、`exa`、`keenable`、`octen`、`parallel`、`qweather`、`seltz`、`tavily`、`tinyfish`、`tinyfish_news`、`tinyfish_paper`、`unpaywall`、`weread`、`you`、`zhihu`、`zhihu_global`、`zhihu_hot`、`zhihu_user`（没配也不影响搜索，路由会跳过）
 - **需装后端工具 3 个**：`reddit`、`twitter`、`xiaohongshu`（装好并登录后即可用）
 - **已停用 14 个**：`brave`、`europeana`、`felo`、`jikan`、`local_goodreads`、`local_google`、`local_mojeek`、`local_startpage`、`local_yandex`、`metaso`、`realtime_index`、`searxng`、`soilgrids`、`wolframalpha`
@@ -26,7 +26,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 
 ## 二、费用与密钥：哪些白用、哪些要钱
 
-- **免费档 214 个**（含已停用）：无需密钥，或只需免费注册的密钥；其中 12 个要自备密钥（免费额度）：em_miaoxiang、keenable、qweather、tinyfish、tinyfish_news、tinyfish_paper、unpaywall、weread、wolframalpha、zhihu、zhihu_hot、zhihu_user
+- **免费档 219 个**（含已停用）：无需密钥，或只需免费注册的密钥；其中 12 个要自备密钥（免费额度）：em_miaoxiang、keenable、qweather、tinyfish、tinyfish_news、tinyfish_paper、unpaywall、weread、wolframalpha、zhihu、zhihu_hot、zhihu_user
 - **计费档 13 个**（下表逐个列出，档位取自各源自己的 `cost_tier` 声明）
 
 | 引擎 | 档位 | 是否进自动路由 | 需自备密钥 |
@@ -172,7 +172,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `local_goodreads` | 已停用 | 免费 | 不限 | — | 经 local_search 展开 | Goodreads本地 |
 | `weread` | 需自备密钥 | 免费 | 不限 | ARGO_WEREAD_API_KEY | 域 book_search | 微信读书图书搜索（中文书目/评分/在读，需 WEREAD_API_KEY） |
 
-### 其他垂直（20）
+### 其他垂直（21）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
 |---|---|---|---|---|---|---|
@@ -194,6 +194,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `train` | 可直接用 | 免费 | 不限 | — | 域 modal_card、域 transport_rt | 火车余票查询（免 Key：12306 官方接口，车次时刻+余票） |
 | `urban_dictionary` | 可直接用 | 免费 | 不限 | — | 域 meme_slang、语义画像命中 | Urban Dictionary（英文俚语定义与例句，官方 API） |
 | `weather` | 可直接用 | 免费 | 不限 | — | 域 weather_query | 天气查询（免 Key：wttr.in 主用 + Open-Meteo 兜底，当前+未来预报） |
+| `weather_cn` | 可直接用 | 免费 | 不限 | — | 域 weather_query | 中国天气网城市实况（城市联想取 cityid → sk JSON，免认证，两步） |
 | `qweather` | 需自备密钥 | 免费 | 不限 | ARGO_QWEATHER_KEY | 域 weather_query | 和风天气实时天气（需 QWEATHER_KEY） |
 | `realtime_index` | 已停用 | 免费 | 不限 | — | 已停用 | 实时索引数据源（免 Key，结构化输出，带发布时间维度与时间窗过滤） |
 
@@ -220,6 +221,27 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `zh_wikipedia` | 可直接用 | 免费 | 不限 | — | 域 anime_encyclopedia、域 cn_encyclopedia、域 entity_search、域 geo_places、域 org_entity、域 sports_search | 中文维基百科（MediaWiki API，与 en.wikipedia 同构） |
 | `europeana` | 已停用 | 免费 | 不限 | — | 语义画像命中 | 欧洲 27 国文化遗产聚合（官方公开 demo key） |
 
+### 社区 UGC（16）
+
+| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
+|---|---|---|---|---|---|---|
+| `bilibili` | 可直接用 | 免费 | 不限 | — | 域 social、语义画像命中 | B站 |
+| `csdn` | 可直接用 | 免费 | 不限 | — | 域 cn_tech_community | CSDN 搜索（so.csdn.net v3 JSON，免认证；标题与摘要的高亮标签、URL 追踪参数在引擎内清洗） |
+| `fxtwitter` | 可直接用 | 免费 | 不限 | — | 域 social | FxTwitter 公开 API：X/Twitter 推文搜索（零认证，含互动元数据） |
+| `hackernews` | 可直接用 | 免费 | 不限 | — | 域 hackernews_search、域 social | Hacker News（Algolia API，科技新闻+讨论） |
+| `hatena_bookmark` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 日本技术圈书签搜索（RDF RSS，带收藏日期） |
+| `juejin` | 可直接用 | 免费 | 不限 | — | 域 chinese_tech_deep、域 cn_tech_community | 掘金技术文章搜索（免认证） |
+| `qiita` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | Qiita 日本最大技术社区（匿名 60 req/h） |
+| `redskill` | 可直接用 | 免费 | 不限 | — | 域 redskill_search、域 skill_search | 小红书 REDSkill 排行榜与全量技能检索（47650 技能，data.json 本地缓存，免认证） |
+| `sspai` | 可直接用 | 免费 | 不限 | — | 域 cn_tech_community | 少数派搜索（中文效率/数码/软件文章，免认证） |
+| `v2ex` | 可直接用 | 免费 | 不限 | — | 域 cn_tech_community、域 social、域 v2ex_search | V2EX（中文技术社区，官方 API 候选池 + 本地相关性过滤） |
+| `weibo` | 可直接用 | 免费 | 不限 | — | 域 social、语义画像命中 | 微博 |
+| `reddit` | 需装后端工具 | 免费 | 不限 | — | 域 social、语义画像命中 | Reddit |
+| `twitter` | 需装后端工具 | 免费 | 不限 | — | 域 social、语义画像命中 | Twitter/X |
+| `twitter_syndication` | 显式专用 | 免费 | 不限 | — | 显式调用（--engine） | X/Twitter 单条推文（syndication 通道，免登录零 key，含正文/作者/时间/媒体计数） |
+| `xiaohongshu` | 需装后端工具 | 免费 | 不限 | — | 域 social、语义画像命中 | 小红书 |
+| `zhihu` | 需自备密钥 | 免费 | 5000/天 | ARGO_ZHIHU_ACCESS_SECRET | 域 shopping、域 social、域 zhihu_content、域 zhihu_hot_list、语义画像命中 | 知乎搜索，中文观点/评测 |
+
 ### 代码 / 包 / 文档（15）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
@@ -240,27 +262,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `pypi` | 可直接用 | 免费 | 不限 | — | 域 package_search | PyPI 包查询（/pypi/{name}/json 精确解析，免认证） |
 | `stackoverflow` | 可直接用 | 免费 | 300/天 | — | 域 stackoverflow_search、域 web_docs | Stack Overflow（Stack Exchange API，编程问答） |
 
-### 社区 UGC（15）
-
-| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
-|---|---|---|---|---|---|---|
-| `bilibili` | 可直接用 | 免费 | 不限 | — | 域 social、语义画像命中 | B站 |
-| `fxtwitter` | 可直接用 | 免费 | 不限 | — | 域 social | FxTwitter 公开 API：X/Twitter 推文搜索（零认证，含互动元数据） |
-| `hackernews` | 可直接用 | 免费 | 不限 | — | 域 hackernews_search、域 social | Hacker News（Algolia API，科技新闻+讨论） |
-| `hatena_bookmark` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | 日本技术圈书签搜索（RDF RSS，带收藏日期） |
-| `juejin` | 可直接用 | 免费 | 不限 | — | 域 chinese_tech_deep、域 cn_tech_community | 掘金技术文章搜索（免认证） |
-| `qiita` | 可直接用 | 免费 | 不限 | — | 语义画像命中 | Qiita 日本最大技术社区（匿名 60 req/h） |
-| `redskill` | 可直接用 | 免费 | 不限 | — | 域 redskill_search、域 skill_search | 小红书 REDSkill 排行榜与全量技能检索（47650 技能，data.json 本地缓存，免认证） |
-| `sspai` | 可直接用 | 免费 | 不限 | — | 域 cn_tech_community | 少数派搜索（中文效率/数码/软件文章，免认证） |
-| `v2ex` | 可直接用 | 免费 | 不限 | — | 域 cn_tech_community、域 social、域 v2ex_search | V2EX（中文技术社区，官方 API 候选池 + 本地相关性过滤） |
-| `weibo` | 可直接用 | 免费 | 不限 | — | 域 social、语义画像命中 | 微博 |
-| `reddit` | 需装后端工具 | 免费 | 不限 | — | 域 social、语义画像命中 | Reddit |
-| `twitter` | 需装后端工具 | 免费 | 不限 | — | 域 social、语义画像命中 | Twitter/X |
-| `twitter_syndication` | 显式专用 | 免费 | 不限 | — | 显式调用（--engine） | X/Twitter 单条推文（syndication 通道，免登录零 key，含正文/作者/时间/媒体计数） |
-| `xiaohongshu` | 需装后端工具 | 免费 | 不限 | — | 域 social、语义画像命中 | 小红书 |
-| `zhihu` | 需自备密钥 | 免费 | 5000/天 | ARGO_ZHIHU_ACCESS_SECRET | 域 shopping、域 social、域 zhihu_content、域 zhihu_hot_list、语义画像命中 | 知乎搜索，中文观点/评测 |
-
-### 快讯 / 电报（11）
+### 快讯 / 电报（12）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
 |---|---|---|---|---|---|---|
@@ -273,6 +275,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `local_bing_news` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Bing News本地 |
 | `local_google_news` | 可直接用 | 免费 | 不限 | — | 经 local_search 展开 | Google News本地 |
 | `people_daily` | 可直接用 | 免费 | 不限 | — | 域 news_realtime | 人民网搜索（权威综合中文新闻，官方接口，免认证） |
+| `wallstreetcn` | 可直接用 | 免费 | 不限 | — | 域 financial_news | 华尔街见闻快讯（lives 直播流 JSON，免认证；全量流 + 本地关键词过滤） |
 | `em_miaoxiang` | 需自备密钥 | 免费 | 不限 | ARGO_EASTMONEY_APIKEY | 域 financial_news | 东财妙想搜索（官方研报/公告/政策，需 EASTMONEY_APIKEY） |
 | `tinyfish_news` | 需自备密钥 + 显式专用 | 免费 | 不限 | ARGO_TINYFISH_API_KEY | 显式调用（--engine） | TinyFish 实时新闻搜索（免费，含 publisher 与发布日期） |
 
@@ -306,6 +309,19 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `tle_mirror` | 可直接用 | 免费 | 不限 | — | 域 astro_space | TLE 轨道根数镜像（第三方，Celestrak 不可达时替代，免认证） |
 | `usgs` | 可直接用 | 免费 | 不限 | — | 域 earth_science | USGS 地震目录（最近 30 天 M2.5+，earthquake.usgs.gov 免认证） |
 | `soilgrids` | 已停用 | 免费 | 不限 | — | 域 earth_science、域 soil_agri | 全球土壤属性（ISRIC SoilGrids，逐点栅格，免认证） |
+
+### 热榜（8）
+
+| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
+|---|---|---|---|---|---|---|
+| `baidu_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 百度热搜（实时热搜榜，HTML 解析，免认证） |
+| `bilibili_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | B站热搜（search/square 热搜词，免认证） |
+| `douyin_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 抖音热榜（iesdouyin word_list JSON，免认证） |
+| `ths_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending、域 ths_hot_search | 同花顺热点（当日强势股+题材归因，独家能力） |
+| `toutiao_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 今日头条热榜（hot-board JSON，免认证） |
+| `weibo_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 微博热搜榜（side/hotSearch JSON，免登录，需 Referer） |
+| `zhihu_hot_app` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 知乎热榜匿名通道（App JSON，免密钥；开放平台 hot_list 的免费替代） |
+| `zhihu_hot` | 需自备密钥 | 免费 | 100/天 | ARGO_ZHIHU_ACCESS_SECRET | 域 hot_trending、域 zhihu_hot_list | 知乎开放平台热榜 hot_list（日配额约 100；需 ZHIHU_ACCESS_SECRET；原 zhihu skill 迁入） |
 
 ### 生物 / 蛋白（8）
 
@@ -343,17 +359,6 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `nbs_stats` | 可直接用 | 免费 | 不限 | — | 域 macro_data | 国家统计局分省/全国宏观数据（GDP/CPI/PPI/人口，data.stats.gov.cn V2 免认证） |
 | `un_comtrade` | 可直接用 | 免费 | 不限 | — | 域 trade_stats | UN Comtrade 双边贸易（国家+HS 码+年份+流向；preview 免 key） |
 | `worldbank` | 可直接用 | 免费 | 不限 | — | 域 macro_data | 世界银行宏观指标（GDP/通胀/失业/人口，api.worldbank.org 免认证） |
-
-### 热榜（6）
-
-| 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
-|---|---|---|---|---|---|---|
-| `baidu_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 百度热搜（实时热搜榜，HTML 解析，免认证） |
-| `bilibili_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | B站热搜（search/square 热搜词，免认证） |
-| `ths_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending、域 ths_hot_search | 同花顺热点（当日强势股+题材归因，独家能力） |
-| `toutiao_hot` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 今日头条热榜（hot-board JSON，免认证） |
-| `zhihu_hot_app` | 可直接用 | 免费 | 不限 | — | 域 hot_trending | 知乎热榜匿名通道（App JSON，免密钥；开放平台 hot_list 的免费替代） |
-| `zhihu_hot` | 需自备密钥 | 免费 | 100/天 | ARGO_ZHIHU_ACCESS_SECRET | 域 hot_trending、域 zhihu_hot_list | 知乎开放平台热榜 hot_list（日配额约 100；需 ZHIHU_ACCESS_SECRET；原 zhihu skill 迁入） |
 
 ### security（4）
 
@@ -445,20 +450,20 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `law_text` | `flk_law` | `flk_law`、`anysearch`、`gov_regulations`、`wenshu` |
 | `art_museum` | `met_museum` | `met_museum`、`wikipedia`、`artic`、`cleveland` |
 | `dataset_search` | `datacite` | `datacite`、`zenodo`、`anysearch` |
-| `financial_news` | `em_miaoxiang` | `em_miaoxiang`、`cninfo`、`byted`、`eastmoney`、`anysearch` |
+| `financial_news` | `em_miaoxiang` | `em_miaoxiang`、`cninfo`、`wallstreetcn`、`byted`、`eastmoney`、`anysearch` |
 | `aviation_weather` | `—` | `aviation_weather` |
-| `weather_query` | `qweather` | `qweather`、`byted`、`weather` |
+| `weather_query` | `qweather` | `qweather`、`byted`、`weather`、`weather_cn` |
 | `modal_card` | `bocha_ai` | `bocha_ai`、`bocha`、`train` |
 | `jin10_flash` | `jin10` | `jin10`、`cls_telegraph` |
 | `zhihu_hot_list` | `zhihu_hot` | `zhihu_hot`、`zhihu` |
-| `hot_trending` | `baidu_hot` | `baidu_hot`、`toutiao_hot`、`bilibili_hot`、`ths_hot`、`zhihu_hot`、`zhihu_hot_app` |
+| `hot_trending` | `baidu_hot` | `baidu_hot`、`toutiao_hot`、`bilibili_hot`、`weibo_hot`、`douyin_hot`、`ths_hot`、`zhihu_hot`、`zhihu_hot_app` |
 | `patent_search` | `google_patents` | `google_patents`、`semantic_scholar`、`local_arxiv` |
 | `crypto_search` | `coingecko` | `coingecko`、`anysearch` |
 | `package_search` | `pypi` | `pypi`、`npm`、`crates`、`docker_hub`、`github` |
 | `web_docs` | `mdn` | `mdn`、`stackoverflow` |
 | `ml_models` | `huggingface` | `huggingface`、`github` |
 | `ai_model` | `models_dev` | `models_dev`、`anysearch`、`huggingface` |
-| `cn_tech_community` | `juejin` | `juejin`、`v2ex`、`sspai` |
+| `cn_tech_community` | `juejin` | `juejin`、`v2ex`、`sspai`、`csdn` |
 | `legal` | `anysearch` | `anysearch`、`byted`、`flk_law`、`gov_regulations`、`wenshu` |
 | `wenshu_query` | `wenshu` | `wenshu`、`anysearch` |
 | `outbreak_health` | `who_don` | `who_don`、`who_gho`、`anysearch` |
@@ -503,7 +508,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 ## 七、怎么自己查当前状态
 
 ```bash
-argo search --list-engines --detail | python3 -m json.tool | less   # 全部 227 个源的详情
+argo search --list-engines --detail | python3 -m json.tool | less   # 全部 232 个源的详情
 argo search --list-engines --detail --routable-only              # 只看现在能用的
 python3 scripts/matrix_search_eval.py --offline                   # 可达性门：有没有死源
 python3 scripts/engine_validate.py --engine <名> --stage all       # 单个源的健康+质量双阶段体检

@@ -366,6 +366,20 @@ engines:
   recommended: false
   explicit_only: false
   desc: crt.sh 证书透明度日志（子域名/证书情报，免认证，响应较慢）
+- name: csdn
+  tier: T1
+  type: csdn
+  coverage:
+  - chinese
+  - tech
+  - community
+  - blog
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: CSDN 搜索（so.csdn.net v3 JSON，免认证；标题与摘要的高亮标签、URL 追踪参数在引擎内清洗）
 - name: datacite
   tier: T1
   type: http
@@ -505,6 +519,21 @@ engines:
   recommended: false
   explicit_only: false
   desc: 豆瓣电影搜索（中文片名/年份/类型，免认证，suggest 接口）
+- name: douyin_hot
+  tier: T1
+  type: douyin_hot
+  coverage:
+  - chinese
+  - hot
+  - trending
+  - realtime
+  - video
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: 抖音热榜（iesdouyin word_list JSON，免认证）
 - name: duckduckgo
   tier: T1
   type: http
@@ -2523,6 +2552,20 @@ engines:
   recommended: true
   explicit_only: false
   desc: V2EX（中文技术社区，官方 API 候选池 + 本地相关性过滤）
+- name: wallstreetcn
+  tier: T1
+  type: wallstreetcn
+  coverage:
+  - chinese
+  - finance
+  - news
+  - telegraph
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: 华尔街见闻快讯（lives 直播流 JSON，免认证；全量流 + 本地关键词过滤）
 - name: wayback_cdx
   tier: T1
   type: wayback_cdx
@@ -2548,6 +2591,19 @@ engines:
   recommended: false
   explicit_only: false
   desc: 天气查询（免 Key：wttr.in 主用 + Open-Meteo 兜底，当前+未来预报）
+- name: weather_cn
+  tier: T1
+  type: weather_cn
+  coverage:
+  - chinese
+  - weather
+  - realtime
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: 中国天气网城市实况（城市联想取 cityid → sk JSON，免认证，两步）
 - name: wechat_sogou
   tier: T1
   type: wechat_sogou
@@ -2572,6 +2628,21 @@ engines:
   recommended: true
   explicit_only: false
   desc: 微博
+- name: weibo_hot
+  tier: T1
+  type: weibo_hot
+  coverage:
+  - chinese
+  - hot
+  - trending
+  - realtime
+  - social
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: true
+  explicit_only: false
+  desc: 微博热搜榜（side/hotSearch JSON，免登录，需 Referer）
 - name: wenshu
   tier: T1
   type: wenshu

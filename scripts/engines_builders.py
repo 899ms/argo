@@ -66,6 +66,11 @@ from engines_builders_cn import (
     _build_people_daily_engine,
     _build_flk_law_engine,
     _build_wikisource_engine,
+    _build_weibo_hot_engine,
+    _build_douyin_hot_engine,
+    _build_csdn_engine,
+    _build_wallstreetcn_engine,
+    _build_weather_cn_engine,
 )
 from engines_builders_data import (
     _build_open_library_engine,
@@ -161,6 +166,11 @@ __all__ = [
     "_build_people_daily_engine",
     "_build_flk_law_engine",
     "_build_wikisource_engine",
+    "_build_weibo_hot_engine",
+    "_build_douyin_hot_engine",
+    "_build_csdn_engine",
+    "_build_wallstreetcn_engine",
+    "_build_weather_cn_engine",
     "_build_google_news_engine",
     "_build_met_museum_engine",
     "_build_google_scholar_engine",

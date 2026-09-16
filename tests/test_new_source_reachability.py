@@ -176,6 +176,11 @@ class TestProbeActuallyRoutesToNewSource:
         "sports_search": ("F1 积分榜", "德甲 赛程"),
         "org_entity": ("研究机构 标识",),
         "media_search": ("独立音乐 艺人",),
+        # 2026-09-16：五个免密钥国内源的端到端探针
+        "hot_trending": ("微博热搜", "抖音热榜"),
+        "cn_tech_community": ("技术博客",),
+        "financial_news": ("财经",),
+        "weather_query": ("上海天气",),
     }
 
     @pytest.mark.parametrize("domain", sorted(NEW_SOURCES))

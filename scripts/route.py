@@ -371,7 +371,9 @@ def _social_domain_first(_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not social:
         return _hits
     idx_first_social = _hits.index(social[0])
-    _SPECIFIC_BEFORE_SOCIAL = ("redskill_search", "zhihu_user_data")
+    # 「热搜/热榜」是比泛 social 更具体的意图：查询里带微博/抖音这类平台名时，
+    # social 会被提前，把 hot_trending 顶掉——用户问的是榜单，不是社交帖子。
+    _SPECIFIC_BEFORE_SOCIAL = ("redskill_search", "zhihu_user_data", "hot_trending")
     idx_specific = next(
         (i for i, h in enumerate(_hits)
          if h.get("name") in _SPECIFIC_BEFORE_SOCIAL), None
@@ -1182,6 +1184,12 @@ _VERTICAL_NEW_SOURCE: dict[str, tuple[str, ...]] = {
     "sports_search": ("openf1", "openligadb"),  # F1/德甲结构化赛程比分
     "org_entity": ("ror",),                     # 研究机构标识（含域名映射）
     "media_search": ("deezer", "listenbrainz"),  # 国际曲库 + 开源收听记录，能力互不重叠
+    # 2026-09-16：五个免密钥国内源接线。共同点是「补结构性空白」而非同质重复，
+    # 故声明在既有源之后、由本表加槽，不用新源挤掉既有源的位次。
+    "hot_trending": ("weibo_hot", "douyin_hot"),  # 微博/抖音两条主榜单，该域原先一条都没有
+    "cn_tech_community": ("csdn",),               # 中文技术社区最大一站，补掘金/少数派之外
+    "financial_news": ("wallstreetcn",),          # 快讯流上游与财联社/金十不同源
+    "weather_query": ("weather_cn",),             # 国内城市实况，补国际源的城市覆盖缺口
 }
 
 # 垂直域主源保护名单：这些域的专属源被 budget 裁掉后该域等于没源可用。

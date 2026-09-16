@@ -74,6 +74,9 @@ _TRIGGER_WORDS = frozenset({
     "快讯", "电报", "资讯", "新闻", "热点", "实时", "美股", "行情",
     "财经", "股市", "港股", "A股", "盘面", "速递", "播报", "latest",
     "news", "flash", "market", "stock", "finance",
+    # 复合触发短语：各域 pattern 里就是这么写的（jin10_flash / cls_telegraph_search），
+    # 不补的话「财经快讯」会被当主题词去过滤，把全量榜单滤成 0 条
+    "财经快讯", "市场快讯", "实时快讯", "7x24快讯", "全球快讯",
 })
 
 
@@ -1899,4 +1902,261 @@ def _build_wikisource_engine(spec: dict[str, Any]) -> Any:
                 "published_at": str(it.get("timestamp") or ""),
             })
         return out
+    return _engine
+
+
+# ── 微博热搜榜引擎 ─────────────────────────────────────────────────────────────
+
+def _build_weibo_hot_engine(spec: dict[str, Any]) -> Any:
+    """微博热搜榜（weibo.com/ajax/side/hotSearch，免登录）
+
+    榜单型源：查询词只作路由触发，不参与内容过滤（见 config 的 relevance_check: false）。
+    """
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 10, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        to = _timeout or timeout
+        url = "https://weibo.com/ajax/side/hotSearch"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            # 缺 Referer 时上游直接返回 {"error":"Forbidden"}（实测）
+            "Referer": "https://weibo.com/",
+        }
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
+                d = json.loads(resp.read().decode("utf-8", "replace"))
+            rows = (d.get("data") or {}).get("realtime") or []
+            results = []
+            for i, it in enumerate(rows):
+                if len(results) >= n:
+                    break
+                word = str(it.get("word") or "").strip()
+                if not word:
+                    continue
+                rank = it.get("realpos") or (i + 1)
+                label = str(it.get("label_name") or "").strip()
+                num = it.get("num") or 0
+                results.append({
+                    "title": word[:80],
+                    "url": "https://s.weibo.com/weibo?q=" + urllib.parse.quote("#" + word + "#"),
+                    "snippet": f"微博热搜 第{rank}位 · 热度 {num}" + (f" · {label}" if label else ""),
+                    "source": "weibo_hot",
+                    "score": max(1.0 - len(results) * 0.02, 0.2),
+                })
+            return results
+        except Exception as e:
+            logger.warning(f"微博热搜榜失败: {e}")
+            return []
+    return _engine
+
+
+# ── 抖音热榜引擎 ─────────────────────────────────────────────────────────────
+
+def _build_douyin_hot_engine(spec: dict[str, Any]) -> Any:
+    """抖音热榜（iesdouyin web api，免认证，榜单型）"""
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 10, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        to = _timeout or timeout
+        url = "https://www.iesdouyin.com/web/api/v2/hotsearch/billboard/word/"
+        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.douyin.com/"}
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
+                d = json.loads(resp.read().decode("utf-8", "replace"))
+            rows = d.get("word_list") or []
+            results = []
+            for i, it in enumerate(rows):
+                if len(results) >= n:
+                    break
+                word = str(it.get("word") or "").strip()
+                if not word:
+                    continue
+                hot = it.get("hot_value") or 0
+                results.append({
+                    "title": word[:80],
+                    "url": "https://www.douyin.com/search/" + urllib.parse.quote(word),
+                    "snippet": f"抖音热榜 第{i + 1}位 · 热度 {hot}",
+                    "source": "douyin_hot",
+                    "score": max(1.0 - len(results) * 0.02, 0.2),
+                })
+            return results
+        except Exception as e:
+            logger.warning(f"抖音热榜失败: {e}")
+            return []
+    return _engine
+
+
+# ── CSDN 搜索 ────────────────────────────────────────────────────────────────
+
+_EM_TAG_RE = re.compile(r"</?em>")
+
+
+def _build_csdn_engine(spec: dict[str, Any]) -> Any:
+    """CSDN 搜索（so.csdn.net v3 API，免认证）
+
+    标题与摘要是带 <em> 高亮的片段，URL 带 utm/request_id 追踪参数——两者都在这里清掉，
+    否则召回分会被标签噪声拉低、URL 也无法直接复用。
+    """
+    timeout = spec.get("timeout", 12)
+
+    @safe_search
+    def _engine(query: str, n: int = 10, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        to = _timeout or timeout
+        params = urllib.parse.urlencode({"q": query, "t": "blog", "p": 1})
+        url = f"https://so.csdn.net/api/v3/search?{params}"
+        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://so.csdn.net/"}
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
+                d = json.loads(resp.read().decode("utf-8", "replace"))
+            rows = d.get("result_vos") or []
+            results = []
+            for it in rows:
+                if len(results) >= n:
+                    break
+                title = _EM_TAG_RE.sub("", str(it.get("title") or "")).strip()
+                link = str(it.get("url") or "").split("?")[0]
+                if not title or not link:
+                    continue
+                desc = _EM_TAG_RE.sub(
+                    "", str(it.get("description") or it.get("digest") or "")
+                ).strip()
+                results.append({
+                    "title": title[:120],
+                    "url": link,
+                    "snippet": re.sub(r"\s+", " ", desc)[:220],
+                    "source": "csdn",
+                    "author": str(it.get("author") or ""),
+                    "published_at": str(it.get("created_at") or it.get("create_time_str") or ""),
+                })
+            return results
+        except Exception as e:
+            logger.warning(f"CSDN 搜索失败: {e}")
+            return []
+    return _engine
+
+
+# ── 华尔街见闻快讯引擎 ─────────────────────────────────────────────────────────
+
+def _build_wallstreetcn_engine(spec: dict[str, Any]) -> Any:
+    """华尔街见闻快讯（lives 直播流，免认证）
+
+    与财联社电报同为「全量快讯流 + 本地关键词过滤」形态：带具体主题的查询做过滤，
+    纯触发词（快讯/财经等）放行全量榜单，避免过滤后空结果。
+    """
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 10, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        from datetime import datetime
+        to = _timeout or timeout
+        # 关键词过滤时放大拉取量：上游 limit 上限就是 100，过滤窗口开满才不至于空手
+        fetch_n = min(max(int(n) * 5, 60), 100)
+        url = (
+            "https://api-one.wallstcn.com/apiv1/content/lives"
+            f"?channel=global-channel&limit={fetch_n}"
+        )
+        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://wallstreetcn.com/"}
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with http_open(req, timeout=to, engine=spec.get("_name", "")) as resp:
+                d = json.loads(resp.read().decode("utf-8", "replace"))
+            rows = (d.get("data") or {}).get("items") or []
+            keywords = query.strip().split() if _should_filter(query) else []
+            results = []
+            for it in rows:
+                if len(results) >= n:
+                    break
+                title = str(it.get("title") or "").strip()
+                content = str(it.get("content_text") or "")
+                if keywords and not any(
+                    k.lower() in (title + content).lower() for k in keywords
+                ):
+                    continue
+                ts = it.get("display_time")
+                t = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else ""
+                results.append({
+                    "title": (title or content[:60]).strip()[:100],
+                    "url": str(it.get("uri") or "https://wallstreetcn.com/live/global"),
+                    "snippet": (f"{t} | {content}" if t else content)[:220],
+                    "source": "wallstreetcn",
+                    "published_at": t,
+                })
+            return results
+        except Exception as e:
+            logger.warning(f"华尔街见闻快讯失败: {e}")
+            return []
+    return _engine
+
+
+# ── 中国天气网引擎 ─────────────────────────────────────────────────────────────
+
+# 查询里的自然语言噪声：城市名之外的部分全部剥掉（"上海今天天气怎么样" → "上海"）
+_WEATHER_CN_NOISE_RE = re.compile(
+    r"(今天|明天|后天|现在|实时|当前|查询|怎么样|如何|多少度|气温|温度|天气|预报|"
+    r"阴晴|下雨|的|了|呢|吗|\?|？|，|,|。|\s)+"
+)
+
+
+def _build_weather_cn_engine(spec: dict[str, Any]) -> Any:
+    """中国天气网（城市联想 → 实况，免认证，两步）
+
+    第一步 toy1.weather.com.cn/search 把城市名换成 cityid，第二步 data/sk/<id>.html 取实况。
+    联想接口返回 JSONP 外壳（`([...])` 或 `callback([...])`），这里把外层剥掉再解析。
+    """
+    timeout = spec.get("timeout", 10)
+
+    @safe_search
+    def _engine(query: str, n: int = 10, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
+        to = _timeout or timeout
+        city = _WEATHER_CN_NOISE_RE.sub("", query or "").strip() or (query or "").strip()
+        if not city:
+            return []
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.weather.com.cn/",
+        }
+        try:
+            u1 = "https://toy1.weather.com.cn/search?cityname=" + urllib.parse.quote(city)
+            with http_open(urllib.request.Request(u1, headers=headers),
+                           timeout=to, engine=spec.get("_name", "")) as resp:
+                raw = resp.read().decode("utf-8", "replace").strip()
+            if not raw.startswith("["):
+                lo, hi = raw.find("("), raw.rfind(")")
+                raw = raw[lo + 1:hi] if lo >= 0 and hi > lo else raw
+            cand = json.loads(raw) or []
+            if not cand:
+                return []
+            parts = str(cand[0].get("ref") or "").split("~")
+            if not parts or not parts[0]:
+                return []
+            cid = parts[0]
+            name = parts[2] if len(parts) > 2 else city
+
+            # 注意：老的 /data/sk/<id>.html 已 301 到 HTML 页（不再吐 JSON），
+            # 现役实况端点是 d1 的 sk_2d，响应为 JS 赋值 `var dataSK={...}`。
+            u2 = f"https://d1.weather.com.cn/sk_2d/{cid}.html"
+            with http_open(urllib.request.Request(u2, headers=headers),
+                           timeout=to, engine=spec.get("_name", "")) as resp:
+                body = resp.read().decode("utf-8", "replace").strip()
+            brace = body.find("{")
+            sk = json.loads(body[brace:]) if brace >= 0 else {}
+            if not sk:
+                return []
+            return [{
+                "title": (f"{sk.get('cityname') or name} 实况：{sk.get('temp', '')}℃ "
+                          f"{sk.get('weather', '')} {sk.get('WD', '')}{sk.get('WS', '')}"),
+                "url": f"https://www.weather.com.cn/weather/{cid}.shtml",
+                "snippet": (f"湿度 {sk.get('SD', '')} · 气压 {sk.get('qy', '')}hPa · "
+                            f"AQI {sk.get('aqi', '')} · 能见度 {sk.get('njd', '')} · "
+                            f"观测 {sk.get('time', '')} · {sk.get('date', '')}"),
+                "source": "weather_cn",
+            }]
+        except Exception as e:
+            logger.warning(f"中国天气网失败: {e}")
+            return []
     return _engine

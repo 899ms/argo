@@ -2376,5 +2376,35 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "weibo_hot": {
+    "label": "微博热搜",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "douyin_hot": {
+    "label": "抖音热榜",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "csdn": {
+    "label": "CSDN",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "wallstreetcn": {
+    "label": "华尔街见闻",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "weather_cn": {
+    "label": "中国天气网",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }
