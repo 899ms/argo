@@ -495,7 +495,7 @@ def legacy_root() -> Path:
 
 @contextlib.contextmanager
 def file_lock(path: Path, *, timeout: float = 10.0):
-    """跨进程排他锁（阻塞获取，超时抛 TimeoutError）。
+    """跨进程排他锁（阻塞获取；超时按 fail-open 放行，见下方「fail-open」段）。
 
     为什么需要：状态文件的「读-改-写」序列只在**进程内**加锁，
     CLI / MCP server / 评测脚本三者并行时，进程 A 读到旧状态、
@@ -506,8 +506,10 @@ def file_lock(path: Path, *, timeout: float = 10.0):
     inode——数据文件靠 os.replace 整体替换，若锁与数据同 inode，
     替换后新进程会锁到另一个 inode 而形同无锁。
 
-    fail-open：拿不到锁（平台不支持 flock）时直接放行，绝不因
-    观测层问题阻断搜索主路径。
+    fail-open：两种情况都会直接放行、绝不因观测层问题阻断搜索主路径——
+    (1) 平台不支持任何锁实现；(2) 超时抢不到锁（此时会 log warning 到
+    `argo.file_lock`，让运维看得到「无锁执行」发生过，但不抛异常）。
+    契约由 tests/test_argo_paths.py::TestFileLock::test_timeout_fails_open 锁死。
     """
     lock_path = path.parent / f".{path.name}.lock"
     try:
@@ -547,6 +549,15 @@ def file_lock(path: Path, *, timeout: float = 10.0):
             break
         except OSError:
             if time.monotonic() >= deadline:
+                # 有意 fail-open：锁是保护层，不该成为单点故障（见
+                # tests/test_argo_paths.py::TestFileLock::test_timeout_fails_open）。
+                # 但也不能纯静默——让运维看得到「无锁执行」发生过。
+                import logging
+                logging.getLogger("argo.file_lock").warning(
+                    "file_lock(%s) timed out after %.1fs; proceeding without lock "
+                    "(fail-open by design; read-modify-write races possible)",
+                    path, timeout,
+                )
                 break
             time.sleep(0.002)
     try:

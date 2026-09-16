@@ -82,7 +82,8 @@ class EngineRegistry:
         try:
             HEALTH_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
             HEALTH_STATE_PATH.write_text(
-                json.dumps(self._health, ensure_ascii=False, separators=(",", ":"))
+                json.dumps(self._health, ensure_ascii=False, separators=(",", ":")),
+                encoding="utf-8",
             )
         except Exception:
             pass

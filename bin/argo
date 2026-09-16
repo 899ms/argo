@@ -211,12 +211,44 @@ def _engine_count():
     只报「收录数」这个便宜且不随环境变的数：以前这里报的是「启用数」，
     既与文档里的收录数对不上，配置不可读时还回退到一个写死的旧值（87），
     用户看到的是个假数字。真读不出来就不显示数量，别编。
+
+    快路径：读 `state_root/.engine_count`（`<count>\\n<config.yaml mtime_ns>`），
+    mtime 匹配 → 直接返回（~2ms）；冷启动或 config.yaml 变更 → fallback
+    到完整 load_config()（~30ms）并回填。这样 --help 稳态下省 ~28ms，
+    且不会重蹈「写死 87」的假数字覆辙——缓存键含 config.yaml mtime，
+    config 一变就会走完整解析刷新。
     """
     try:
+        state_root = (os.environ.get("ARGO_STATE_DIR", "").strip()
+                      or os.path.expanduser("~/.cache/unified-search"))
+        cfg_path = os.path.join(ARGO_HOME, "config.yaml")
+        cache_file = os.path.join(state_root, ".engine_count")
+        try:
+            cfg_mtime = str(os.stat(cfg_path).st_mtime_ns)
+        except OSError:
+            cfg_mtime = None
+        if cfg_mtime:
+            try:
+                with open(cache_file, encoding="utf-8") as f:
+                    cached_count, cached_mtime = f.read().split("\n", 1)
+                if cached_mtime.strip() == cfg_mtime:
+                    return int(cached_count) or None
+            except (OSError, ValueError):
+                pass  # 冷启动 / 缓存损坏 → 走完整解析并回填
         sys.path.insert(0, SCRIPTS)
         from config import load_config
         engines = load_config().get("engines") or {}
-        return len([k for k, v in engines.items() if isinstance(v, dict)]) or None
+        n = len([k for k, v in engines.items() if isinstance(v, dict)]) or None
+        if n and cfg_mtime:
+            try:
+                os.makedirs(state_root, exist_ok=True)
+                tmp = f"{cache_file}.tmp.{os.getpid()}"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write(f"{n}\n{cfg_mtime}")
+                os.replace(tmp, cache_file)  # 原子写：与 argo_paths.atomic_write_* 同构
+            except OSError:
+                pass  # 只读环境等：不阻断，下次仍走完整解析
+        return n
     except Exception:
         return None
 
