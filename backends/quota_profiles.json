@@ -1718,7 +1718,7 @@
     "cost_per_call": 0.0,
     "cost_unit": "free",
     "cost_tier": "api",
-    "priority": 13
+    "priority": 8
   },
   "semantic_scholar": {
     "label": "Semantic Scholar",

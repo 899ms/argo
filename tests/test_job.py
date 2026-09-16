@@ -271,6 +271,173 @@ class TestSnapshot:
         assert job.load_snapshot("/nonexistent/x.json") is None
 
 
+# ── 已知不可用源的分流（2026-09-16：skipped/errors 分账 + 配额状态机接线）──
+#
+# 这段逻辑专门处理「源这会儿用不了」与「本次调用失败」的区分：bocha 欠费时
+# 它曾每次都真发请求、把 403 当硬错误写进 errors，调用方据此判成整体失败，
+# 而实际上另外十来家源都正常返回。回归点有三：
+#   1. 出发前已知不可用（配额耗尽/熔断打开）→ skipped，不进 errors，不真发请求；
+#   2. 只有「源端明说配额耗尽」才交给配额状态机——403 反爬/429 限流/401 失凭
+#      各有归属（熔断器自愈），误标的代价是按月级排除且 route 用同一状态筛
+#      combo，30 天少一个源；
+#   3. 熔断 half_open 保留探测资格（与 route._filter_breaker_blocked 同语义），
+#      探测态若被当死源跳过，半开态没有终结者，永不收敛。
+
+
+class _FakeQuotaManager:
+    def __init__(self, hard_down=False):
+        self._hard_down = hard_down
+        self.marked = []
+
+    def is_hard_down(self, name):
+        return self._hard_down
+
+    def mark_remote_exhausted(self, name, reason=""):
+        self.marked.append((name, reason))
+
+
+class _FakeBreaker:
+    def __init__(self, state="closed", cooldown_remain=0):
+        self._state = state
+        self._cooldown = cooldown_remain
+
+    def status(self, name):
+        return {"state": self._state, "cooldown_remain": self._cooldown}
+
+
+def _patch_states(monkeypatch, hard_down=False, breaker=None):
+    """把配额/熔断两处状态源换成假实现；默认全部放行（closed + 不欠费）。"""
+    import quota
+    import circuit_breaker
+    qm = _FakeQuotaManager(hard_down=hard_down)
+    bk = breaker or _FakeBreaker()
+    monkeypatch.setattr(quota, "get_quota_manager", lambda: qm)
+    monkeypatch.setattr(circuit_breaker, "get_breaker", lambda: bk)
+    return qm
+
+
+class TestBackendDown:
+    """_backend_down：出发前的可用性判据，六态逐一锁定。"""
+
+    def test_quota_hard_down_skips(self, monkeypatch):
+        _patch_states(monkeypatch, hard_down=True)
+        assert job._backend_down("bocha") is True
+
+    def test_breaker_disabled_skips(self, monkeypatch):
+        _patch_states(monkeypatch, breaker=_FakeBreaker(state="disabled"))
+        assert job._backend_down("bocha") is True
+
+    def test_breaker_open_with_cooldown_skips(self, monkeypatch):
+        _patch_states(monkeypatch, breaker=_FakeBreaker(state="open", cooldown_remain=30))
+        assert job._backend_down("bocha") is True
+
+    def test_breaker_open_cooldown_expired_runs(self, monkeypatch):
+        """冷却已过：允许再试一次，跳过会把自愈通道一并堵死。"""
+        _patch_states(monkeypatch, breaker=_FakeBreaker(state="open", cooldown_remain=0))
+        assert job._backend_down("bocha") is False
+
+    def test_breaker_half_open_keeps_probe_eligibility(self, monkeypatch):
+        """half_open 是探测态，不是死态——跳过它探测就永不收敛。"""
+        _patch_states(monkeypatch, breaker=_FakeBreaker(state="half_open", cooldown_remain=99))
+        assert job._backend_down("bocha") is False
+
+    def test_breaker_unavailable_fails_open(self, monkeypatch):
+        """状态层读不到时不设卡：少跑一个源比全量误跳过代价小。"""
+        _patch_states(monkeypatch)  # 配额层照常放行，隔离真实状态对断言的干扰
+        import circuit_breaker
+        def _boom():
+            raise RuntimeError("state dir missing")
+        monkeypatch.setattr(circuit_breaker, "get_breaker", _boom)
+        assert job._backend_down("bocha") is False
+
+
+class TestQuotaExhaustedClassification:
+    """_is_quota_exhausted：只认配额耗尽，泛化的 403/429/401 不接手。"""
+
+    def test_real_quota_message_hits(self):
+        assert job._is_quota_exhausted(
+            RuntimeError("403 You do not have enough money or package quota")) is True
+
+    def test_cloudflare_block_is_not_quota(self):
+        """同是 403：Cloudflare 拦截与欠费不同因。误标代价=月级少一个源。"""
+        assert job._is_quota_exhausted(
+            RuntimeError("403 Sorry, you have been blocked")) is False
+
+    def test_rate_limit_is_not_quota(self):
+        assert job._is_quota_exhausted(RuntimeError("429 Too Many Requests")) is False
+
+    def test_auth_failure_is_not_quota(self):
+        assert job._is_quota_exhausted(RuntimeError("401 Unauthorized")) is False
+
+
+class TestMarkSourceDown:
+    def test_marks_with_truncated_reason(self, monkeypatch):
+        qm = _patch_states(monkeypatch)
+        job._mark_source_down("bocha", "x" * 500)
+        assert qm.marked and qm.marked[0][0] == "bocha"
+        assert len(qm.marked[0][1]) == 160  # reason 截断，防长错误体进状态文件
+
+    def test_state_failure_swallowed(self, monkeypatch):
+        """记账失败不得反噬主流程：搜索结果比状态簿记重要。"""
+        import quota
+        def _boom():
+            raise RuntimeError("state dir missing")
+        monkeypatch.setattr(quota, "get_quota_manager", _boom)
+        job._mark_source_down("bocha", "detail")  # 不抛即通过
+
+
+class TestSearchSkippedSemantics:
+    """search() 集成：跳过与失败分账，调用方能分清「没岗位」与「源挂了」。
+
+    search() 的 engine 参数不切逗号（all/free/单名三态），多后端场景用
+    engine="all" + 补丁 DEFAULT_ENGINES 表达。
+    """
+
+    @staticmethod
+    def _ok_backend(query, num):
+        return [{"title": "岗位", "url": "https://www.zhipin.com/job_detail/abc.html",
+                 "snippet": "职责", "publish_date": "2026-09-01"}]
+
+    def test_down_backend_reported_in_skipped_not_errors(self, monkeypatch):
+        _patch_states(monkeypatch)
+        monkeypatch.setattr(job, "DEFAULT_ENGINES", ["bad", "good"])
+        monkeypatch.setattr(job, "ALL_BACKENDS",
+                            {"bad": self._ok_backend, "good": self._ok_backend})
+        monkeypatch.setattr(job, "_backend_down", lambda name: name == "bad")
+        r = job.search("电商运营", engine="all", num=2)
+        assert r["skipped"] == ["bad"]
+        assert r["errors"] == []
+        assert r["total"] >= 1
+
+    def test_quota_exhausted_failure_not_in_errors(self, monkeypatch):
+        """真欠费：标记状态机、不写 errors——它不是本次失败，是周期内不可用。"""
+        qm = _patch_states(monkeypatch)
+
+        def dead(query, num):
+            raise RuntimeError("You do not have enough money or package quota")
+
+        monkeypatch.setattr(job, "DEFAULT_ENGINES", ["dead", "alive"])
+        monkeypatch.setattr(job, "ALL_BACKENDS",
+                            {"dead": dead, "alive": self._ok_backend})
+        r = job.search("电商运营", engine="all", num=2)
+        assert [m[0] for m in qm.marked] == ["dead"]
+        assert r["errors"] == []
+        assert r["total"] >= 1
+
+    def test_regular_failure_still_lands_in_errors(self, monkeypatch):
+        """普通失败（如反爬）如实进 errors：调用方必须看得见。"""
+        _patch_states(monkeypatch)
+
+        def blocked(query, num):
+            raise RuntimeError("403 Sorry, you have been blocked")
+
+        monkeypatch.setattr(job, "DEFAULT_ENGINES", ["flaky"])
+        monkeypatch.setattr(job, "ALL_BACKENDS", {"flaky": blocked})
+        r = job.search("电商运营", engine="all", num=2)
+        assert r["errors"] and "blocked" in r["errors"][0]
+        assert r["skipped"] == []
+
+
 # ── live 集成（有 key 时执行，回归精确率声明）──────────────────────────
 
 def _has_keys():

@@ -1222,6 +1222,7 @@ def _new_source_budget_extra(
     mode: str,
     depth: str,
     context: str,
+    live_combo: list[str] | None = None,
 ) -> int:
     """垂直域「新专源」的加槽额度（0 = 不加槽，行为与改造前逐位一致）。
 
@@ -1231,6 +1232,15 @@ def _new_source_budget_extra(
     调用方应传域**声明**的 combo（不是已被前置裁剪动过的当前列表），
     否则新源被摘掉后额度恒为 0——详见
     `_apply_policy_with_new_source_slots` 的说明。
+
+    `live_combo` 是当前（已被上游重排过的）combo，用于第二处位次：新源**还在
+    combo 里、但被重排推到预算窗口之外**。只按声明位次定额度会漏掉这一态——
+    声明位次恰好等于预算时（financial_news 的 wallstreetcn：位次 3 = 预算 3）
+    extra 恒为 0，而 `_apply_policy_with_new_source_slots` 的 must_keep 补位
+    只在「源已不在 combo 里」时触发，两处保护同时失效，源被静默截断。
+    2026-09-16 实测：「财经」丢掉 wallstreetcn、「财经新闻」保住，同一个域
+    两种结果。位次取当前 combo 的较大者后额度随之抬高，新源留在预算内，且
+    额度是**扩容**不是腾位——既有源一个不少。
 
     上限按模式分档 —— fast 强制串行（见 `_apply_intent_parallelism`），加槽直接
     乘在延迟上，故上限 2；auto/balanced 走并行，放宽到 4。deep/research 本就
@@ -1247,6 +1257,11 @@ def _new_source_budget_extra(
     if not pending:
         return 0
     deepest = max(engines_combo.index(e) + 1 for e in pending)
+    if live_combo:
+        # 新源在 live_combo 里的位次（可能比声明位次更靠后，见 docstring）
+        deepest = max(
+            [deepest] + [live_combo.index(e) + 1 for e in pending if e in live_combo]
+        )
     try:
         from engine_policy import combo_budget
         base = combo_budget(mode=mode, depth=depth, context=context)
@@ -1350,6 +1365,14 @@ def _apply_policy_with_new_source_slots(
       - org_entity：ror 被意图裁剪摘掉，加槽恒不生效。
     故额度按域**声明**的位次算；被摘掉的新专源在同一额度内补回（额度不够
     时不强塞，交回既有 must_keep 换位逻辑，避免反过来挤掉既有源）。
+
+    额度取「声明位次」与「当前 combo 位次」的**较大者**（`live_combo` 参数）。
+    只取声明位次还有第二种失效态：源**没被摘掉，只是被排到窗口之外**。此时
+    `e not in engines_combo` 为假，上面那段补位不触发；而声明位次恰好等于预算
+    时 extra 也是 0——两处保护同时失效，源被预算静默截断。实测（2026-09-16）
+    financial_news 的 wallstreetcn：声明位次 3 = auto/balanced 预算 3，查询
+    「财经」时被自适应重排挤到 eastmoney 之后而落选，「财经新闻」时保住。
+    取较大者后该源额度为 1，两个源并存（扩容而非腾位）。
     """
     declared = list((domain or {}).get("engines_combo") or [])
     live = [e for e in _VERTICAL_NEW_SOURCE.get((domain or {}).get("name"), ())
@@ -1364,7 +1387,10 @@ def _apply_policy_with_new_source_slots(
         must_keep=keep or None,
         budget_extra=_new_source_budget_extra(
             domain, declared or engines_combo, enabled or set(),
-            mode=mode, depth=depth, context=context),
+            mode=mode, depth=depth, context=context,
+            # 传当前 combo：新源还在里面但被重排推出窗口时，额度要按它在
+            # 当前 combo 的位次算（只在声明位次上算会得到 0，见该函数说明）
+            live_combo=engines_combo),
     )
 
 

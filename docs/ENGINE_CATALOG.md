@@ -76,7 +76,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 
 状态含义：**可直接用** = 自动路由会用上；**需自配密钥 / 需装后端工具** = 配好后即可用；**被上游封锁** = 源站当前拒绝；**已停用** = 配置层面关闭。
 
-### 全网搜索（34）
+### 全网搜索（33）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
 |---|---|---|---|---|---|---|
@@ -109,7 +109,6 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `octen` | 需自备密钥 | 按调用计费 | 不限 | ARGO_OCTEN_API_KEY | 域 chinese_general、域 chinese_tech_deep、域 english_tech、域 news_realtime、深度研究 boost | Octen AI 高速搜索（需 OCTEN_API_KEY；支持 broad-search） |
 | `parallel` | 需自备密钥 | 按调用计费 | 不限 | PARALLEL_API_KEY | 域 chinese_tech_deep | Parallel AI 批量搜索（excerpts 长文摘录，结果自带正文省 fetch） |
 | `searxng` | 已停用 | 免费 | 不限 | — | 已停用 | SearXNG 直连（已废弃，由 T3 替代） |
-| `seltz` | 需自备密钥 | 按调用计费 | 20000/月 | SELTZ_API_KEY | 语义画像命中 | Seltz 搜索（2026 新兴 agent 搜索，云端索引低延迟；响应自带正文摘录省 fetch；中文覆盖未验证） |
 | `tavily` | 需自备密钥 | 按调用计费 | 1000/月 | ARGO_TAVILY_API_KEY | 语义画像命中 | Tavily AI 搜索 API（免费层 1000 次/月，按 credit 计费；与 exa 同为 api 档） |
 | `tinyfish` | 需自备密钥 + 显式专用 | 免费 | 不限 | ARGO_TINYFISH_API_KEY | 显式调用（--engine） | TinyFish 实时网页搜索（免费，浏览器渲染，结果含原文摘要，X-API-Key 认证） |
 | `you` | 需自备密钥 | 按调用计费 | 不限 | YDC_API_KEY | 域 news_realtime | You.com 网页+新闻搜索（时效性强，官方一手源，web/news 合并） |
@@ -261,7 +260,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `pypi` | 可直接用 | 免费 | 不限 | — | 域 package_search | PyPI 包查询（/pypi/{name}/json 精确解析，免认证） |
 | `stackoverflow` | 可直接用 | 免费 | 300/天 | — | 域 stackoverflow_search、域 web_docs | Stack Overflow（Stack Exchange API，编程问答） |
 
-### 快讯 / 电报（12）
+### 快讯 / 电报（13）
 
 | 引擎 | 状态 | 费用 | 频率上限 | 需自备密钥 | 什么时候用到 | 说明 |
 |---|---|---|---|---|---|---|
@@ -276,6 +275,7 @@ argo search --list-engines --detail                 # 逐源状态/密钥/依赖
 | `people_daily` | 可直接用 | 免费 | 不限 | — | 域 news_realtime | 人民网搜索（权威综合中文新闻，官方接口，免认证） |
 | `wallstreetcn` | 可直接用 | 免费 | 不限 | — | 域 financial_news | 华尔街见闻快讯（lives 直播流 JSON，免认证；全量流 + 本地关键词过滤） |
 | `em_miaoxiang` | 需自备密钥 | 免费 | 不限 | ARGO_EASTMONEY_APIKEY | 域 financial_news | 东财妙想搜索（官方研报/公告/政策，需 EASTMONEY_APIKEY） |
+| `seltz` | 需自备密钥 | 按调用计费 | 20000/月 | SELTZ_API_KEY | 语义画像命中 | Seltz 搜索（英文主力，news 语料；结果带发布日期与正文摘录；中文无召回价值已用 langs 排除） |
 | `tinyfish_news` | 需自备密钥 + 显式专用 | 免费 | 不限 | ARGO_TINYFISH_API_KEY | 显式调用（--engine） | TinyFish 实时新闻搜索（免费，含 publisher 与发布日期） |
 
 ### 法律判例（11）

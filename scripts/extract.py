@@ -68,7 +68,7 @@ def extract_jsonld(html):
     results = []
     for m in re.finditer(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.S|re.I):
         try: results.append(json.loads(m.group(1)))
-        except: pass
+        except Exception: pass  # 非 JSON 的 ld+json 块跳过；裸 except 会连 Ctrl-C 一起吞
     return results
 
 if __name__ == '__main__':

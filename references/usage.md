@@ -143,6 +143,7 @@ argo fetch "https://example.com/long-article" --focus "关键词"   # BM25 聚�
 argo fetch "https://cloudflare-protected.com" --use-browser     # 强制反检测浏览器
 ```
 
+- **降级链顺序**：`{url}.md` 直出探测 → HTTP（桌面/移动 UA，抖音等分流站移动优先）→ TLS 指纹 → jina/Parallel 免费云渲染 → Wayback/浏览器 自动降级 + BM25 聚焦提取 + 质量信号 + 内容安全引擎
 - **降级触发**：HTTP 失败 / 内容 < 50 字符 / 检测到 CF 挑战 / 检测到 JS shell
 - **Wayback 回退**：失败或空内容自动查最新快照（`fetch_method=wayback` + `snapshot_url`/`snapshot_ts`）
 - **内容安全引擎**：抓取内容先过注入检测再交给 Agent——70+ 中英日韩俄阿希泰模式（指令覆盖/角色操纵/系统提示泄露/越狱/数据外泄/身份冒充/XSS）+ 编码归一化（零宽字符/RTL/Unicode 同形字/base64/URL 编码）+ 语义意图分析 + 风险评分 + 目标脱敏。输出 `content_security.content_clean / risk_score / threat_count / threat_types / redactions / content_lang`
@@ -159,6 +160,73 @@ argo screenshot "https://example.com" [--full-page] [--output /tmp/page.png]
 ```bash
 argo pdf "https://example.com/paper.pdf" [--pages "1-5"] [--password "secret"]   # 支持本地路径
 ```
+
+## 证据流程字段语义（v2.8.0）
+
+搜索输出自带可编程判定开关，回答「现在能不能下结论」：
+
+- `fetch_required`：高后果域（金融/医疗/法律/事实核查）为 true，**下结论前必须核验正文**
+- `evidence_loop.suggested` / `verified_count` / `pending_count`：建议核验的 URL 与进度
+- 每条结果的 `fetch_suggested` / `has_fetched_evidence` / `post_fetch_absorption`：
+  这条要不要抓正文、抓过没有、抓后吸收分变没变
+
+`--verify N` 一键抓正文核验 top-N 并回填证据分：
+
+```bash
+python3 scripts/search.py "贵州茅台股价" --verify 3
+# [verify] 核验 3 条，improved=2 unchanged=1 degraded=0 mean_delta=0.18
+```
+
+以上开关在两档都保留（`--no-envelope` 与 `--fields agent` 都不会剥掉 `fetch_required`）。
+
+## argo answer（直答）与 Seltz 语料
+
+```bash
+argo answer "query" [--scope news|wikipedia|people|companies] [--model seltz-base|seltz-pro]
+```
+
+**`scope` 是语料选择，不是可选项**，不传一律落上游默认的 `news`。2026-09-16 实测
+（不接 console 直打上游）：
+
+| 语料 | 实测结论 |
+|------|----------|
+| `companies` | 英文公司名最好：Apple / Microsoft / Tesla 概况答得准且完整（成立于哪年、总部、主营） |
+| `wikipedia` | 干净，引用全来自 en.wikipedia.org；内容不在维基时如实拒答 |
+| `news` | 英文真新闻查询可用（美联储降息 → channelnewsasia / businesstimes 等）；覆盖窄 |
+| `people` | 不可用：10 条引用全是 linkedin.com，人名基本查不到 |
+
+**中文查询各语料均差**——同一 `news` 语料下英文查询 3/3 有答案，中文查询 3/3 拒答且
+引用指向时政与播客类条目。故 Seltz 按「**英文主力**」定位配置：`langs: [en]` 限定英文
+（`engine_langs` 只认 `spec.langs` / `ENGINE_LANGS` 表，**不看 coverage**；不写这条则
+默认 `["*"]` 语言中立，中文查询也会被路由过来，这正是中文查询拿到时政类条目的通路），
+`coverage` 收为 `[news, english]`，`family: news_flash`（原归 `web_general` 属误判，
+且该族在 `dedupe_by_family` 里 `max_per_family=2`，它会与 octen/anysearch 争槽位被静默挤掉）。
+
+**当前它仍未进入日常自动路由**，原因是结构性的，配置层解不掉：本域 `news_realtime`
+声明 7 个源，fast 档 `budget=2` / auto-balanced=3，位次 3+ 本就不跑；而自适应学习器
+按**族内分数**排序，新源分数起点低（seltz 实测 0.33，同族 people_daily/google_news 0.5），
+laggard 规则（与族内最高分差 ≥0.15 即后置）会把它推到族末——即代码里记录的「饿死循环」。
+要它真参与，需按本仓原则「**加槽不顶位**」（见 `route._VERTICAL_NEW_SOURCE` 的注释：
+把新源提前会顶掉既有可用源，属横向替换而非净增益）给该域扩预算；而加槽目前只对垂直域
+开口，`news_realtime` 是通用域不在其列。加槽是策略层改动，且 fast 档加槽会把延迟乘上去。
+
+未走加槽前的可用入口：`--engine seltz` 单跑，或 `argo answer --scope ...` 直答。
+
+`model` 可选 `seltz-base`（默认，一次 grounding 搜索）与 `seltz-pro`（模型自己发起检索，
+更慢更贵）。
+
+> 排查提示：升级或改动检索层后，先跑 `python3 scripts/engine_validate.py --engine seltz
+> --stage health`。准入门禁会做相关性判据（结果与查询零词面交集即判负），能挡住
+> 「字段齐全但语料接错」这类问题——这正是 Seltz 2026-09-16 之前拿 `quality_score=1.0`
+> 通过准入的原因。
+
+## 引用纪律（讲给用户时）
+
+把搜索结果讲给用户时，凡是来自检索的事实都要带 URL 出处——**日常档也要带，不必等深度研究**。
+URL 就在 `results[].url` 里（`--fields agent` 也保留），零额外成本。
+
+`sources` 是 `results` 里 URL 的重投影，只在 envelope 模式生成（1.0 KB），形态是「底部相关链接」；
+要那种整齐样式就加 envelope，不加也不影响能引用。
 
 ## 内容质量信号
 

@@ -202,15 +202,29 @@ def _seltz_key() -> str:
     return os.environ.get("SELTZ_API_KEY", "")
 
 
+_SELTZ_SCOPES = ("news", "wikipedia", "people", "companies")
+
+
 def _build_seltz_engine(spec: dict[str, Any]) -> Any:
-    """Seltz Search：POST {query, max_results}，响应 {documents:[...]}。
+    """Seltz Search：POST {query, max_results, scope}，响应 {documents:[...]}。
 
     官方文档 docs.seltz.ai：x-api-key 头鉴权。响应无 title 字段（content
     即摘录正文，首行截作标题）；无 score/confidence 字段，排序即上游相关度。
     注册赠 20000 次搜索额度（一次性），故配额按 month/20000 保守看管。
-    2026-09-14 实测：英文检索正常；中文覆盖未验证，coverage 不含 chinese。
+
+    **scope 是语料选择，不是可选项**：上游只支持 news / wikipedia / people /
+    companies 四个语料，不传一律落 news。2026-09-16 实测：不传 scope 时技术
+    查询（「RRF 融合算法」）拿到的是 news 语料里的时政与播客条目，看上去像
+    「引用跑偏」，实为语料选错而非上游坏了。四个语料实测：companies 查公司
+    概况最好；news 在真新闻查询上可用但覆盖窄；wikipedia 干净；people 不可用
+    （10 条全 linkedin.com，人名查不到）。故本引擎按 spec.scope 声明语料，
+    config 里把 coverage 收到对应域，不冒充通用源。
     """
     timeout = spec.get("timeout", 15)
+    scope = str(spec.get("scope") or "").strip().lower()
+    if scope and scope not in _SELTZ_SCOPES:
+        logger.warning(f"seltz: 未知 scope {scope!r}（上游会返回 404），本轮不传 scope")
+        scope = ""
 
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None,
@@ -220,7 +234,9 @@ def _build_seltz_engine(spec: dict[str, Any]) -> Any:
             return [{"error": "SELTZ_API_KEY 未设置", "source": "seltz"}]
         to = _timeout or timeout
         limit = max(1, int(n or 5))
-        body = {"query": query, "max_results": min(limit, 10)}
+        body: dict[str, Any] = {"query": query, "max_results": min(limit, 10)}
+        if scope:
+            body["scope"] = scope
         req = urllib.request.Request(
             _SELTZ_URL,
             data=json.dumps(body).encode("utf-8"),

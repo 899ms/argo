@@ -842,6 +842,84 @@ ALL_BACKENDS = dict(BACKENDS, **FREE_BACKENDS, **SLOW_BACKENDS)
 DEFAULT_ENGINES = ["exa", "tavily", "byted", "bocha", "octen"]
 
 
+def _backend_down(name: str) -> bool:
+    """该后端是否已知暂时不可用（配额耗尽 / 熔断打开）——跳过它，让别的源顶上。
+
+    为什么必须查：本模块有自己的后端表，直接调各家 API，**不经过 search.py 的
+    路由**，因此也绕过了路由层那两处「已知停用就不发请求」的判断。后果实测：
+    bocha 余额不足（403 `You do not have enough money or package quota`）时，
+    它每次调用都真发一次请求、拿回一条 403，并作为**硬错误**写进输出的 errors
+    字段——调用方据此判成「整体失败」，而实际上另外十来家源都正常返回。
+
+    判据复用既有状态，不另造机制：配额管理器（配额耗尽 → 排除到周期边界，
+    自动恢复）与熔断器（失败后冷却、半开探测）。两者都自带「定期再试一次」，
+    所以跳过是暂时的，不需要人工介入。
+
+    招聘这件事本来就不依赖单一数据源——少两家，其余照常。
+    """
+    try:
+        from quota import get_quota_manager
+        if get_quota_manager().is_hard_down(name):
+            return True
+    except Exception:
+        pass
+    # 熔断态查询走 breaker.status()，它是只读的；**不能用 allow()**——allow()
+    # 在 open/disabled 冷却到期时会把状态推进到 half_open 并 _save() 落盘，
+    # 而这里在每个引擎的循环里被当纯判据调用。后果有两层：每次检查写一次状态
+    # 文件；本模块从不调 record_success/record_failure，推进出来的半开探测
+    # 永不收敛（半开态没有终结者）。语义与 route._filter_breaker_blocked
+    # 逐条对齐：disabled / open 且冷却未过 → 不跑，half_open 保留探测资格。
+    try:
+        from circuit_breaker import get_breaker
+        st = get_breaker().status(name)
+    except Exception:
+        return False
+    state = st.get("state")
+    if state == "disabled":
+        return True
+    return state == "open" and int(st.get("cooldown_remain") or 0) > 0
+
+
+def _is_quota_exhausted(exc: Exception) -> bool:
+    """这次失败是不是「源端配额耗尽」——只有这一种才交给配额状态机。
+
+    **只认配额耗尽，不认 401/403/429 这类泛化的「源这会儿用不了」**。泛化判据
+    的代价实打实：`_mark_source_down` 按 `backends/quota_profiles.json` 的
+    period 排除该源，bocha/exa/tavily 是 month，而 route 用同一个状态筛路由
+    combo——于是一次 Cloudflare 拦截（403 + `Sorry, you have been blocked`，
+    与欠费同码不同因）会让全仓 `argo search` 30 天不再用这个源，且在招聘之外
+    的模块静默生效。403/429 各有归属：engine_failure.classify 分 auth /
+    blocked / rate_limited，健康问题交熔断器自愈，本函数不接手。
+
+    关键词表复用 engine_dispatch 的 `_QUOTA_ERROR_KEYWORDS`（该表自述为
+    「唯一来源」，配额分类与自适应跳过共用），不另起一份。
+    真欠费的文案（`You do not have enough money or package quota`）含
+    `quota`，仍然照常命中。
+    """
+    try:
+        from engine_dispatch import _QUOTA_ERROR_KEYWORDS
+    except ImportError:
+        return False
+    text = str(exc).lower()
+    return any(k in text for k in _QUOTA_ERROR_KEYWORDS)
+
+
+def _mark_source_down(name: str, detail: str) -> None:
+    """把源标为「配额耗尽」——交给配额状态机，到周期边界自动恢复。
+
+    复用既有机制，不另造：`mark_remote_exhausted` 的语义正是「远端明说用不了
+    → 全模式排除 → 到期自愈」。所以「定期检测」这件事本来就有，不必人工介入。
+
+    只在 `_is_quota_exhausted` 为真时调用：这个状态是跨模块的（route 用同一
+    状态筛 combo），误标的代价远大于漏标。
+    """
+    try:
+        from quota import get_quota_manager
+        get_quota_manager().mark_remote_exhausted(name, reason=detail[:160])
+    except Exception:
+        pass
+
+
 # ── 详情页结构化补全（--fetch N，走 argo fetch_v3 降级链）──────────────
 
 
@@ -896,7 +974,10 @@ def search(query: str, city: str = "", num: int = 5, engine: str = "all",
     空 = 全平台；未识别抛 ValueError。
 
     返回与 CLI --json 相同结构的 dict：
-    query/backends/total/dropped_url/dropped_region/strict/errors/results。
+    query/backends/total/dropped_url/dropped_region/strict/errors/skipped/results。
+    errors = 本次真失败的源；skipped = 出发前就已知不可用而跳过的源
+    （配额耗尽 / 熔断打开）。两者分开：跳过不是失败，但也不能让调用方看见
+    「total=0 且 errors=[]」时误以为「确实没岗位」。
     """
     plat_list = PLATFORMS
     if platforms:
@@ -919,14 +1000,30 @@ def search(query: str, city: str = "", num: int = 5, engine: str = "all",
     words = region_words(city) if city else []
 
     results, errors = [], []
+    skipped: list[str] = []
 
     def run(name: str):
+        # 已知暂时不可用的后端直接跳过：它「这会儿用不了」不是「本次调用失败」。
+        # 让它继续挨个重试既拿不到结果，又会把 403 记成硬错误写进 errors，
+        # 调用方据此判成整体失败（实测 bocha 余额不足时就是这样）。其余源照常。
+        if _backend_down(name):
+            # 跳过既不是失败（不写 errors：别家源可能已经交付，调用方见 errors
+            # 非空会判成整体失败），也不能静默——全都跳过时 errors 为空、total
+            # 为 0，调用方分不清「确实没岗位」与「源全挂了」。单列 skipped。
+            skipped.append(name)
+            return
         try:
             fn = ALL_BACKENDS[name]
             for r in fn(full_query, num):
                 r["backend"] = name
                 results.append(r)
         except Exception as e:
+            # 只有配额耗尽才记账跳过：该状态按 period 排除到周期边界（月级），
+            # 且 route 用同一状态筛 combo，误标的代价是 30 天少一个源。其余
+            # 失败（403 反爬、429 限流、5xx）如实进 errors，让调用方看得见。
+            if _is_quota_exhausted(e):
+                _mark_source_down(name, str(e))
+                return
             errors.append(f"{name}: {e}")
 
     threads = [threading.Thread(target=run, args=(e,)) for e in engines]
@@ -996,7 +1093,7 @@ def search(query: str, city: str = "", num: int = 5, engine: str = "all",
             "dropped_url": dropped_url,
             "dropped_region": dropped_region,
             "strict": strict,
-            "errors": errors, "results": unique}
+            "errors": errors, "skipped": skipped, "results": unique}
 
 
 def main():

@@ -75,7 +75,9 @@ with open(LOG, "a") as log:
                 req = json.loads(header_str)
                 log.write(f"  <- METHOD(line): {req.get('method','?')}\n")
                 log.flush()
-            except:
+            except Exception:
+                # 诊断走的是「逐行打印原始流量」的路径，非 JSON 行属正常情况；
+                # 裸 except 会把 Ctrl-C 也当成「不是 JSON」打印出去
                 log.write(f"    not JSON: {header_str[:50]}\n")
                 log.flush()
 

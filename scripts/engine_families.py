@@ -298,7 +298,11 @@ _ENGINE_FAMILY_OVERRIDES: dict[str, str] = {
     "metaso": "web_general",
     "parallel": "web_general",
     "parallel_free": "web_general",
-    "seltz": "web_general",
+    # seltz 归 news_flash：它答的是新闻类问题（scope 只有 news/wikipedia/
+    # people/companies 四个语料）。原先归 web_general 是误判——该族在
+    # dedupe_by_family 里 max_per_family=2，它会与 octen/anysearch 争槽位
+    # 而被静默挤掉，路由里永远轮不到。
+    "seltz": "news_flash",
     "tinyfish": "web_general",
     "tinyfish_news": "news_flash",
     "you": "web_general",

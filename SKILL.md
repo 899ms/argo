@@ -82,10 +82,10 @@ python3 scripts/clarify.py "有歧义的查询" --explain --json
 
 ```bash
 argo fetch "https://example.com" [--focus "关键词"] [--use-browser]
-# {url}.md 直出探测 → HTTP（桌面/移动 UA，抖音等分流站移动优先）→ TLS 指纹 → jina/Parallel 免费云渲染 → Wayback/浏览器 自动降级 + BM25 聚焦提取 + 质量信号 + 内容安全引擎
+# 降级链顺序与各级条件见 references/usage.md
 argo screenshot "https://example.com" [--full-page] [--output /tmp/page.png]
 argo pdf "https://example.com/paper.pdf" [--pages "1-5"] [--password "secret"]
-argo answer "query"   # 直答：Seltz 带引用合成答案
+argo answer "query" [--scope <语料>]   # 直答，语料见 references/usage.md
 argo watch add|check|list|remove   # 观察模式：快照+变化检测（check --json 供 cron）
 ```
 
@@ -96,14 +96,12 @@ argo watch add|check|list|remove   # 观察模式：快照+变化检测（check 
 3. **SERP 链**（baidu/s、sogou/link）：禁止当正文来源
 4. **社交帖**：叙事/舆情，不进事实真值
 5. **深度研究**：先读 `references/research-protocol.md`；有决策含义就交工作包，不要靠扩词充问题树；`quality_gate_results.passed=false` 必须降级表述
-6. **上下文纪律**：Agent 搜索用 `--json --no-envelope --fields agent`、按需 `-n`（超 10 无收益）；要来源追溯或归档才用 envelope 模式（sources/candidates 只在那里）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会输出约 22 KB
+6. **引用**：讲给用户的事实带 URL 出处，日常档也要带（URL 在 `results[].url`，零成本）
+7. **上下文纪律**：Agent 搜索用 `--json --no-envelope --fields agent`、按需 `-n`（超 10 无收益）；要来源追溯或归档才用 envelope 模式（sources/candidates 只在那里）；查引擎状态用 `--list-engines --detail --engine <名>`，不带 `--engine` 会输出约 22 KB
 
 ## 证据流程（v2.8.0）
 
-搜索输出自带可编程判定开关，回答「现在能不能下结论」：`fetch_required`（高后果域为
-true，下结论前必须核验正文）、`evidence_loop.suggested/verified_count/pending_count`、
-每条结果的 `fetch_suggested` / `has_fetched_evidence` / `post_fetch_absorption`。
-字段语义见 `references/usage.md`。
+搜索输出自带判定开关（`fetch_required`、`evidence_loop` 等），字段语义见 `references/usage.md`。
 
 ```bash
 python3 scripts/search.py "贵州茅台股价" --verify 3

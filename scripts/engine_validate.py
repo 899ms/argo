@@ -115,6 +115,96 @@ def _schema_ok(results: list[dict[str, Any]]) -> tuple[bool, str, float]:
     return ok, f"字段完整率 {rate:.0%}", rate
 
 
+# 查询语言 → 该引擎需声明的 coverage 标签；声明 general 视为不限语言。
+_RELEVANCE_LANG_TAGS: dict[str, tuple[str, ...]] = {
+    "zh": ("chinese", "zh"),
+    "en": ("english", "en"),
+    "ja": ("japanese", "ja"),
+    "ko": ("korean", "ko"),
+}
+
+
+def _relevance_applicable(spec: dict[str, Any], query: str) -> tuple[bool, str]:
+    """相关性判据是否适用于本次探针。
+
+    不适用（返回 False）的三种情形，都是为避免误杀而非放水：
+      1. 引擎声明 `relevance_check: false`：热榜/快讯/列表型源按设计
+         忽略查询词，拿查询词去评判它们等于用错标准。标准不降，只是
+         对这类源问错了问题。
+      2. 查询为空或取不到词元。
+      3. 查询语言不在该引擎声明的 coverage 内：词面比较在跨语言下
+         没有意义（中文查询配纯英文源，零字符交集不代表结果不相关）。
+    """
+    if spec.get("relevance_check") is False:
+        return False, "declared_off"
+    if not query or not query.strip():
+        return False, "empty_query"
+    try:
+        from tfidf_router import tokenize
+        if not set(tokenize(query)):
+            return False, "no_tokens"
+    except ImportError:
+        return False, "tokenizer_unavailable"
+    try:
+        from lang_detect import detect_language, is_non_latin_lang
+        lang = detect_language(query)
+    except Exception:
+        return True, ""
+    cov = set(spec.get("coverage") or [])
+    if not cov or "general" in cov:
+        return True, ""
+    # 跨语言守卫**只对非拉丁查询生效**。中文查询配纯英文源时词面零交集不
+    # 代表结果不相关，判据没意义；反过来英文查询几乎所有源都能处理，若
+    # 要求 coverage 必须声明 english，会把只声明内容域的源（mdn 的 docs、
+    # github 的 code、arxiv 的 academic）全部误跳过，判据就形同虚设了。
+    want = _RELEVANCE_LANG_TAGS.get(lang)
+    if want and is_non_latin_lang(lang) and not (cov & set(want)):
+        return False, f"cross_lang_{lang}_engine_no_{lang}"
+    return True, ""
+
+
+def _relevance_check(spec: dict[str, Any], results: list[dict[str, Any]],
+                     query: str) -> dict[str, Any]:
+    """结果与查询有无词面交集。
+
+    为什么要这道判据：schema 完整率只看字段齐不齐。检索层被接错语料的引擎
+    （2026-09-16 Seltz 实测：中文查询落 news 语料，返回时政与播客条目）字段
+    100% 完整、延迟正常，在旧判据下拿满分 1.0 通过准入。结构合法但答非所问，
+    只能靠相关性判据挡。
+
+    判负门槛取**零交集**而非「多数命中」。实测依据：mdn 的 canary 是单词
+    "Python"，它工作正常却只有 0.2 命中率（MDN 的 Python 章节页标题未必都
+    含 python 字样）——用多数规则会误杀好引擎。零交集没有这种歧义，也是
+    「答非所问」唯一无争议的形态。命中率照常上报，供人判断灰度。
+
+    返回 ok=True 表示「不适用或通过」。不适用时 hit_rate 为 None，调用方
+    不得把它算作失败。
+    """
+    applicable, skip_reason = _relevance_applicable(spec, query)
+    if not applicable:
+        return {"applicable": False, "ok": True, "hit_rate": None,
+                "relevance_msg": f"not_applicable: {skip_reason}"}
+    if not results:
+        # 空结果由 schema 判据负责（"空结果"），此处不重复记账，
+        # 否则 error 归因会被相关性抢走，看不出真实原因。
+        return {"applicable": False, "ok": True, "hit_rate": None,
+                "relevance_msg": "not_applicable: no_results"}
+    try:
+        from tfidf_router import tokenize
+        q_set = set(tokenize(query))
+        covered = sum(
+            1 for r in results
+            if q_set & set(tokenize(f"{r.get('title') or ''} {r.get('snippet') or ''}"))
+        )
+        hit_rate = round(covered / len(results), 3)
+    except Exception as e:
+        # 判据不可用时不设卡（fail-open），但如实记明原因，避免静默通过
+        return {"applicable": False, "ok": True, "hit_rate": None,
+                "relevance_msg": f"not_applicable: check_unavailable({type(e).__name__})"}
+    return {"applicable": True, "ok": hit_rate > 0.0, "hit_rate": hit_rate,
+            "relevance_msg": "" if hit_rate > 0.0 else "结果与查询零词面交集（疑似语料选错）"}
+
+
 def run_health(engine_id: str, *, query: str | None = None, n: int = 3,
                timeout: float = 10.0) -> dict[str, Any]:
     """连通性 + schema 健康检查。"""
@@ -189,6 +279,9 @@ def run_health(engine_id: str, *, query: str | None = None, n: int = 3,
         schema_ok, schema_msg, field_rate = _schema_ok(patched)
 
     ok = schema_ok and latency <= timeout * 1000 * 1.2
+    rel = _relevance_check(spec, results, query)
+    if not rel["ok"]:
+        ok = False
     return {
         "ok": ok,
         "status": "pass" if ok else "fail",
@@ -200,7 +293,16 @@ def run_health(engine_id: str, *, query: str | None = None, n: int = 3,
         "schema_msg": schema_msg,
         "field_complete_rate": round(field_rate, 3),
         "sample_title": (results[0].get("title") if results and isinstance(results[0], dict) else None),
-        "error": None if ok else (schema_msg if not schema_ok else "timeout_or_fail"),
+        "relevance_ok": rel["ok"],
+        "relevance_applicable": rel["applicable"],
+        "relevance_hit_rate": rel["hit_rate"],
+        "relevance_msg": rel["relevance_msg"],
+        # 失败原因按「先归因再报错」排序：schema 问题 > 相关性 > 超时
+        "error": None if ok else (
+            schema_msg if not schema_ok
+            else (rel["relevance_msg"] or "relevance_failed") if not rel["ok"]
+            else "timeout_or_fail"
+        ),
     }
 
 
@@ -256,6 +358,8 @@ def run_quality(engine_id: str, *, queries: list[dict[str, str]] | None = None,
             "count": h.get("count", 0),
             "latency_ms": h.get("latency_ms"),
             "field_complete_rate": h.get("field_complete_rate", 0),
+            "relevance_applicable": h.get("relevance_applicable"),
+            "relevance_hit_rate": h.get("relevance_hit_rate"),
             "error": h.get("error"),
         })
 
@@ -269,9 +373,22 @@ def run_quality(engine_id: str, *, queries: list[dict[str, str]] | None = None,
     pass_n = sum(1 for r in runs if r.get("ok"))
     pass_rate = pass_n / total
 
+    # 相关性：只统计判据适用的那些 query（不适用的不算失败，也不算通过）
+    rel_runs = [r for r in runs if r.get("relevance_applicable")]
+    rel_fail = sum(1 for r in rel_runs if r.get("relevance_hit_rate") == 0.0
+                   and (r.get("relevance_hit_rate") is not None))
+    rel_applicable_n = len(rel_runs)
+    rel_fail_rate = (rel_fail / rel_applicable_n) if rel_applicable_n else 0.0
+
     # 质量分：通过率 0.5 + (1-空结果率)*0.3 + 字段完整 0.2
     quality_score = round(pass_rate * 0.5 + (1 - empty_rate) * 0.3 + avg_field * 0.2, 3)
-    ok = pass_rate >= 0.4 and empty_rate <= 0.6
+    # 相关性多数不通过时给分封顶：字段齐全、计数正常但答非所问的引擎
+    # 不该继续拿高分（Seltz 2026-09-16 就是这么拿到 1.0 的）。
+    relevance_capped = False
+    if rel_applicable_n and rel_fail_rate > 0.5:
+        quality_score = min(quality_score, 0.3)
+        relevance_capped = True
+    ok = pass_rate >= 0.4 and empty_rate <= 0.6 and rel_fail_rate <= 0.5
 
     return {
         "ok": ok,
@@ -280,6 +397,10 @@ def run_quality(engine_id: str, *, queries: list[dict[str, str]] | None = None,
         "quality_score": quality_score,
         "pass_rate": round(pass_rate, 3),
         "empty_rate": round(empty_rate, 3),
+        "relevance_applicable": rel_applicable_n,
+        "relevance_fail": rel_fail,
+        "relevance_fail_rate": round(rel_fail_rate, 3),
+        "relevance_capped": relevance_capped,
         "avg_latency_ms": round(avg_lat, 1) if avg_lat is not None else None,
         "avg_field_complete_rate": round(avg_field, 3),
         "runs": runs,
