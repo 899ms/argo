@@ -23,5 +23,10 @@ canary_query: "Shanghai"
 desc: "天气查询（免 Key：wttr.in 主用 + Open-Meteo 兜底，当前+未来预报）"
 coverage: [weather, forecast, geo]
 recommended: false
+# 数据型源：回答的是天气数据而非与查询词面匹配的文档，相关性判据不适用。
+# 实证：canary "Shanghai" 返回 wttr.in 的中文本地化结果（「上海…」），拉丁
+# 查询配 CJK 输出零词面交集，2026-09-16 实测被相关性门判负——同热榜类，
+# 标准不降，只是问错了问题。
+relevance_check: false
 
 family: misc_vertical

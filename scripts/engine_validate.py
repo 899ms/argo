@@ -375,8 +375,8 @@ def run_quality(engine_id: str, *, queries: list[dict[str, str]] | None = None,
 
     # 相关性：只统计判据适用的那些 query（不适用的不算失败，也不算通过）
     rel_runs = [r for r in runs if r.get("relevance_applicable")]
-    rel_fail = sum(1 for r in rel_runs if r.get("relevance_hit_rate") == 0.0
-                   and (r.get("relevance_hit_rate") is not None))
+    # hit_rate 为 None 时 None == 0.0 即 False，无需额外判空
+    rel_fail = sum(1 for r in rel_runs if r.get("relevance_hit_rate") == 0.0)
     rel_applicable_n = len(rel_runs)
     rel_fail_rate = (rel_fail / rel_applicable_n) if rel_applicable_n else 0.0
 
