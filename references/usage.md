@@ -81,7 +81,7 @@ python3 scripts/search.py "查询词" \
 
 ### `--list-engines` 的体积陷阱
 
-`--list-engines` 列名字约 3 KB；**`--detail` 全量实测约 22 KB**（2026-09-13 实测 22,365B）
+`--list-engines` 列名字约 3 KB；**`--detail` 带 `--engine` 过滤 = 单引擎全量诊断 ~0.9 KB**；不带过滤是瘦身全量清单（2026-09-16 实测 ~50 KB，原全量转储 151 KB，runtime/admission 嵌套占三成，已默认投影压缩）
 （含每引擎的熔断/配额/准入/依赖运行态），属诊断转储。查单个或几个引擎请**同时
 给 `--engine`**（逗号分隔），体积降到 KB 级；未收录的名字会走 stderr 提示。
 

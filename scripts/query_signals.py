@@ -102,6 +102,45 @@ def query_coverage_ok(results: list[dict[str, Any]], query: str) -> bool:
     return covered >= max(1, (len(results) + 1) // 2)
 
 
+def score_clarity_ok(results: list[dict[str, Any]]) -> bool:
+    """无标注 QPP 信号（2026-09-16）：结果分平坦且数量仅达下限时拒绝早停。
+
+    方法论：无 relevance judgments 的查询性能预测（QPP）——NQC/Clarity 一族
+    的共同直觉是「分数分布越尖锐（有明确赢家），查询表现越可预期；分布
+    平坦说明检索器对查询拿不准」。这里取最保守的判据：
+
+      - 只在**计数恰好等于下限**时参与判定（_sufficient_internal 传入
+        barely）：结果富余本身就是信心，不必再问分数分布；
+      - 至少 2 个数值 score 才参与（单条无从谈分布），否则 fail-open
+        （放行早停）——下限取 2 而非 3 是刻意的：fast 档计数下限就是 2，
+        取 3 会让 fast 档永远够不着信号；两条全等的占位分与三条同样可疑；
+      - 全体 score 完全相等（std=0，结构化源常见的占位分）视为最平坦。
+
+    「拒绝早停」的代价实打实是多跑一个引擎（成本语义见 engine_dispatch
+    wave-1 注释），所以阈值取最极端的平坦而非「偏平坦」；宁可多一次调用，
+    不放走「字段齐全、计数达标、分数无区分度」的单引擎垃圾（2026-09-02
+    实测教训的分数维度补丁，与词面覆盖守卫互补——那个管文本，这个管排序）。
+    """
+    scores: list[float] = []
+    for r in results:
+        try:
+            v = r.get("score")
+            if v is None:
+                continue
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        scores.append(v)
+    if len(scores) < 2:
+        return True  # 信号不可用：fail-open
+    mean = sum(scores) / len(scores)
+    if mean <= 0:
+        return True
+    var = sum((s - mean) ** 2 for s in scores) / len(scores)
+    std = var ** 0.5
+    return (std / mean) > 0.02  # 变异系数 ≤2% 视为平坦（实测占位分全等=0）
+
+
 def _sufficient_internal(
     results: list[dict[str, Any]],
     mode: str,
@@ -116,6 +155,8 @@ def _sufficient_internal(
       - min_results：域配置覆盖（答案型源 1 条快照即够用，计数语义不动）
       - 通用路径叠加词面覆盖守卫（query_coverage_ok）：结果与查询几乎
         无交集时不许早停
+      - 两条路径都叠加平坦分守卫（score_clarity_ok）：计数恰好压线且
+        分数无区分度时不许早停
     """
     goods = [r for r in results if isinstance(r, dict) and "error" not in r]
     if not goods:
@@ -131,9 +172,12 @@ def _sufficient_internal(
             need = 1
         # 答案型 1 条要求有可展示正文；≥3 条时至少 2 条有 snippet
         need_snip = 1 if need <= 2 else max(2, need - 1)
-        return len(goods) >= need and with_snippet >= min(need_snip, len(goods))
-    if mode == "fast":
-        ok = len(goods) >= 2 and with_snippet >= 1
-    else:
-        ok = len(goods) >= 3 and with_snippet >= 2
-    return ok and query_coverage_ok(goods, query)
+        ok = len(goods) >= need and with_snippet >= min(need_snip, len(goods))
+        # 词面覆盖守卫不适用于答案型（1 条快照无「多数覆盖」可言），
+        # 平坦分守卫适用：占位分快照同样可能是垃圾
+        return ok and (len(goods) > need or score_clarity_ok(goods))
+    threshold = 2 if mode == "fast" else 3
+    ok = len(goods) >= threshold and with_snippet >= (1 if mode == "fast" else 2)
+    return (ok
+            and query_coverage_ok(goods, query)
+            and (len(goods) > threshold or score_clarity_ok(goods)))

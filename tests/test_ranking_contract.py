@@ -167,3 +167,41 @@ class TestRankScoreBoundaries:
     def test_above_one_clamped(self):
         from engines_base import rank_score
         assert rank_score(2.0, 3) <= 1.0
+
+
+class TestWgRrfEngineWeighting:
+    """WG-RRF 引擎权重契约（2026-09-16「域信誉层」闭环的回归锁）。
+
+    背景：09-12 调研提出的「域信誉层」经核实已分三层在位——① 引擎级静态
+    权威权重（_ENGINE_FUSION_WEIGHTS，权威/学术提权、社交降权）× 动态可靠性
+    （weakest-link）；② URL 域权威 evidence.score_authority 进五维权威维度
+    （0.26 权重）；③ 18 语言能力矩阵提降权。此前 _engine_weight 无直接回归
+    锁，本类补上最核心的一层：同一排名位置上，权威源权重必须严格高于基线、
+    社交源严格低于基线，且 rrf_merge 的 weighted 开关确实消费它。
+    """
+
+    def test_static_weight_directions(self):
+        from search import _ENGINE_FUSION_WEIGHTS, _engine_weight
+        assert _engine_weight("wikipedia") > 1.0 > _engine_weight("twitter")
+        assert _engine_weight("arxiv") == _ENGINE_FUSION_WEIGHTS["arxiv"]
+        assert _engine_weight("不存在的引擎") == 1.0  # 未知源保持中性
+
+    def test_merged_source_takes_best_static_weakest_reliability(self):
+        from search import _engine_weight
+        # 合并源静态权重取最高成员，未知成员不拉低静态项
+        assert _engine_weight("wikipedia/不存在的引擎") >= 1.4
+
+    def test_rrf_merge_consumes_weights(self):
+        """同一位次的两条结果，权威源必须比社交源拿到更高的 RRF 分。"""
+        from search import rrf_merge
+        lists = [
+            [{"url": "https://a.example/1", "title": "权威", "_engine": "wikipedia"}],
+            [{"url": "https://b.example/2", "title": "社交", "_engine": "twitter"}],
+        ]
+        ranked = rrf_merge(lists, weighted=True)
+        by_title = {r["title"]: r["_rrf_score"] for r in ranked}
+        assert by_title["权威"] > by_title["社交"]
+        # weighted=False 回到经典 RRF：同位次等权
+        classic = rrf_merge([list(x) for x in lists], weighted=False)
+        classic_scores = {r["title"]: r["_rrf_score"] for r in classic}
+        assert classic_scores["权威"] == classic_scores["社交"]

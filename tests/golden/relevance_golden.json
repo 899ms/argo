@@ -1,0 +1,604 @@
+{
+ "recorded_at": "2026-09-16",
+ "note": "真结果快照：相关性判据重放回归用——测试重放存档 results 断言 verdict 与 expected 逐位一致，不依赖线上数据。判据改动导致 verdict 变化时，先确认是不是判据变严/变松，再更新 expected 并在此注明原因。。expected 按存档 results（前 3 条）口径计算，与重放逐位一致。",
+ "cases": [
+  {
+   "engine": "wikipedia",
+   "query": "Alan Turing",
+   "coverage": [
+    "wiki",
+    "factual"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "Alan Turing",
+     "snippet": "algorithm and computation with the <span class=\"searchmatch\">Turing</span> machine, which can be considered a model of a general-purpose computer. <span class=\"searchmatch\">Turing<"
+    },
+    {
+     "title": "Turing Award",
+     "snippet": "Staff (2014). &quot;ACM&#039;s <span class=\"searchmatch\">Turing</span> Award prize raised to $1 million&quot;. Communications of the ACM. 57 (12): 20. doi:10.1145/2685372. &quot;A."
+    },
+    {
+     "title": "Alan Turing: The Enigma",
+     "snippet": "Annotated <span class=\"searchmatch\">Turing</span> (2008) Prof: <span class=\"searchmatch\">Alan</span> <span class=\"searchmatch\">Turing</span> Decoded (2015) The <span class=\"searchm"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "github",
+   "query": "fastapi websocket",
+   "coverage": [
+    "code"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "permitio/fastapi_websocket_pubsub",
+     "snippet": "A fast and durable Pub/Sub channel over Websockets. FastAPI + WebSockets + PubSub ==  ⚡ 💪 ❤️"
+    },
+    {
+     "title": "permitio/fastapi_websocket_rpc",
+     "snippet": "⚡ FASTAPI Websocket RPC- A fast and durable bidirectional JSON RPC channel over Websockets."
+    },
+    {
+     "title": "kthwaite/fastapi-websocket-broadcast",
+     "snippet": "Websocket 'broadcast' demo using FastAPI/Starlette"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "arxiv",
+   "query": "retrieval augmented generation",
+   "coverage": [
+    "academic"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "AR-RAG: Autoregressive Retrieval Augmentation for Image Generation",
+     "snippet": "We introduce Autoregressive Retrieval Augmentation (AR-RAG), a novel paradigm that enhances image generation by autoregressively incorporating knearest neighbor retrievals at the p"
+    },
+    {
+     "title": "Intelligent Interaction Strategies for Context-Aware Cognitive Augmentation",
+     "snippet": "Human cognition is constrained by processing limitations, leading to cognitive overload and inefficiencies in knowledge synthesis and decision-making. Large Language Models (LLMs) "
+    },
+    {
+     "title": "Factually: Exploring Wearable Fact-Checking for Augmented Truth Discernment",
+     "snippet": "Wearable devices are transforming human capabilities by seamlessly augmenting cognitive functions. In this position paper, we propose a voice-based, interactive learning companion "
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 0.667
+   }
+  },
+  {
+   "engine": "mdn",
+   "query": "Array.prototype.map",
+   "coverage": [
+    "docs",
+    "web",
+    "javascript",
+    "css",
+    "html"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "Array.prototype.map()",
+     "snippet": "The map() method of Array instances creates\na new array populated with the results of calling a provided function on\nevery element in the calling array."
+    },
+    {
+     "title": "Array.prototype.flatMap()",
+     "snippet": "The flatMap() method of Array instances returns a new array formed by applying a given callback function to each element of the array, and then flattening the result by one level. "
+    },
+    {
+     "title": "TypedArray.prototype.map()",
+     "snippet": "The map() method of TypedArray instances creates a new typed array populated with the results of calling a provided function on every element in the calling typed array. This metho"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "stackoverflow",
+   "query": "python subprocess timeout",
+   "coverage": [
+    "code",
+    "programming",
+    "qa",
+    "english"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "Using module &#39;subprocess&#39; with timeout",
+     "snippet": "score: 402 | answers: 33 | tags: python, multithreading, timeout"
+    },
+    {
+     "title": "Python subprocess timeout?",
+     "snippet": "score: 19 | answers: 10 | tags: python, timeout, pipe"
+    },
+    {
+     "title": "Python subprocess kill with timeout",
+     "snippet": "score: 2 | answers: 1 | tags: python, subprocess"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "europepmc",
+   "query": "CRISPR review",
+   "coverage": [
+    "academic",
+    "biomedical"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "Advances in cascaded CRISPR for preamplification-free nucleic acid assays.",
+     "snippet": "He R, Miao L, Deng R, Xia X."
+    },
+    {
+     "title": "Exploring the role of CRISPR in advancing space biotechnology: challenges and solutions for human survival beyond earth.",
+     "snippet": "Ahmad U."
+    },
+    {
+     "title": "CRISPR-Cas9‑based lipid nanocarriers for advanced therapy of urinary bladder cancer.",
+     "snippet": "Mukherjee S, Karati D, Sarkar S, Ash D, Ganguly SC, Dutta A, Kesarla R."
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "npm",
+   "query": "left-pad",
+   "coverage": [
+    "code",
+    "javascript",
+    "package"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "pad-left",
+     "snippet": "Left pad a string with zeros or a specified string. Fastest implementation."
+    },
+    {
+     "title": "lpad",
+     "snippet": "Left-pad each line in a string"
+    },
+    {
+     "title": "@stdlib/string-left-pad",
+     "snippet": "Left pad a string."
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "crates",
+   "query": "serde json",
+   "coverage": [
+    "code",
+    "rust",
+    "package"
+   ],
+   "relevance_check_declared": null,
+   "results": [],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "anysearch",
+   "query": "量子计算 最新进展",
+   "coverage": [
+    "general",
+    "tech"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "量子计算机走向实用，还差几步？",
+     "snippet": "- 从目前来看，美国初创公司原子计算在实现的比特数量上暂时领跑。他们最新研制的量子计算机拥有的量子比特数量达到1180个，由超冷中性镱原子组成。法国公司 ... date: Oct 23, 2025"
+    },
+    {
+     "title": "量子计算",
+     "snippet": "- 英特尔和QuTech 合作展示了对“热”量子位的成功控制以及对两个量子位的单独相干控制，实现了高达99.3% 的单量子位保真度。该成就凸显了低温控制和硅自旋量子位在集成封装中 ..."
+    },
+    {
+     "title": "什么是量子计算？",
+     "snippet": "- 量子计算领域包括一系列学科，包括量子硬件和量子算法。尽管量子技术仍在发展中，但很快将能够解决传统超级计算机无法解决（或无法足够快地解决）的复杂 ... date: Jun 10, 2025"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "local_bing",
+   "query": "python asyncio tutorial",
+   "coverage": [],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "Python asyncio 模块 - 菜鸟教程",
+     "snippet": "Python asyncio 模块 asyncio 是 Python 标准库中的一个模块，用于编写异步 I/O 操作的代码。 asyncio 提供了一种高效的方式来处理 …"
+    },
+    {
+     "title": "深入理解并高效使用 `asyncio`：Python 异步编程教程",
+     "snippet": "Sep 27, 2025 · 在 Python 中， asyncio 是一个强大的库，用于编写单线程并发代码，通过异步 I/O、事件循环和协程等机制，能够显 …"
+    },
+    {
+     "title": "Python Asyncio Tutorial：异步编程指南 — geek-blogs.com",
+     "snippet": "Sep 27, 2025 · 在 Python 中，`asyncio` 是一个用于编写单线程并发代码的库，它借助协程、`async/await` 语法以及事件循环机制， …"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "weather",
+   "query": "Shanghai",
+   "coverage": [
+    "weather",
+    "forecast",
+    "geo"
+   ],
+   "relevance_check_declared": false,
+   "results": [
+    {
+     "title": "Shanghai 当前 27°C 晴",
+     "snippet": "体感 27°C · 湿度 40% · 风速 15km/h NE · 云量 5% · 能见度 10km · 观测 08:29 AM · China"
+    },
+    {
+     "title": "上海 中国 2026-09-16 20.9°C~30.2°C · 降雨概率 0%",
+     "snippet": "Open-Meteo 预报"
+    },
+    {
+     "title": "上海 中国 2026-09-17 21.8°C~30.4°C · 降雨概率 64%",
+     "snippet": "Open-Meteo 预报"
+    }
+   ],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "weather_cn",
+   "query": "北京",
+   "coverage": [
+    "chinese",
+    "weather",
+    "realtime"
+   ],
+   "relevance_check_declared": false,
+   "results": [
+    {
+     "title": "北京 实况：29.4℃ 多云 南风2级",
+     "snippet": "湿度 50% · 气压 1007hPa · AQI 106 · 能见度 13km · 观测 16:45 · 09月16日(星期三)"
+    }
+   ],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "csdn",
+   "query": "docker compose 教程",
+   "coverage": [
+    "chinese",
+    "tech",
+    "community",
+    "blog"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "手把手教你玩转Docker Compose：从入门到实战部署（实战干货）！！！",
+     "snippet": "本文是Docker Compose的保姆级教程。介绍了其作为容器编排神器的优势，提供了Windows、Mac、Linux全适配的安装指南，详细讲解了docker - compose.yml文件的编写，通过SpringBoot + Redis + Mysql项目实战给出避坑指南，还介绍了常用命令、高级玩法及常见报错解决方案。"
+    },
+    {
+     "title": "从入门到实战的完整 Docker Compose 教程",
+     "snippet": "本文系统讲解 Docker Compose 的核心概念、安装方法、docker-compose.yml 文件编写规范及常用命令，并通过三个递进式实战案例深入演示：Flask+Redis 计数器（基础服务编排）、Node.js+MongoDB+Mongo Express（卷持久化与健康检查）、Nginx+Sidecar 模拟 Kubernetes Pod 网络"
+    },
+    {
+     "title": "Docker Compose完整教程",
+     "snippet": "本教程全面介绍了Docker Compose，包括其概念、作用、安装方法，还讲解了YAML语法、docker-compose.yml文件配置、常用命令。通过多个实战案例展示应用，涵盖服务间通信、数据持久化、环境变量管理等内容，同时给出最佳实践和常见问题解决方案，助你提升开发和运维效率。"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "weibo_hot",
+   "query": "热搜",
+   "coverage": [
+    "chinese",
+    "hot",
+    "trending",
+    "realtime",
+    "social"
+   ],
+   "relevance_check_declared": false,
+   "results": [
+    {
+     "title": "一点点 威胁员工",
+     "snippet": "微博热搜 第1位 · 热度 3417088 · 沸"
+    },
+    {
+     "title": "知情人称南医大事件部分网传不属实",
+     "snippet": "微博热搜 第2位 · 热度 1787267 · 热"
+    },
+    {
+     "title": "公积金扩围撬动万亿消费新活力",
+     "snippet": "微博热搜 第3位 · 热度 1390604"
+    }
+   ],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "baidu_hot",
+   "query": "热搜",
+   "coverage": [
+    "chinese",
+    "hot",
+    "trending",
+    "realtime"
+   ],
+   "relevance_check_declared": false,
+   "results": [
+    {
+     "title": "用心用情服务群众 兢兢业业守护安宁",
+     "snippet": "百度热搜"
+    },
+    {
+     "title": "“全网最低价”为什么必须叫停",
+     "snippet": "百度热搜"
+    },
+    {
+     "title": "多国奥委会批评日本",
+     "snippet": "百度热搜"
+    }
+   ],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "zhihu_hot",
+   "query": "热榜",
+   "coverage": [
+    "chinese",
+    "hot",
+    "trending",
+    "realtime"
+   ],
+   "relevance_check_declared": false,
+   "results": [
+    {
+     "title": "南方医科大学疑有一名本博连读医学生坠亡，警方正跟进处理，具体情况如何？怎样看待背后折射的医学教育窘境？",
+     "snippet": "有媒体关注到，南方医科大学官网在9月9日发布《巡视公告》，广东省委第七巡视组正在南方医科大学开展工作。16日下午，巡视组工作人员告诉潇湘晨报·晨视频记者，他们今年负责巡视南方医科大学，主要针对该校党委班子成员及下一级主要党组织的主要负责人，对他们是否有违反六大纪律的情况进行巡视。 针对该校学生坠楼一事，工作人员称有关注到，“在不同平台我们也看到了各种说法，哪"
+    },
+    {
+     "title": "平陆运河正式通航，广西从此江海直连，这条设想了近百年的运河建设难度有多大？它能「带飞」中国西南吗？",
+     "snippet": "今天（9月16日）上午，西部陆海新通道骨干工程—— 平陆运河正式通航。 [图片] 平陆运河2022年8月28日开工建设，全长134.2公里，按内河Ⅰ级航道标准建设，可通航5000吨级船舶，是国内通航等级最高的运河。平陆运河北起南宁横州市西津库区平塘江口，南经钦州灵山县陆屋镇，沿钦江直通北部湾，全线建成马道、企石、青年三大梯级枢纽。 工程项目创造了四项“世界之"
+    },
+    {
+     "title": "华为高层被曝称核心并非拥有自研大模型，而是让任何大模型均能在昇腾、鲲鹏、超节点上高效运行，怎样解读？",
+     "snippet": "近日，华为心声社区对外披露华为监事会主席郭平与新员工座谈纪要。谈及人工智能时代的业务布局，郭平表示，华为将人工智能视为最大的机遇之一。华为在ICT及计算业务上的目标是成为“英伟达”，核心并非拥有自研大模型，而是支持客户构建优秀的大模型，让全球任何大模型均能在华为昇腾、鲲鹏、超节点及集群上高效运行。 这场座谈中，郭平还谈到了华为未来的业务边界、AI人才以及芯片"
+    }
+   ],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "ths_hot",
+   "query": "热点",
+   "coverage": [
+    "chinese",
+    "stock",
+    "hot",
+    "theme"
+   ],
+   "relevance_check_declared": false,
+   "results": [
+    {
+     "title": "宜宾纸业(600793) +0%",
+     "snippet": "题材: 醋酸纤维素+TAC膜+竹浆造纸+宜宾国资 | 换手0% | 成交额0.0亿"
+    },
+    {
+     "title": "依顿电子(603328) +0%",
+     "snippet": "题材: 高端PCB+AI算力+绵阳国资 | 换手0% | 成交额0.0亿"
+    },
+    {
+     "title": "威派格(603956) +0%",
+     "snippet": "题材: PCB钻针+智慧水务+AI应用 | 换手0% | 成交额0.0亿"
+    }
+   ],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "wallstreetcn",
+   "query": "美联储",
+   "coverage": [
+    "chinese",
+    "finance",
+    "news",
+    "telegraph"
+   ],
+   "relevance_check_declared": null,
+   "results": [],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "douyin_hot",
+   "query": "热点",
+   "coverage": [
+    "chinese",
+    "hot",
+    "trending",
+    "realtime",
+    "video"
+   ],
+   "relevance_check_declared": false,
+   "results": [
+    {
+     "title": "中国男篮淘汰沙特晋级亚运4强",
+     "snippet": "抖音热榜 第1位 · 热度 11719247"
+    },
+    {
+     "title": "赵家驹巨人之旅破纪录夺冠",
+     "snippet": "抖音热榜 第2位 · 热度 11542628"
+    },
+    {
+     "title": "3分钟读懂平陆运河如何通江达海",
+     "snippet": "抖音热榜 第3位 · 热度 11375300"
+    }
+   ],
+   "expected": {
+    "applicable": false,
+    "ok": true,
+    "hit_rate": null
+   }
+  },
+  {
+   "engine": "bilibili",
+   "query": "python 教程",
+   "coverage": [],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "【全748集】目前B站最全最细的Python零基础全套教程，2026最新版，包含所有干货！七天就能从小白到大神！少走99%的弯路！存下吧！很难找全的！",
+     "snippet": "【视频配套籽料、开发环境搭建安装包教程、电子书+问题解答请看 ”置顶平论” 自取哦】"
+    },
+    {
+     "title": "python零基础教程，Python入门到大神，AI人工智能必备",
+     "snippet": "【重磅开源】人工智能合集，硬核又免费，学员平均起薪超26K！"
+    },
+    {
+     "title": "【全500集】目前B站最全最细的Python+AI零基础全套教程（包含爬虫+数据分析），从入门到精通Python，学完即可就业！看完这一套Python教程就够了",
+     "snippet": "本套教程从零开始讲解，手把手教学，包含基础语法、进阶语法、爬虫、自动化办公、数据分析"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "imdb",
+   "query": "Inception",
+   "coverage": [
+    "film",
+    "movie",
+    "tv",
+    "media"
+   ],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "Inception",
+     "snippet": "2014 · short · Erfan Refahatnia, Danial Hajibarat"
+    },
+    {
+     "title": "Inception",
+     "snippet": "2010 · feature · Leonardo DiCaprio, Joseph Gordon-Levitt"
+    },
+    {
+     "title": "Inception",
+     "snippet": "feature"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  },
+  {
+   "engine": "train",
+   "query": "北京到上海",
+   "coverage": [],
+   "relevance_check_declared": null,
+   "results": [
+    {
+     "title": "G547 北京南 06:18→上海虹桥 12:11",
+     "snippet": "历时 5h53m · 商务/特等 15 · 一等 有 · 二等 有 · 无座 有 · 可购"
+    },
+    {
+     "title": "G1 北京南 06:30→上海虹桥 11:24",
+     "snippet": "历时 4h54m · 商务/特等 17 · 一等 有 · 二等 有 · 无座 有 · 可购"
+    },
+    {
+     "title": "G3 北京南 06:52→上海 11:33",
+     "snippet": "历时 4h41m · 商务/特等 15 · 一等 无 · 二等 有 · 无座 有 · 可购"
+    }
+   ],
+   "expected": {
+    "applicable": true,
+    "ok": true,
+    "hit_rate": 1.0
+   }
+  }
+ ]
+}

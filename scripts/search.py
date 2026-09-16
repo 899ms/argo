@@ -1147,6 +1147,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         breaker = None
 
     t0 = time.time()
+    # 单调钟基准：预算窗不随 NTP 跳变失真（engine_dispatch 整套换钟，见其垫片注释）
+    t0_mono = time.monotonic()
     _tk_dispatch = _tick(timing)
     # 配额批次在这里建、在融合后的 D6 补搜之后才 flush：中间所有 _ingest
     # （含补搜）都要记进同一批，提前 flush 会让补搜引擎的记账落不了盘。
@@ -1162,7 +1164,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         domain=domain, mode=mode, depth=depth,
         max_results=max_results, timeout=timeout, net_timeout=_eff_timeout,
         skip_cache=skip_cache, cache=cache, breaker=breaker,
-        since_iso=since_iso, until_iso=until_iso, t0=t0,
+        since_iso=since_iso, until_iso=until_iso, t0=t0, t0_mono=t0_mono,
         engine_search=engine_search,
         get_engines_fn=get_engines,
         get_execution_config_fn=get_execution_config,
@@ -1180,6 +1182,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     engine_latency = _dispatch.engine_latency
     wasted_ms = _dispatch.wasted_ms
     early_stopped = _dispatch.early_stopped
+    budget_used_ms = _dispatch.budget_used_ms
+    budget_total_ms = _dispatch.budget_total_ms
     # 融合后的 D6 补搜要用同一套「跑单引擎 + 入账」，钩子由此取回
     _run_one = _dispatch.run_one
     _ingest = _dispatch.ingest
@@ -1636,6 +1640,11 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             "wasted_ms": wasted_ms,
             "early_stopped": early_stopped,
         }
+        if budget_total_ms is not None:
+            # 预算消耗额：fast/auto 有总预算，deep 无（键缺席即「无预算」）。
+            # timing 在 agent 档保留，预算可见性随答案一起到达。
+            out["timing"]["budget"] = {"used_ms": budget_used_ms,
+                                       "total_ms": budget_total_ms}
     return out
 
 
@@ -2366,17 +2375,26 @@ def main():
 
     if args.list_engines:
         # --engine 兼作清单过滤（`--engine auto` 是搜索默认值，不算过滤）。
-        # 全量详细行实测约 22 KB（2026-09-13 复测；此前误记 186 KB），Agent 查单个引擎状态时不该付这个
-        # 代价——实测此前 `--list-engines --detail --engine egov_law` 忽略过滤、
-        # 照样吐全量。
+        # 全量详细行 2026-09-16 实测 151 KB（runtime/admission 嵌套是大头），
+        # Agent 查单个引擎状态时不该付这个代价——实测此前
+        # `--list-engines --detail --engine egov_law` 忽略过滤、照样吐全量。
+        # 现无过滤时走 compact_engine_row 瘦身（~1/4 体积），有过滤给全量。
         _wanted = None
         if args.engine and args.engine != "auto":
             _wanted = [e.strip() for e in args.engine.split(",") if e.strip()] or None
         if args.detail:
             try:
-                from engine_status import list_engines_detail, format_engines_table
+                from engine_status import (list_engines_detail,
+                                           compact_engine_row,
+                                           format_engines_table)
                 rows = list_engines_detail(routable_only=args.routable_only,
                                            engines=_wanted)
+                if not _wanted:
+                    # 全量转储 2026-09-16 实测 151 KB（≈50k token），Agent 一旦
+                    # 拉进上下文就是事故；全量清单要回答的只是「哪些源可用/
+                    # 为什么不可用」，瘦身投影（~1/4 体积）足够。单引擎全量
+                    # 诊断（admission/runtime）用 --engine 过滤后拿完整行。
+                    rows = [compact_engine_row(r) for r in rows]
                 if _wanted:
                     # 未命中的名字要显式报出（走 stderr，保持 stdout 是纯 JSON）——
                     # 否则「查了没输出」会被误读成「该引擎状态为空」。

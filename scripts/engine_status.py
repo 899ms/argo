@@ -193,6 +193,45 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
     }
 
 
+def compact_engine_row(row: dict[str, Any]) -> dict[str, Any]:
+    """全量清单的瘦身投影：剥掉嵌套转储（runtime/admission），留判定面。
+
+    为什么要压缩：--list-engines --detail 不带过滤是 232 行 × 全字段的
+    诊断转储，实测 151 KB（runtime 24% + admission 7% 是大头）——Agent
+    一旦把它拉进上下文就是 ~50k token。而全量清单要回答的通常只有
+    「哪些源可用/为什么不可用」，判定只需要标量旗标 + 条件性细节：
+    failure/配额原因/缺 env 缺依赖在**非空时**才出现，健康源一行 ~150B。
+    要单引擎的全量诊断（含 admission 里程碑、runtime 学习分），用
+    `--engine <名>` 过滤后拿完整行——按需付全量的代价。
+
+    降级契约：本函数只做「删键」，不改任何值；未来新增顶层字段默认
+    不进瘦身面（显式登记才带），宁可瘦也不要悄悄膨胀。
+    """
+    slim: dict[str, Any] = {
+        "engine_id": row.get("engine_id"),
+        "enabled": row.get("enabled"),
+        "type": row.get("type"),
+        "cost_tier": row.get("cost_tier"),
+        "status": row.get("status"),
+        "explicit_only": row.get("explicit_only"),
+        "env_ready": row.get("env_ready"),
+        "routable": row.get("routable"),
+        "quota_exhausted": row.get("quota_exhausted"),
+        "dep_ready": row.get("dep_ready"),
+    }
+    # 条件性细节：非空才出现（健康源不带这些键，输出不随异常源膨胀）
+    for key in ("missing_env", "missing_deps"):
+        if row.get(key):
+            slim[key] = row[key]
+    if row.get("quota_exhausted") and row.get("quota_exhausted_reason"):
+        slim["quota_exhausted_reason"] = row["quota_exhausted_reason"]
+    failure = (row.get("runtime") or {}).get("failure") or {}
+    if failure:
+        slim["failure"] = {"category": failure.get("category"),
+                           "evidence": failure.get("evidence")}
+    return slim
+
+
 def list_engines_detail(
     *,
     routable_only: bool = False,
@@ -201,9 +240,10 @@ def list_engines_detail(
 ) -> list[dict[str, Any]]:
     """引擎详细状态行。
 
-    engines：只保留这些 engine_id（None = 全量）。单引擎的详细行约 0.9 KB，
-    全量 216 个约 22 KB（2026-09-13 实测 22,365B，曾误记 186 KB）——`--list-engines --detail` 不带过滤时是诊断转储，
-    调用方（尤其 Agent）应按需过滤，别把全量拉进上下文。
+    engines：只保留这些 engine_id（None = 全量）。单引擎的详细行约 0.9 KB；
+    全量诊断转储 2026-09-16 实测 151 KB（runtime 24% + admission 7% 是大头，
+    此前误记 22 KB）——CLI 在不带 `--engine` 过滤时改出 compact_engine_row
+    瘦身投影（约 1/4 体积），要全量就按引擎过滤，别把转储拉进上下文。
     """
     wanted = set(engines) if engines else None
     cfg = load_config()

@@ -112,13 +112,20 @@ class DispatchResult:
     `run_one` / `ingest` 必须外露：macro_data 域的 D6 证据下限补搜在融合之后，
     它要跑单个引擎并把结果并进同一份账（raw_results / engine_outcomes /
     engine_latency / wasted 计数），另起一份会让 engines_used 与配额记账对不上。
+
+    `budget_used_ms` / `budget_total_ms`：本次编排的实际墙钟消耗与总预算
+    （deep 等无预算模式 total 为 None）。搜索输出把它挂进 timing.budget，
+    让「这次离预算上限还有多远」可观测，而不必反推 process_ms。
+
     """
 
     __slots__ = ("raw_results", "engine_outcomes", "engine_latency",
-                 "wasted_ms", "early_stopped", "run_one", "ingest")
+                 "wasted_ms", "early_stopped", "run_one", "ingest",
+                 "budget_used_ms", "budget_total_ms")
 
     def __init__(self, raw_results, engine_outcomes, engine_latency,
-                 wasted_ms, early_stopped, run_one, ingest) -> None:
+                 wasted_ms, early_stopped, run_one, ingest,
+                 budget_used_ms=None, budget_total_ms=None) -> None:
         self.raw_results = raw_results
         self.engine_outcomes = engine_outcomes
         self.engine_latency = engine_latency
@@ -126,6 +133,8 @@ class DispatchResult:
         self.early_stopped = early_stopped
         self.run_one = run_one
         self.ingest = ingest
+        self.budget_used_ms = budget_used_ms
+        self.budget_total_ms = budget_total_ms
 
 
 def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
@@ -135,6 +144,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                  skip_cache: bool, cache: Any, breaker: Any,
                  since_iso: str | None, until_iso: str | None,
                  t0: float,
+                 t0_mono: float | None = None,
                  engine_search: Callable,
                  get_engines_fn: Callable,
                  get_execution_config_fn: Callable,
@@ -211,11 +221,11 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         _eng_budget = _budget_cfg
         if mode == "fast":
             _eng_budget = min(_eng_budget, fast_budget_s)
-        _t_eng_start = time.time()
+        _t_eng_start = _now()
 
         last_result: list[dict[str, Any]] = []
         for _attempt in range(retries + 1):
-            _remain = _eng_budget - (time.time() - _t_eng_start)
+            _remain = _eng_budget - (_now() - _t_eng_start)
             # 只跳过**后续**尝试。首次必须发出：若因预算小而整段跳过，
             # 引擎的 outcome 会从 timeout 变成 no-results —— 语义从「慢」
             # 变成「没尝试」，会破坏既有 fast 预算测试的契约
@@ -235,7 +245,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                 return last_result
         # 慢源（retries=0，超时即弃）不再用 balanced 补跑，避免超时场景双倍耗时
         if retries > 0 and depth != "balanced":
-            _remain = _eng_budget - (time.time() - _t_eng_start)
+            _remain = _eng_budget - (_now() - _t_eng_start)
             if _remain > 0.5:
                 last_result = engine_search(
                     retrieval_query, eng, n=max_results,
@@ -248,14 +258,14 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
     def _run_one(eng: str) -> tuple[str, list[dict[str, Any]], dict[str, Any], int]:
         """单引擎：缺 env → 负缓存 → 熔断 → per-engine 缓存 → 网络。"""
         from engines_base import pop_failure_note
-        t_eng = time.time()
+        t_eng = _now()
 
         # 缺环境变量前置拦截：把「静默 no-results」变成可行动的 error。
         # 显式 engine= 覆盖会绕过路由的 env 过滤（zhihu/exa 未配密钥时曾
         # 返回空列表，用户无法区分「没结果」和「没配置」）。
         missing_env = missing_env_for(eng)
         if missing_env:
-            lat = int((time.time() - t_eng) * 1000)
+            lat = int((_now() - t_eng) * 1000)
             outcome = classify_outcome(
                 eng, [], lat, status_hint="skipped-missing-env")
             outcome["detail"] = (
@@ -270,13 +280,13 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         if breaker is not None:
             allowed, reason = breaker.allow(eng)
             if not allowed:
-                lat = int((time.time() - t_eng) * 1000)
+                lat = int((_now() - t_eng) * 1000)
                 outcome = classify_outcome(eng, [], lat, status_hint="skipped-circuit-open")
                 outcome["detail"] = reason
                 return eng, [], outcome, lat
             neg = breaker.get_negative(query, eng)
             if neg:
-                lat = int((time.time() - t_eng) * 1000)
+                lat = int((_now() - t_eng) * 1000)
                 outcome = classify_outcome(
                     eng, [], lat, status_hint="no-results-cached",
                 )
@@ -290,7 +300,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                 since=eng_since, until=eng_until,
             )
             if eng_hit is not None:
-                lat = int((time.time() - t_eng) * 1000)
+                lat = int((_now() - t_eng) * 1000)
                 # 标记缓存来源
                 for r in eng_hit:
                     if isinstance(r, dict):
@@ -334,7 +344,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
             res = _exec_engine(eng, eff_timeout=eff_to)
         except Exception as e:
             res = [{"error": str(e), "source": eng}]
-        lat = int((time.time() - t_eng) * 1000)
+        lat = int((_now() - t_eng) * 1000)
         for r in res:
             if isinstance(r, dict):
                 r.setdefault("_engine", eng)
@@ -430,6 +440,12 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
     # 配额批次的构造在调用方：flush 必须发生在**最后一个 _ingest 之后**，
     # 而那个点在融合后的 D6 补搜里（本模块之外）。在这里另建一个实例，
     # 调用方 flush 到的就是空批次——补搜引擎的记账永远落不了盘。
+    # 预算与延迟统一走调用方选定的钟：传 t0_mono（单调钟）时整套换
+    # time.monotonic——墙钟会被 NTP 跳变拉扯，预算窗随之失真；不传时保持
+    # wall _now()，与既有调用方/测试逐位兼容。垫片必须是**整套**换：
+    # deadline 基准与所有 now 采样混用两种钟，预算判断就是废纸。
+    _now = time.monotonic if t0_mono is not None else time.time
+    _budget_base = t0_mono if t0_mono is not None else t0
     early_stopped = False
     to_run = list(engines)
     # deep 模式全量并行；fast/auto/budget 可渐进 early-stop
@@ -440,14 +456,14 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
     budget_s = {"fast": fast_budget_s,
                  "auto": auto_budget_s,
                  "budget": auto_budget_s}.get(mode)
-    _deadline = t0 + (budget_s if budget_s is not None else float("inf"))
+    _deadline = _budget_base + (budget_s if budget_s is not None else float("inf"))
 
     early_min = decision.get("early_stop_min_results")
     no_early = bool(decision.get("no_early_stop", False))
 
     def _daemon_start(eng: str):
         """daemon 线程跑 _run_one：弃置线程不阻塞进程退出。"""
-        holder: dict[str, Any] = {"t0": time.time()}
+        holder: dict[str, Any] = {"t0": _now()}
 
         def _work() -> None:
             try:
@@ -480,7 +496,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         恰在末次轮询后完成的照常入账——否则它既不 ingest 也不标 timeout，
         结果会悄悄丢掉。latency 用真实等待时长（原 timeout 参数×1000 是假值）。"""
         for holder, th, eng in pending:
-            lat_ms = int((time.time() - holder.get("t0", time.time())) * 1000)
+            lat_ms = int((_now() - holder.get("t0", _now())) * 1000)
             if th.is_alive():
                 raw_results[eng] = [{"error": "timeout", "source": eng}]
                 engine_outcomes.append(classify_outcome(
@@ -505,8 +521,8 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
             return False
         queue = list(engs)
         pending: list[tuple[dict[str, Any], Any, str]] = []
-        deadline = time.time() + max(0.0, wait_s)
-        while (queue or pending) and time.time() < deadline:
+        deadline = _now() + max(0.0, wait_s)
+        while (queue or pending) and _now() < deadline:
             while queue and len(pending) < 3:
                 eng = queue.pop(0)
                 holder, th = _daemon_start(eng)
@@ -528,7 +544,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                 # 自适应轮询间隔：剩余时间充裕时多睡，快到期时少睡。
                 # 固定 20ms 在尾部会浪费时间（实测最多浪费 20ms），
                 # 自适应后平均等待时长降至 5-8ms。
-                remain = deadline - time.time()
+                remain = deadline - _now()
                 time.sleep(min(0.02, remain / 10) if remain > 0 else 0.005)
         _settle_pending(pending)
         return False
@@ -549,8 +565,8 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         # 进程退出 join，修掉原 race shutdown(wait=False) 的「函数内快、进程级
         # 假快」——CLI 单发真省墙钟。质量仍由充分性判定 + 覆盖守卫把关。
         grace = max(0.3, min(primary_grace_s, net_timeout * 0.25))
-        if time.time() + grace > _deadline:
-            grace = max(0.0, _deadline - time.time())
+        if _now() + grace > _deadline:
+            grace = max(0.0, _deadline - _now())
 
         # (helper _daemon_start / _ingest_holder / _holder_goods / _settle_pending
         #  / _run_engines_bounded 定义在本分支之前，wave-1 与 wave-2 共用一套
@@ -572,9 +588,9 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                 bh, bt = _daemon_start(backup[0])
                 pending = [(ph, pt, primary), (bh, bt, backup[0])]
                 _race_wait = min(net_timeout + 2,
-                                 max(0.1, _deadline - time.time()))
-                _race_deadline = time.time() + _race_wait
-                while pending and time.time() < _race_deadline:
+                                 max(0.1, _deadline - _now()))
+                _race_deadline = _now() + _race_wait
+                while pending and _now() < _race_deadline:
                     progressed = False
                     for (holder, th, eng) in list(pending):
                         if th.is_alive():
@@ -591,14 +607,14 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                         break
                     if not progressed:
                         # 自适应轮询间隔（同 _run_engines_bounded）
-                        remain = _race_deadline - time.time()
+                        remain = _race_deadline - _now()
                         time.sleep(min(0.02, remain / 10) if remain > 0 else 0.005)
                 # 超时/弃置：仍活线程标记 timeout（daemon 自行结束，不阻塞
                 # 退出）；恰在末次轮询后完成的线程照常入账——此前它既不
                 # ingest 也不标 timeout，结果静默丢失。latency 记账用真实
                 # 等待时长（原 timeout 参数×1000 是假值，污染遥测）
                 for (holder, th, eng) in pending:
-                    lat_ms = int((time.time() - holder.get("t0", t0)) * 1000)
+                    lat_ms = int((_now() - holder.get("t0", _budget_base)) * 1000)
                     if th.is_alive():
                         raw_results[eng] = [{"error": "timeout", "source": eng}]
                         engine_outcomes.append(classify_outcome(
@@ -607,12 +623,12 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                     else:
                         _ingest_holder(holder)
         if (not early_stopped and rest
-                and not (budget_s is not None and time.time() >= _deadline)):
-            # 预算检查（与串行路径 `time.time() >= _deadline` 同语义）：
+                and not (budget_s is not None and _now() >= _deadline)):
+            # 预算检查（与串行路径 `_now() >= _deadline` 同语义）：
             # deadline 已过不再起新引擎；等待窗口也不越过 deadline——
             # 「总墙钟预算」对并行路径同样成立
             w2_wait = min(net_timeout + 2,
-                          max(0.1, _deadline - time.time()))
+                          max(0.1, _deadline - _now()))
             if _run_engines_bounded(rest, w2_wait, check_sufficient=True):
                 early_stopped = True
     elif parallel and to_run:
@@ -621,7 +637,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         # no_early_stop 域在串行路径同样生效：平台引擎「有结果」不等于「结果可用」，
         # fast 模式 parallel=False 必走本分支，此前曾在此被噪声结果短路
         for eng in to_run:
-            if time.time() >= _deadline:
+            if _now() >= _deadline:
                 break  # fast 预算耗尽：止损不再起新引擎
             e, res, outcome, lat = _run_one(eng)
             _ingest(e, res, outcome, lat)
@@ -641,7 +657,10 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
 
 
 
+    budget_total_ms = int(budget_s * 1000) if budget_s is not None else None
     return DispatchResult(
         raw_results, engine_outcomes, engine_latency,
         nonlocal_wasted[0], early_stopped, _run_one, _ingest,
+        budget_used_ms=int((_now() - _budget_base) * 1000),
+        budget_total_ms=budget_total_ms,
     )

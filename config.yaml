@@ -2711,6 +2711,8 @@ engines:
     - telegraph
     - realtime
     desc: 财联社电报（全市场实时快讯，v1 API+本地签名零key）
+    # 快讯流数据源：回答的是电报列表而非与查询词面匹配的文档（同热榜类豁免）
+    relevance_check: false
     timeout: 10
     type: cls_telegraph
   em_global_news:
@@ -4685,6 +4687,8 @@ engines:
     - weather
     - realtime
     desc: 中国天气网城市实况（城市联想取 cityid → sk JSON，免认证，两步）
+    # 数据型源：回答的是天气数据而非与查询词面匹配的文档（同 weather 豁免）
+    relevance_check: false
     # 准入校验用查询：本引擎按城市名查询，通用探针词取不到 cityid，会被判 empty。
     canary_query: 上海天气
     quality_queries:

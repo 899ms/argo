@@ -359,3 +359,60 @@ class TestStdoutJsonIsCompact(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestListEnginesCompactProjection:
+    """全量 detail 的瘦身投影（2026-09-16）：152 KB → ~51 KB。
+
+    守的缺陷：--list-engines --detail 不带过滤是 232 行全字段转储，
+    runtime/admission 嵌套占三成，Agent 拉进上下文就是 ~50k token 事故。
+    契约：① 瘦身面只删键不改值，判定旗标一个不少；② failure/配额原因/
+    缺依赖条件性出现（健康源不带）；③ 压缩后全量体积封顶。
+    """
+
+    def _rows(self):
+        from engine_status import list_engines_detail
+        return list_engines_detail()
+
+    def test_healthy_row_is_minimal(self):
+        from engine_status import compact_engine_row
+        slim = compact_engine_row({
+            "engine_id": "x", "enabled": True, "type": "http",
+            "cost_tier": "free", "status": "ready", "explicit_only": False,
+            "env_ready": True, "required_env": [], "missing_env": [],
+            "allowed_by_env": True, "blocked": False, "admitted": True,
+            "routable": True, "quota_exhausted": False,
+            "quota_exhausted_until": None, "quota_exhausted_reason": "",
+            "dep_ready": True, "requires": [], "missing_deps": [],
+            "dep_fixes": [], "admission": {"quality_score": 1.0},
+            "runtime": {"adaptive": 0.5, "failure": None},
+        })
+        assert "admission" not in slim and "runtime" not in slim
+        assert "missing_env" not in slim and "missing_deps" not in slim
+        assert slim["status"] == "ready" and slim["routable"] is True
+
+    def test_failure_details_conditional(self):
+        from engine_status import compact_engine_row
+        slim = compact_engine_row({
+            "engine_id": "x", "enabled": True, "type": "http",
+            "cost_tier": "free", "status": "blocked", "explicit_only": False,
+            "env_ready": True, "missing_env": ["SOME_KEY"],
+            "allowed_by_env": True, "blocked": True, "admitted": False,
+            "routable": False, "quota_exhausted": True,
+            "quota_exhausted_reason": "quota exhausted",
+            "dep_ready": True, "missing_deps": ["yt-dlp"],
+            "runtime": {"failure": {"category": "blocked",
+                                    "evidence": "cf challenge"}},
+        })
+        assert slim["missing_env"] == ["SOME_KEY"]
+        assert slim["failure"]["category"] == "blocked"
+        assert slim["quota_exhausted_reason"] == "quota exhausted"
+
+    def test_compact_dump_size_capped(self):
+        """压缩后全量体积封顶：投影再膨胀说明有字段忘了登记。"""
+        import json
+        from engine_status import compact_engine_row
+        rows = self._rows()
+        total = sum(len(json.dumps(compact_engine_row(r), ensure_ascii=False))
+                    for r in rows)
+        assert total < 64 * 1024, f"瘦身全量超 64KB：{total}B（检查投影字段集）"
