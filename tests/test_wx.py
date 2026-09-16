@@ -9,7 +9,7 @@
   - config.yaml weather_query 域 combo 追加 weather（qweather 需 Key，本引擎补免 Key 通道）
 
 覆盖：spec 注册、family/dedupe 存活、域路由接线、wx.py 解析逻辑
-（wttr.in 主路径 / Open-Meteo 兜底 / 查询词清洗）、cli 引擎全链路。
+（wttr.in 主路径 / Open-Meteo 保底 / 查询词清洗）、cli 引擎全链路。
 全程 mock 网络层，离线必过（ARGO_LIVE=1 时追加真实调用冒烟）。
 """
 
@@ -36,7 +36,7 @@ from config import load_config, get_engines  # noqa: E402
 
 LIVE = os.environ.get("ARGO_LIVE", "").strip() in {"1", "true", "yes"}
 
-# ── wttr.in 真实响应结构样例（取自在线抓包，字段名逐一对齐） ────────────────
+# ── wttr.in 真实响应结构样例（取自在线抓包，字段名逐一保持一致） ────────────────
 
 WTTR_SAMPLE = {
     "current_condition": [

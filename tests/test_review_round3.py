@@ -48,7 +48,7 @@ class TestLangAwareComboOrder(unittest.TestCase):
         self.assertLess(out.index("zhihu"), out.index("hackernews"))
 
     def test_ratio_fallback_still_works_without_primary_lang(self):
-        # primary_lang 缺失（旧调用方）时 ratio 兜底仍生效
+        # primary_lang 缺失（旧调用方）时 ratio 保底仍生效
         features = {"chinese_ratio": 0.8}
         out = self._order(features, ["zhihu", "hackernews"])
         self.assertLess(out.index("zhihu"), out.index("hackernews"))
@@ -92,7 +92,7 @@ class TestUnknownToolShape(unittest.TestCase):
 
 
 class TestHandlerClamps(unittest.TestCase):
-    """长尾工具边界夹取与 schema 同口径。"""
+    """长尾工具边界夹取与 schema 同计算方式。"""
 
     def test_clamp_int(self):
         from mcp_handlers import _clamp_int
@@ -164,7 +164,7 @@ class TestDomainFilter(unittest.TestCase):
 
 
 class TestNativeToolsSyncGate(unittest.TestCase):
-    """native-tools.mjs 由 gen_native_tools.py 生成，漂移门禁必须生效。"""
+    """native-tools.mjs 由 gen_native_tools.py 生成，漂移检查必须生效。"""
 
     def test_gen_check_passes(self):
         import subprocess

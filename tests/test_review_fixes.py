@@ -4,10 +4,10 @@
 覆盖：
   - tinyfish 渲染层畸形 payload 不抛异常（success=False 契约）
   - quota 残缺 remote_exhausted 状态自愈（get_stats / is_remote_exhausted 不崩）
-  - quota 跨进程 clear_remote_exhausted 热读（HotFile 基线对齐）
+  - quota 跨进程 clear_remote_exhausted 热读（HotFile 基线保持一致）
   - engines_base 封套 Code=200 成功码不误判
   - route 域编译指纹改正则不改条数时失效
-  - job.sort_jobs 单一排序真源
+  - job.sort_jobs 单一排序来源
 """
 
 import json
@@ -96,7 +96,7 @@ class TestQuotaCorruptMark(unittest.TestCase):
 
 
 class TestQuotaCrossProcessClear(unittest.TestCase):
-    """跨进程 clear：HotFile 基线须与 init 加载的内存态对齐。"""
+    """跨进程 clear：HotFile 基线须与 init 加载的内存态保持一致。"""
 
     def test_clear_after_other_process_marks(self):
         import quota

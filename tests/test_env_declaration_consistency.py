@@ -19,7 +19,7 @@ required_env**。后果是状态机报 `ready` / `routable=True`，路由会选�
 把「builder 读取的密钥」与「spec 声明/别名表」做一致性核对。
 新增 builder 若忘记声明密钥，会在这里被拦下——而不是等用户发现状态说谎。
 
-判定口径（任一满足即认为已覆盖）：
+判定计算方式（任一满足即认为已覆盖）：
   a) spec.required_env 中声明（直接或别名形式）
   b) KNOWN_ENV_ALIASES 覆盖该 engine_id
 """

@@ -63,7 +63,7 @@ def _fake_urlopen(payload, status=200):
 
 
 def _isolate_envfile(monkeypatch):
-    """屏蔽真实 ~/.config/argo/env：engine_env.get_env 会热读该文件兜底，
+    """屏蔽真实 ~/.config/argo/env：engine_env.get_env 会热读该文件保底，
     不隔离则本机配了 TINYFISH_API_KEY 时 delenv 检查失效（环境依赖测试）。"""
     import engine_env
     monkeypatch.setattr(engine_env, "_envfile_paths",
@@ -330,7 +330,7 @@ def test_detect_page_type_list_needs_url_and_links():
 
 
 def test_detect_page_type_matches_content_signals():
-    """两套实现已合并：fetch_v3 结果必须等于 content_signals 单一真源。"""
+    """两套实现已合并：fetch_v3 结果必须等于 content_signals 唯一来源。"""
     import content_signals
     from fetch_quality import _detect_page_type
     samples = [

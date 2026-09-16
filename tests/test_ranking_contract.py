@@ -126,7 +126,7 @@ class TestNoFusionSignalEquivalence:
 
 
 class TestRrfMergeKeyUniqueness:
-    """回归：`__idx__` 兜底键必须带列表身份，否则跨引擎相撞。"""
+    """回归：`__idx__` 保底键必须带列表身份，否则跨引擎相撞。"""
 
     def test_distinct_untitled_results_not_merged(self):
         from search import rrf_merge

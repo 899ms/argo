@@ -4,7 +4,7 @@
 覆盖：
   - ARGO_FETCH_DEADLINE_S 预算耗尽 → 停链 + deadline_exhausted 标记
   - ARGO_FETCH_DEADLINE_S=0 → 关闭约束（旧行为）
-  - tinyfish 短内容成功响应不再短路 Chrome（内容质量降级链闭环）
+  - tinyfish 短内容成功响应不再短路 Chrome（内容质量降级链完整链路）
 """
 
 import os
@@ -98,7 +98,7 @@ def test_deadline_zero_disables(chain_env, monkeypatch):
 
 
 def test_tinyfish_short_content_falls_through_to_browser(chain_env, monkeypatch):
-    """tinyfish 返回 success 但内容 <100 字：不得短路 Chrome（降级链质量闭环）。"""
+    """tinyfish 返回 success 但内容 <100 字：不得短路 Chrome（降级链质量完整链路）。"""
     monkeypatch.setenv("ARGO_FETCH_TINYFISH", "1")
     monkeypatch.setenv("ARGO_FETCH_IMPERSONATE", "0")
     monkeypatch.setenv("ARGO_FETCH_MOBILE", "0")

@@ -330,7 +330,7 @@ class TestCircuitBreaker(unittest.TestCase):
         """empty（查询无结果）是查询级信号，不累计 opens → 永不 auto-disable。
 
         回归：local_search 聚合器曾因子源瞬态错误被扁平化为 empty，opens 累计
-        到阈值后被静默禁用，导致零成本本地路径被 anysearch 兜底顶替。
+        到阈值后被静默禁用，导致零成本本地路径被 anysearch 保底顶替。
         """
         from circuit_breaker import CircuitBreaker, OPEN_SECONDS, DISABLE_AFTER_OPENS
         cb = CircuitBreaker(state_path=os.path.join(tempfile.mkdtemp(), "cb.json"))
@@ -456,7 +456,7 @@ class TestLocalSearchHealthCheck(unittest.TestCase):
 
 
 class TestLocalSearchSmartRouter(unittest.TestCase):
-    """路由映射规则：检查与引擎「此刻是否可达」解耦。
+    """路由映射规则：检查与引擎「此刻是否可达」拆开。
 
     前三条此前用默认 require_available=True，于是读本地健康缓存
     （local_search_health.json）——arXiv 一被墙 / ratelimit 一次，路由就跳过

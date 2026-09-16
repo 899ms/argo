@@ -37,8 +37,8 @@ from research_gates import evaluate_dossier_gates
 # ── 子查询语言/领域分发（2026-09-07）─────────────────────────────────────
 # 中英混合研究的英文子查询此前只吃 profile 通用组合，英文源基本不参与
 # （实测 11 引擎仅 2 个有结果）。boosts 是加法不替换：语言源前置，profile
-# 组合殿后。与 route 语言表同口径；学术顺序按 references/academic-query.md
-# §2 协议（S2 起步 → arXiv 补预印本 → openalex/crossref 结构化 → GS 兜底）。
+# 组合殿后。与 route 语言表同计算方式；学术顺序按 references/academic-query.md
+# §2 协议（S2 起步 → arXiv 补预印本 → openalex/crossref 结构化 → GS 保底）。
 _RESEARCH_EN_BOOSTS: tuple[str, ...] = ("octen", "anysearch", "github", "exa")
 _RESEARCH_JA_KO_BOOSTS: tuple[str, ...] = ("anysearch", "local_bing")
 _RESEARCH_ACADEMIC_BOOSTS: tuple[str, ...] = (

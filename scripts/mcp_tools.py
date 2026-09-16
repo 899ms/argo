@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mcp_tools.py — MCP 工具 schema 唯一真源（P2-4 拆分自 mcp_server.py）。
+"""mcp_tools.py — MCP 工具 schema 唯一来源（P2-4 拆分自 mcp_server.py）。
 
 14 个工具的 inputSchema 只在本模块维护；mcp_transport 的 tools/list 与
 mcp_server 的兼容导出均从本模块取。改 schema 只动这一个文件。

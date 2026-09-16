@@ -1094,8 +1094,8 @@ def _build_zhihu_global_engine(spec: dict[str, Any]) -> Any:
                 data = json.loads(resp.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
             # 401/403 等必须暴露为 error item 而非静默空——调用侧把
-            # 「没配置」「鉴权失败」「没结果」区分开才可行动（对齐
-            # social_engines/zhihu_engine.py 同接口的口径）
+            # 「没配置」「鉴权失败」「没结果」区分开才可行动（保持一致
+            # social_engines/zhihu_engine.py 同接口的计算方式）
             return [{"error": f"zhihu_global API HTTP {e.code}", "source": "zhihu_global"}]
         except Exception as e:
             logger.warning(f"zhihu_global 失败: {e}")

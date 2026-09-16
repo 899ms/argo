@@ -327,7 +327,7 @@ class ContentScrubber:
 
     语言感知：先用 lang_detect.detect_language 判定内容主语言，
     按语系合并注入模式（英语通用 + 该语系专有），避免对全语系
-    全量扫描（低误报、高性能），与 argo 多语言路由对齐。
+    全量扫描（低误报、高性能），与 argo 多语言路由保持一致。
     """
 
     def scrub(self, content: str) -> ScrubResult:

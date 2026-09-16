@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""macro_countries 的国家词判定 + 路由层的导入隔离回归护栏。
+"""macro_countries 的国家词判定 + 路由层的导入隔离回归防护。
 
 ## 为什么需要它
 
@@ -74,7 +74,7 @@ class TestForeignMacroQuery:
             "从这些查询里错误排除")
 
     def test_wildcard_regions_still_yield(self, mc):
-        """世界/全球口径：worldbank 同样覆盖，保持既有让位行为不变。"""
+        """世界/全球计算方式：worldbank 同样覆盖，保持既有让位行为不变。"""
         for q in ("world bank data", "global inflation", "欧元区 通胀"):
             assert mc.is_foreign_macro_query(q) is True, q
 

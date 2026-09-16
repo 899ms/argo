@@ -27,10 +27,10 @@
 
   L1 精确倒排       查询词元 ∩ 节点名            conf=1.0  零 API
   L2 同义/中英扩展   复用 argo query_synonyms_cn  conf=0.8  零 API
-  L3 header 语义兜底 L1/L2 全空时在描述里找词     conf=0.5  零 API
+  L3 header 语义保底 L1/L2 全空时在描述里找词     conf=0.5  零 API
 
 三层全空 = 该查询在 V2EX 确无对应资源，**诚实返回空**，由调用方降级到
-hot/latest 兜底（而不是伪造结果）。
+hot/latest 保底（而不是伪造结果）。
 
 ## 成本
 
@@ -115,7 +115,7 @@ def _save_nodes(nodes: list[dict]) -> None:
         return
     p = _cache_path()
     try:
-        # 原子写走单一真源（唯一 tmp 名）——旧实现固定 `.tmp` 名，
+        # 原子写走唯一来源（唯一 tmp 名）——旧实现固定 `.tmp` 名，
         # 并发进程互相搬走临时文件导致写失败。
         import argo_paths as _paths
         _paths.atomic_write_json(p, {"nodes": nodes}, indent=None)
@@ -276,7 +276,7 @@ def pick_nodes(query: str, *, top_k: int = DEFAULT_TOP_K,
             return {"nodes": [n for n, _ in ranked[:top_k]], "confidence": 0.7,
                     "layer": "cn_title", "scores": dict(ranked[:top_k])}
 
-    # ── L3 header 语义兜底（低置信）────────────────────────────────────
+    # ── L3 header 语义保底（低置信）────────────────────────────────────
     # 只在描述文本里找词；要求词长 ≥4 以免通用短词误命中
     probe = {t for t in (terms | _expand_synonyms(q)) if len(t) >= 4}
     if probe:

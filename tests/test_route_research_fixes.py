@@ -146,7 +146,7 @@ class TestMacroDataWorldbankPriority(unittest.TestCase):
             )
 
     def test_china_macro_query_prefers_nbs_stats(self):
-        """2026-09-14 口径演化：中国宏观查询 nbs_stats（国家统计局）前置——
+        """2026-09-14 计算方式演化：中国宏观查询 nbs_stats（国家统计局）前置——
         本国权威源且最新年份比 worldbank 全（worldbank 有 1-2 年滞后，
         「2025 年 GDP」类查询实测空手）；worldbank 前置逻辑保留、退居次位。
         实测回放：「中国 2025 年 GDP 总量」修复前 0 结果，修复后国家统计局

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""engine_registry.py — local-search 引擎注册中心（唯一真源）
+"""engine_registry.py — local-search 引擎注册中心（唯一来源）
 
 读取 sub-skills/local-search/config.yaml 与 parse_maps.yaml，维护 24+ 本地引擎的
 元数据、分类与可用状态。新增引擎只需改 YAML，无需改代码。

@@ -149,7 +149,7 @@ def classify(*,
          纯 403 → auth；404/410/5xx → upstream）
       6. 文本模式匹配（依次 auth → blocked → rate_limited → dependency
          → upstream → network）
-      7. 兜底 unknown
+      7. 保底 unknown
 
     返回 {category, reason, evidence, action, confidence}
     """
@@ -234,7 +234,7 @@ def classify(*,
             }
         # 额度/套餐文案优先于鉴权仲裁：403 里写着「套餐额度不足」时，
         # 让人「重新登录」是错误方向（登录改不了套餐）。search.py 的
-        # _QUOTA_ERROR_KEYWORDS 早就把 quota 排在 auth 之前，这里对齐。
+        # _QUOTA_ERROR_KEYWORDS 早就把 quota 排在 auth 之前，这里保持一致。
         if status_code in (401, 402, 403) and blob_probe:
             hit = _matches(_RATE_LIMITED_PATTERNS, blob_probe)
             if hit:

@@ -3,7 +3,7 @@
 topic_research_profiles.py — 选题研究配置文件
 
 为常见选题类型预配置引擎组合、查询模板、分析深度、证据权重、
-质量门禁与报告结构。
+质量检查与报告结构。
 
 用法：
     argo research "Claude Opus 5" --topic ai
@@ -40,7 +40,7 @@ DEEP_RESEARCH_TRIGGERS: list[str] = [
     "systematic review",
 ]
 
-# 斜杠命令名（与 ~/.claude/commands 对齐）
+# 斜杠命令名（与 ~/.claude/commands 保持一致）
 # 主命令 /argo；日常子技能 /argo-search 等；深度研究见下
 ARGO_MAIN_SLASH = "/argo"
 ARGO_SUB_SLASH_COMMANDS: list[str] = [

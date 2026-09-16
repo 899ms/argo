@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""环境变量别名一致性门禁：os.environ 直读旧密钥名必须同文件认识新名。
+"""环境变量别名一致性检查：os.environ 直读旧密钥名必须同文件认识新名。
 
 背景（issue #12，2026-09-13）：exa 专用 builder 只读 EXA_API_KEY，而
 engine_env.KNOWN_ENV_ALIASES 的主推荐名是 ARGO_EXA_API_KEY。状态层按别名表
 判 env_ready=True，builder 却取不到值 → 静默 0 结果（失败伪装成成功）。
 
-门禁规则：scripts/*.py 中凡直读（os.environ.get / os.environ[..]）别名表里
+检查规则：scripts/*.py 中凡直读（os.environ.get / os.environ[..]）别名表里
 的兼容旧名，同文件必须出现对应主推荐名（get_env([...]) 或显式双读均算）。
 静态源码扫描，无网络。
 """
@@ -44,7 +44,7 @@ class TestEnvAliasConsistency(unittest.TestCase):
         self.assertEqual(problems, [], "别名不一致（#12 同类）:\n  " + "\n  ".join(problems))
 
     def test_gate_has_teeth(self):
-        """故意造错验证：把 exa 行改回只读旧名，门禁必须报红。"""
+        """故意造错验证：把 exa 行改回只读旧名，检查必须报红。"""
         exa = SCRIPTS / "engines_builders_tech.py"
         src = exa.read_text(encoding="utf-8")
         patched = src.replace(
@@ -111,7 +111,7 @@ class TestAuthorizationFlagExactName(unittest.TestCase):
     def test_unparseable_values_do_not_authorize(self):
         """授权位只认明确真值：拼错/无法解释的写法一律算关。
 
-        默认口径「非关即开」对能力开关没问题（最坏换个行为），对授权位就是
+        默认计算方式「非关即开」对能力开关没问题（最坏换个行为），对授权位就是
         「任何拼错的值都放行」——`0x0`、`maybe`、`ture` 都曾等于授权。
         """
         for v in ("0x0", "maybe", "ture", "2", "on?", "是的"):
@@ -124,7 +124,7 @@ class TestAuthorizationFlagExactName(unittest.TestCase):
                 self._restore(saved)
 
     def test_off_values_still_respected(self):
-        """口径统一：授权位也要认 off/no/false（env_flag 的统一关值集合）。"""
+        """计算方式统一：授权位也要认 off/no/false（env_flag 的统一关值集合）。"""
         for v in ("0", "false", "off", "no", "disabled", ""):
             saved = self._set(**{self.AUTH: v})
             try:

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""url_canon.py — URL 规范化单一真源。
+"""url_canon.py — URL 规范化唯一来源。
 
 背景：本仓此前有 4 份各自实现的「URL 归一」——search.py:_canonical_url、
 plan.py:canonicalize_url、candidate_envelope.py:canonicalize_url、
 research_dossier.py:canonical_url。四份的追踪参数表、大小写处理、尾斜杠
 规则各不相同，导致同一条链接在不同阶段归一成不同键：融合层已合并的结果，
-进了 dossier 又被当成两条。归一逻辑必须只有一个真源，否则「去重」取决于
+进了 dossier 又被当成两条。归一逻辑必须只有一个来源，否则「去重」取决于
 你从哪个入口看。
 
 本模块的目标：同一条内容的不同 URL 变体（追踪参数、www、默认端口、

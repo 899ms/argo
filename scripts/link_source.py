@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-link_source.py — 把「消费者入口」指回本仓库真源（符号链接，不复制）。
+link_source.py — 把「消费者入口」指回本仓库来源（符号链接，不复制）。
 
 标准化原则：
   1. 磁盘上只应有一份 argo 代码：本仓库（scripts/ 的上一级）。
-  2. Skill 目录 / 文档入口若需要出现在主机约定位置，用 **symlink** 指向真源，
+  2. Skill 目录 / 文档入口若需要出现在主机约定位置，用 **symlink** 指向来源，
      禁止 rsync/cp 出第二份业务树。
-  3. **链接必须直连真源（1 跳）**。宿主入口挂到另一个入口上（如
-     `~/.workbuddy/skills/argo -> ~/.claude/skills/argo -> 真源`）语义上能解析，
+  3. **链接必须直连来源（1 跳）**。宿主入口挂到另一个入口上（如
+     `~/.workbuddy/skills/argo -> ~/.claude/skills/argo -> 来源`）语义上能解析，
      但多出一环依赖：中间那环被删改或指偏，入口就成断链，而工具此前对此
      完全无感。间接链接会被本脚本**重建为直连**（只替换 symlink 本身）。
   4. **目标路径绝不写死在代码里**。来源优先级：
        CLI `--to PATH`（可重复）
        → 环境变量 `ARGO_LINK_TARGETS`（os.pathsep 分隔，如 `:` / `;`）
-       → 真源根目录下的 `installs.local.yaml`（本机声明，应 gitignore）
+       → 来源根目录下的 `installs.local.yaml`（本机声明，应 gitignore）
   5. 注册表派生仍只走 `sync_backends.py`（config.yaml → backends/*），与链接无关。
 
 用法：
@@ -25,7 +25,7 @@ link_source.py — 把「消费者入口」指回本仓库真源（符号链接�
   python3 scripts/link_source.py --check        # 只校验；间接链接记 warn 并非零退出
   python3 scripts/link_source.py --dry-run
 
-退出码：0 成功；1 无目标 / 链接失败 / 校验不一致（含「只经多跳间接指向真源」）。
+退出码：0 成功；1 无目标 / 链接失败 / 校验不一致（含「只经多跳间接指向来源」）。
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def _load_local_targets() -> list[Path]:
         if not item:
             continue
         p = Path(str(item)).expanduser()
-        # 相对路径相对真源根；规范化但不跟随符号链接（见 _normalize_target）
+        # 相对路径相对来源根；规范化但不跟随符号链接（见 _normalize_target）
         out.append(_normalize_target(SOURCE / p if not p.is_absolute() else p))
     return out
 
@@ -67,7 +67,7 @@ def _normalize_target(p: Path) -> Path:
     """规范化目标路径：展开 ~、补成绝对路径、消掉 . 与 ..，**但不跟随符号链接**。
 
     为什么不用 resolve()：宿主入口本来就应该是一条 symlink。resolve() 会先把
-    「已经指向真源的链接」折叠成真源路径，于是 link_one 看到的目标是「真源本体」
+    「已经指向来源的链接」折叠成来源路径，于是 link_one 看到的目标是「来源本体」
     而直接跳过重建，check_targets 也无法区分「直连」与「隔了一层的间接链接」——
     校验常年报 ok，实际入口却挂在中转链接上（2026-09-14 实测踩到）。
     """
@@ -78,10 +78,10 @@ def _normalize_target(p: Path) -> Path:
 
 
 def _hops_to_source(target: Path) -> int:
-    """目标到真源的符号链接跳数。
+    """目标到来源的符号链接跳数。
 
-    0 = 目标就是真源本体；1 = 直连；>1 = 间接链接（可解析但多一跳依赖）；
-    -1 = 未指向真源 / 断链 / 成环（超过 8 跳按未指向处理，避免死循环）。
+    0 = 目标就是来源本体；1 = 直连；>1 = 间接链接（可解析但多一跳依赖）；
+    -1 = 未指向来源 / 断链 / 成环（超过 8 跳按未指向处理，避免死循环）。
     """
     src = SOURCE.resolve()
     cur = target
@@ -127,13 +127,13 @@ def resolve_targets(cli: list[Path] | None) -> list[Path]:
     return ordered
 
 
-# 判定「目录像 argo 真源/旧副本」的特征文件。用于 --force 迁走目录前的软校验，
+# 判定「目录像 argo 来源/旧副本」的特征文件。用于 --force 迁走目录前的软校验，
 # 防止用户把 --to 错指到任意数据目录，--force 下整目录被 rename 迁走的误伤。
 _ARGO_MARKERS = ("scripts/search.py", "SKILL.md")
 
 
 def _looks_like_argo_copy(path: Path) -> bool:
-    """路径是否为 argo 真源/旧副本（含脚本与 SKILL 文档），而非任意数据目录。"""
+    """路径是否为 argo 来源/旧副本（含脚本与 SKILL 文档），而非任意数据目录。"""
     if not path.is_dir():
         return False
     return any((path / marker).exists() for marker in _ARGO_MARKERS)
@@ -153,7 +153,7 @@ def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
         return 0
 
     if depth > 1:
-        # 间接链接：能解析到真源，但中间还挂了一环。重建为直连只替换符号链接
+        # 间接链接：能解析到来源，但中间还挂了一环。重建为直连只替换符号链接
         # 本身（不触碰任何目录内容），因此无需 --force。
         if dry_run:
             print(f"[dry]  将把 {depth} 跳间接链接重建为直连: {target}")
@@ -185,7 +185,7 @@ def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
                 file=sys.stderr,
             )
             return 1
-        # 软校验（dry-run 与实际执行都触发）：目录若不像 argo 真源/旧副本
+        # 软校验（dry-run 与实际执行都触发）：目录若不像 argo 来源/旧副本
         # （无 scripts/search.py 或 SKILL.md），拒绝 --force 迁走，防止 --to
         # 误指用户数据目录被整目录 rename 的误伤。
         if target.is_dir() and not _looks_like_argo_copy(target):
@@ -221,7 +221,7 @@ def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
     except OSError:
         # Windows 无开发者模式/管理员权限时 symlink 会失败：
         # 目录链接退化为 junction（mklink /J，不需要管理员权限），
-        # 语义与 symlink 基本一致（resolve() 同样指向真源）。
+        # 语义与 symlink 基本一致（resolve() 同样指向来源）。
         if os.name == "nt":
             r = subprocess.run(
                 ["cmd", "/c", "mklink", "/J", str(target), str(source)],
@@ -229,7 +229,7 @@ def link_one(target: Path, *, dry_run: bool, force: bool) -> int:
                 encoding="utf-8", errors="replace",
             )
             # junction 不是 symlink（is_symlink() 为 False，_hops_to_source 会
-            # 把它当普通目录），此处按「解析后是否等于真源」独立判定。
+            # 把它当普通目录），此处按「解析后是否等于来源」独立判定。
             try:
                 linked = target.resolve() == SOURCE.resolve()
             except OSError:
@@ -256,7 +256,7 @@ def check_targets(targets: list[Path]) -> int:
         elif depth == 1:
             print(f"[ok]   {t} -> {SOURCE.resolve()}")
         elif depth > 1:
-            # 间接链接仍能解析到真源，但多了一环依赖——按「校验不一致」计失败，
+            # 间接链接仍能解析到来源，但多了一环依赖——按「校验不一致」计失败，
             # 提示直接重跑（不带 --check）即可重建为直连。
             print(f"[warn] {t} 经 {depth} 跳间接指向真源（非直连）；"
                   f"去掉 --check 重跑即可重建为直连")

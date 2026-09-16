@@ -116,7 +116,7 @@ class TestRelevanceFiltering:
 
 
 class TestTermMatchingBoundary:
-    """词命中口径：拉丁词边界 + CJK 子串 + 单字符门槛。
+    """词命中计算方式：拉丁词边界 + CJK 子串 + 单字符门槛。
 
     实测教训（本测试来源）：
       - 纯子串匹配下 "a" 命中 Apple/astar，"ab" 命中 Avalonia/Wabou/Workbuddy

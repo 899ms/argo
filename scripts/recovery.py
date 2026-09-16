@@ -128,7 +128,7 @@ def relax_query(query: str) -> str:
             continue
         kept.append(t)
     relaxed = " ".join(kept).strip()
-    # 兜底：去停用词后不能为空
+    # 保底：去停用词后不能为空
     return relaxed or re.sub(r"\s+", " ", q).strip() or query
 
 
@@ -208,7 +208,7 @@ def synonym_expand(query: str) -> Optional[str]:
 
 # ── L3 换引擎 ──────────────────────────────────────────────────────────────────
 
-# 通用免费源清单：单一真源 engine_policy.GENERAL_FREE_FALLBACK（与 route 兜底共用，
+# 通用免费源清单：唯一来源 engine_policy.GENERAL_FREE_FALLBACK（与 route 保底共用，
 # 避免两处清单漂移）。顺序 = 通用检索优先，百科殿后。
 try:
     from engine_policy import GENERAL_FREE_FALLBACK as _GENERAL_FREE_COMBO  # noqa: E402
@@ -266,7 +266,7 @@ def pick_alternative_engines(tried: list[str], engines_fallback: list[str] | Non
         if _engine_family(eng) in tried_families and _try_add(eng):
             return picks
 
-    # 3) 其余安全 fallback（仍过 family 门禁）
+    # 3) 其余安全 fallback（仍过 family 检查）
     for eng in engines_fallback or []:
         if _try_add(eng):
             return picks
@@ -485,7 +485,7 @@ def build_recovery_plan(query: str, tried_engines: list[str],
     return steps
 
 
-# ── 执行编排（供 search.py 调用）───────────────────────────────────────────────
+# ── 执行调度（供 search.py 调用）───────────────────────────────────────────────
 
 # recovery 接受结果前的停用词（不含 WHO 等缩写；缩写靠 isupper 保留）
 _REC_SIGNAL_STOP = {

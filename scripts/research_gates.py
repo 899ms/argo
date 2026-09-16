@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""research_gates.py — dossier 可判定门禁。
+"""research_gates.py — dossier 可判定检查。
 
 topic profile 的 quality_gates 字符串是给 Agent 的自检提示。
 这里的谓词决定 conclusion_cap，过不了就降级，不打印空勾选充数。
@@ -59,7 +59,7 @@ def evaluate_dossier_gates(dossier: dict[str, Any]) -> dict[str, Any]:
             "count": len(conflicts),
         })
 
-    # ── recompute 门禁（P0-2）：可复算闭环 ──
+    # ── recompute 检查（P0-2）：可复算完整链路 ──
     rec = dossier.get("recomputed_values") or []
     # 1) 声明可复算但未执行（授权检查默认拒绝拦下）→ 结论上限 medium
     if dossier.get("recompute_expected") and not rec:

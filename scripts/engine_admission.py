@@ -23,10 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-# 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
+# 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 
-# ARGO_ADMISSION_DIR 优先（测试隔离）；未设置时由单一真源派生目录
+# ARGO_ADMISSION_DIR 优先（测试隔离）；未设置时由唯一来源派生目录
 DEFAULT_ADMISSION_DIR = Path(
     os.path.expanduser(os.environ.get(
         "ARGO_ADMISSION_DIR",
@@ -36,7 +36,7 @@ DEFAULT_ADMISSION_DIR = Path(
 
 
 def admission_dir() -> Path:
-    # 保持每次幂等确保目录存在：状态目录会被测试用 ARGO_STATE_DIR 隔离，进程内也
+    # 保持每次重复执行结果一致确保目录存在：状态目录会被测试用 ARGO_STATE_DIR 隔离，进程内也
     # 可能切换，缓存目录反而容易写到已被清理的旧目录。exist_ok=True 在目录已存在
     # 时只是一次很便宜的路径查询，真正的重复大头（读记录前先 exists 再 read）已在
     # load_admission 里去掉。
@@ -69,7 +69,7 @@ def _now_iso() -> str:
 # （实测一次扫描 668 次 read_text / 41 ms；同一份记录被读 3 次——is_blocked、
 # is_admitted、引擎详情各来一遍）。按文件路径记忆，**写入路径立即失效**：同
 # 进程读己所写永远新鲜（record_validation → load_admission 的测试序列就靠这条
-# 保证）；别的进程改了记录则由 TTL 兜底（默认 1 s，ARGO_ADMISSION_TTL_S 可调，
+# 保证）；别的进程改了记录则由 TTL 保底（默认 1 s，ARGO_ADMISSION_TTL_S 可调，
 # 设 0 关闭记忆、回到逐次读盘）。
 #
 # 键用路径字符串而非 engine_id：状态目录可被 ARGO_STATE_DIR / ARGO_ADMISSION_DIR
@@ -82,7 +82,7 @@ def _admission_ttl() -> float:
     """读缓存的 TTL（秒）；未设置或非法值回落 1.0。
 
     走 engine_env.get_env 而不是 os.environ 直读：开关写进 ~/.config/argo/env
-    也要生效——与 config._stamp_ttl 同一口径（同一个旋钮不该有两套可读位置）。
+    也要生效——与 config._stamp_ttl 同一计算方式（同一个旋钮不该有两套可读位置）。
     """
     raw = os.environ.get("ARGO_ADMISSION_TTL_S", "")
     if not raw.strip():
@@ -100,7 +100,7 @@ def _admission_ttl() -> float:
 def _read_admission_file(path: Path) -> dict[str, Any] | None:
     """裸读一份准入记录（无缓存）。"""
     # 直接读、靠异常判断文件是否存在：既不先 exists()，也不先建目录。
-    # 文件/目录不存在时 read_text 抛 FileNotFoundError（OSError 子类），一并兜底。
+    # 文件/目录不存在时 read_text 抛 FileNotFoundError（OSError 子类），一并保底。
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None

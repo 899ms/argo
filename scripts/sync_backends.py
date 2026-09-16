@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-sync_backends.py — 注册表派生与一致性校验（单一真源：运行时合并后的引擎声明）
+sync_backends.py — 注册表派生与一致性校验（唯一来源：运行时合并后的引擎声明）
 
 设计目标：新增引擎只改一处声明，其余注册表自动派生，消灭手工同步。
 
-真源口径（与运行时一致）：`config.load_config()` 合并后的 engines 段，即
+来源计算方式（与运行时一致）：`config.load_config()` 合并后的 engines 段，即
   config.yaml engines + engines/*.yaml + engines/specs/*.yaml
 只读 config.yaml 是不够的——外置 spec 声明的引擎运行时可见、可路由，
 若派生时看不见，派生件就会与运行时事实脱钩（batch7 收录的 7 个引擎
 曾因此只出现在人工维护的 registry 里，而 quota/domain 两份漏侧）。
 
 派生关系：
-  运行时合并后的 engines 段（唯一真源）
+  运行时合并后的 engines 段（唯一来源）
     ├── backends/quota_profiles.json    配额/成本/限频（由引擎声明的元数据派生）
     ├── backends/engine_registry.yaml   引擎注册表文档（由引擎声明派生）
     └── backends/domain_profiles.json   TF-IDF 领域文档（校验引擎名集合，缺失补空模板）
@@ -59,7 +59,7 @@ DEFAULT_QUOTA: dict[str, Any] = {
 
 DEFAULT_COST_FACTOR = {"free": 1.0, "low": 0.7, "api": 0.5, "paid": 0.3}
 
-# registry 里 cost 字段的口径（free/token/api），与 cost_tier 的映射
+# registry 里 cost 字段的计算方式（free/token/api），与 cost_tier 的映射
 _COST_TIER_TO_REGISTRY_COST = {"free": "free", "low": "api", "api": "api", "paid": "api"}
 
 
@@ -91,7 +91,7 @@ def load_engines() -> dict[str, dict[str, Any]]:
 
 
 def engine_meta(spec: dict[str, Any], name: str) -> dict[str, Any]:
-    """提取引擎声明的运营元数据，缺失用默认值兜底。"""
+    """提取引擎声明的运营元数据，缺失用默认值保底。"""
     meta: dict[str, Any] = {}
     for key, default in DEFAULT_QUOTA.items():
         meta[key] = spec.get(key, default)
@@ -129,9 +129,9 @@ def derive_registry(engines: dict[str, dict[str, Any]]) -> dict[str, Any]:
         enabled = spec.get("enabled", True)
         etype = spec.get("type", "cli")
         cost_tier = spec.get("cost_tier", "free")
-        # tier 口径：T1 直连 API / T2 local-search 本地引擎
+        # tier 计算方式：T1 直连 API / T2 local-search 本地引擎
         tier = "T2" if name.startswith("local_") else "T1"
-        # desc 优先级：声明自述 → label 兜底。spec 侧 desc 是权威自述（外置 spec
+        # desc 优先级：声明自述 → label 保底。spec 侧 desc 是权威自述（外置 spec
         # 只声明 engine_id/desc，没有 label），此前只认 label 导致 14 个引擎
         # 的 desc 派生为空——外置声明的引擎在注册表里集体失语。
         label = spec.get("label")
@@ -146,7 +146,7 @@ def derive_registry(engines: dict[str, dict[str, Any]]) -> dict[str, Any]:
             "status": "ok" if enabled else "disabled",
             "recommended": spec.get("recommended", True),
             # explicit_only：设计上不进自动路由（需密钥的源 / 输入形态特殊），
-            # 按 --engine 显式调用；可达性门禁据此区分「有意显式」与「忘了接线」
+            # 按 --engine 显式调用；可达性检查据此区分「有意显式」与「忘了接线」
             "explicit_only": bool(spec.get("explicit_only")),
             "desc": desc,
         })
@@ -200,7 +200,7 @@ def collect_issues(engines: dict[str, dict[str, Any]],
     """汇总所有一致性检查问题（引擎名 + 字段值双层）。
 
     只比引擎名是不够的：名字都在、值被手改（firecrawl.qps 1→99）同样会让
-    派生件与真源脱钩，而限流/配额恰恰是靠这些值生效的。第一版校验只比名字，
+    派生件与来源脱钩，而限流/配额恰恰是靠这些值生效的。第一版校验只比名字，
     把 qps 手改成 99 试一次，它直接漏报。
     """
     issues = []
@@ -277,7 +277,7 @@ def main() -> int:
         tiers: dict[str, list[str]] = {}
         for n, s in engines.items():
             tiers.setdefault(s.get("cost_tier", "free"), []).append(n)
-        # 口径收敛（D7）：默认数字只有一个——「声明合并后的引擎数」。
+        # 计算方式收紧（D7）：默认数字只有一个——「声明合并后的引擎数」。
         # enabled 与 disabled 由同一入口的 env 就绪判定派生，不再各自成数。
         declared = len(engines)
         try:
@@ -287,7 +287,7 @@ def main() -> int:
             ready_names = {n for n, s in engines.items() if s.get("enabled", True)}
         enabled_declared = {n for n, s in engines.items() if s.get("enabled", True)}
         print(dumps({
-            # 默认口径：运行时可见的引擎声明总数
+            # 默认计算方式：运行时可见的引擎声明总数
             "total": declared,
             "enabled": len(ready_names),
             "disabled": declared - len(ready_names),
@@ -319,8 +319,8 @@ def main() -> int:
     registry_new = derive_registry(engines)
     domain_new = patch_domain_profiles(engines, domain_cur)
 
-    # 校验对象是「磁盘现状 vs 真源」，与本次派生了什么无关——派生结果在这里
-    # 只用于写入，不用于自证。
+    # 校验对象是「磁盘现状 vs 来源」，与本次派生了什么无关——派生结果在这里
+    # 只用于写入，不用于自行验证。
     issues = collect_issues(engines, quota_cur, registry_cur, domain_cur)
 
     if args.check:

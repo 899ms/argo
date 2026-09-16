@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cli_io.py — CLI 标准输入/输出判据的唯一真源。
+"""cli_io.py — CLI 标准输入/输出判据的唯一来源。
 
 ## 为什么需要它
 
@@ -21,7 +21,7 @@
 `--json` 输出是给 Agent / 脚本读的，缩进只增加传输体积与 token，不增加任何
 信息。MCP 侧早已如此（`mcp_handlers._dumps` 默认 `separators=(",", ":")`），
 但 CLI 侧此前在 45 处各写一遍 `json.dumps(..., indent=2)`——同一份载荷两套
-口径，实测多占 22% 体积。这里给 stdout 一个唯一入口。
+计算方式，实测多占 22% 体积。这里给 stdout 一个唯一入口。
 """
 
 from __future__ import annotations
@@ -34,12 +34,12 @@ from typing import Any
 
 __all__ = ["stdin_is_piped", "read_stdin_if_piped", "dumps", "dumps_pretty"]
 
-# stdout 的紧凑分隔符（无冗余空格）：与 mcp_handlers._dumps 的默认口径一致。
+# stdout 的紧凑分隔符（无冗余空格）：与 mcp_handlers._dumps 的默认计算方式一致。
 _COMPACT = (",", ":")
 
 
 def dumps(obj: Any) -> str:
-    """CLI stdout 的 JSON 序列化唯一真源（默认紧凑）。
+    """CLI stdout 的 JSON 序列化唯一来源（默认紧凑）。
 
     用途边界：**stdout**。写进磁盘的归档文件（`archive_run` 的 public.json /
     coverage.json 等）是给人翻的，仍用 `dumps_pretty`——「机器读 stdout、

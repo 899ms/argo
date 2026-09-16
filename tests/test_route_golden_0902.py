@@ -17,7 +17,7 @@
      CJK fail-open；min_results 答案型语义不动。
   2. 执行集成：真实 route_query 决策 + mock 引擎，垃圾首引擎 → 次引擎
      被补跑且融合结果包含救援来源；好首引擎 → 早停保持（零成本不回退）。
-  3. 路由金标钉：无域 fast 兜底 combo 必含 ≥2 免费通用源等结构契约。
+  3. 路由金标钉：无域 fast 保底 combo 必含 ≥2 免费通用源等结构契约。
 
 运行：
   python3 -m pytest tests/test_route_golden_0902.py -v
@@ -219,7 +219,7 @@ class TestEarlyStopRescueIntegration(unittest.TestCase):
 
 class TestRouteGoldenPins(unittest.TestCase):
     def test_nodomain_fast_fallback_has_two_free_engines(self):
-        """无域查询 fast 兜底 combo 必含 ≥2 免费通用源（单引擎无冗余即事故温床）。
+        """无域查询 fast 保底 combo 必含 ≥2 免费通用源（单引擎无冗余即事故温床）。
 
         route_query 把无模式命中归一化为 catch-all 域 general_search。
         """

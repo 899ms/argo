@@ -3,7 +3,7 @@
 
 密钥：环境变量 ZHIHU_ACCESS_SECRET（或 ARGO_ZHIHU_ACCESS_SECRET），
 未配置时返回空列表（不抛错、不静默假成功——error 由调用侧显示）。
-对齐 social_engines 统一 schema，sentiment 聚合按 social_meta 直接可用。
+保持一致 social_engines 统一 schema，sentiment 聚合按 social_meta 直接可用。
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ ZHIHU_API = "https://developer.zhihu.com/api/v1/content/zhihu_search"
 
 
 def _secret() -> str:
-    # 走 engine_env 规范访问器：os.environ 优先，~/.config/argo/env 热读兜底
+    # 走 engine_env 规范访问器：os.environ 优先，~/.config/argo/env 热读保底
     # （密钥轮换改文件即生效，无需重启）
     try:
         from engine_env import get_env

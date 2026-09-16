@@ -69,7 +69,7 @@ class TestResolvePriority(unittest.TestCase):
             self.assertEqual(net_proxy.resolve_proxy("https://a.com"), "http://cfg:2")
 
     def test_standard_env_used_as_last_resort(self):
-        """标准环境变量是最后兜底。直接 patch getproxies/proxy_bypass，
+        """标准环境变量是最后保底。直接 patch getproxies/proxy_bypass，
         规避同名大小写变量在本机的真实串扰（3.14 后写者胜）。"""
         with patch("urllib.request.getproxies", return_value={"https": _PROXY}), \
              patch("urllib.request.proxy_bypass", return_value=False), \
@@ -122,11 +122,11 @@ class TestOpenConnection(unittest.TestCase):
 
 
 class TestOpenUrlIsProxyAware(unittest.TestCase):
-    """`open_url` 是 urllib 类出口的唯一入口（issue #13 同类收口，2026-09-15）。
+    """`open_url` 是 urllib 类出口的唯一入口（issue #13 同类统一处理，2026-09-15）。
 
     背景：issue #13 修复时只覆盖了 `http_open`（引擎侧），fetch/job/health/
     pdf/readability/train/wx/search 共 13 处仍直接调 `urllib.request.urlopen`
-    ——在「必须经代理才能出网」的环境里，这些出口一律连不上。收口后出口
+    ——在「必须经代理才能出网」的环境里，这些出口一律连不上。统一处理后出口
     决策只有 net_proxy 一处，本类锁住「配了规则就走代理、没配就直连」。
     """
 

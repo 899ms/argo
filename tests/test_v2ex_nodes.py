@@ -6,7 +6,7 @@
 `show.json?node_name=X`），把「全站热帖过滤」升级为「相关节点内检索」。
 
 三层递进：exact（倒排）→ synonym（同义/中英）→ cn_title（中文标题反查）
-→ header（语义兜底）。全空则 layer=none，调用方回落 hot/latest。
+→ header（语义保底）。全空则 layer=none，调用方回落 hot/latest。
 
 本文件锁定四条契约：
   1. 各层按预期触发（exact 优先于 synonym 优先于 cn_title 优先于 header）
@@ -102,7 +102,7 @@ class TestLayerCnTitle:
 
 
 class TestLayerHeader:
-    """L3 header 语义兜底（低置信）。"""
+    """L3 header 语义保底（低置信）。"""
 
     def test_header_match(self, nodes):
         # kubernetes 不在任何节点名里，但 k8s 节点的 header/title 含 Kubernetes

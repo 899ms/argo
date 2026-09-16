@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mcp_launch.sh 密钥透传对齐门禁。
+"""mcp_launch.sh 密钥透传保持一致检查。
 
 背景（issue #12 同类，2026-09-14）：launchctl 回退透传名单是手写硬编码，
 与 engine_env.KNOWN_ENV_ALIASES 长期漂移（33 个别名缺 25 个）——两份清单

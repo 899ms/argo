@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_context_budget — 输出与文档的上下文预算门禁（离线、确定性）。
+"""test_context_budget — 输出与文档的上下文预算检查（离线、确定性）。
 
 ## 守的是什么
 
@@ -150,7 +150,7 @@ class TestNoSelfDescriptionInSkillDocs(unittest.TestCase):
       ① 每次触发都占上下文；
       ② 它会漂移（实测 ego-search 的「文件结构」段列了 8 个文件，漏了 tests/
          与后来的两个 reference，读者据此判断会出错）；
-      ③ 它鼓励「靠文档同步」而不是靠门禁，本仓已多次被这类漂移咬到。
+      ③ 它鼓励「靠文档同步」而不是靠检查，本仓已多次被这类漂移咬到。
     该判据可机械执行：文件树是**可以从文件系统读出**的信息，凡是把 `├──`
     `└──` 这类树形画进 SKILL.md 的，一律判定为自描述冗余。
     """
@@ -240,7 +240,7 @@ class TestStdoutJsonIsCompact(unittest.TestCase):
     `--json` 是给 Agent / 脚本读的，缩进只增加传输体积与 token，不增加信息。
     MCP 侧一直是紧凑的（`mcp_handlers._dumps` 原实现 separators=(",", ":")），
     而 CLI 侧曾在 45 处各写一遍 `json.dumps(..., indent=2)`——同一份载荷两套
-    口径，实测多占 23%（25626 B → 19928 B）。
+    计算方式，实测多占 23%（25626 B → 19928 B）。
 
     这里同时锁两侧：序列化函数的**行为**，以及源码里不再出现美化 stdout 的
     新写法（否则第 46 处会悄悄长出来）。
@@ -272,7 +272,7 @@ class TestStdoutJsonIsCompact(unittest.TestCase):
                          cli_io.dumps_pretty(probe))
 
     def test_no_pretty_stdout_in_scripts(self):
-        """源码门禁：不得新增 `print(json.dumps(..., indent=...))`。"""
+        """源码检查：不得新增 `print(json.dumps(..., indent=...))`。"""
         offenders = []
         for path in sorted((ROOT / "scripts").rglob("*.py")):
             if "__pycache__" in path.parts:

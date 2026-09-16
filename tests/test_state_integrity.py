@@ -2,7 +2,7 @@
 """test_state_integrity.py — 状态层完整性回归（2026-09-12 缺陷批次）。
 
 背景：一次量化诊断发现 argo 的状态层（配额 / 熔断）在多进程并发下
-系统性损坏，且错误率口径分子分母不同窗口。四类缺陷各自独立，
+系统性损坏，且错误率计算方式分子分母不同窗口。四类缺陷各自独立，
 但共同特征是「失败静默」——写坏了没人知道，只表现为计数偏低或
 统计值反常（errors > used）。
 
@@ -13,7 +13,7 @@
   2. 错误率窗口一致性：分子分母同窗口，恒 ≤ 1.0
      （旧实现 1 次成功 + 历史 3 次错 → 3.0 = 300%）
   3. errors 永不超窗口 calls（旧实现真实状态里 github used=1/errors=78）
-  4. 批量记账只落盘一次（N 引擎 → 1 次写）
+  4. 批量记账只写入文件一次（N 引擎 → 1 次写）
   5. bin/argo 在 Python 3.9 可执行（entrypoint 必须 3.8+ 语法）
 """
 
@@ -164,7 +164,7 @@ def _concurrent_writer(args):
     return ok, crashed
 
 
-# ── 2/3. 错误率与滑动窗口口径 ────────────────────────────────────────────────
+# ── 2/3. 错误率与滑动窗口计算方式 ────────────────────────────────────────────────
 
 class TestErrorRateWindow:
     def setup_method(self):
@@ -211,7 +211,7 @@ class TestErrorRateWindow:
         assert st["errors"] == 0
 
     def test_used_is_quota_counter_not_pruned(self):
-        """used 是配额口径：1h 修剪不得让它回退（否则配额被无限复用）。"""
+        """used 是配额计算方式：1h 修剪不得让它回退（否则配额被无限复用）。"""
         for _ in range(3):
             self.mgr.record("q1", success=True)
         used_before = self.mgr._state["q1"]["used"]
@@ -239,7 +239,7 @@ class TestBatchRecording:
         assert self.mgr._state["c"]["used"] == 1
 
     def test_record_many_writes_once(self):
-        """N 个引擎只落盘一次（旧实现 N 次全量写）。"""
+        """N 个引擎只写入文件一次（旧实现 N 次全量写）。"""
         writes = []
         orig = self.Q.argo_paths.atomic_write_json
 
@@ -314,7 +314,7 @@ class TestEntrypointRuntime:
         assert "from __future__ import annotations" in src
 
 
-# ── 6. 跨文件原子写单一真源 ──────────────────────────────────────────────────
+# ── 6. 跨文件原子写唯一来源 ──────────────────────────────────────────────────
 
 class TestNoHandRolledTmp:
     """禁止再出现手写的固定名 `.tmp` + replace 模式。"""

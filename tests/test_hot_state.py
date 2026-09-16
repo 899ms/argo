@@ -3,8 +3,8 @@
 
 覆盖四条机制：
   1. hot_state.fingerprint / HotFile：mtime+size 签名语义
-  2. should_reload：基线 → 变更 → 消费；ARGO_NO_AUTORELOAD 护栏
-  3. engine_env 密钥文件热读：~/.config/argo/env 兜底、os.environ 优先、
+  2. should_reload：基线 → 变更 → 消费；ARGO_NO_AUTORELOAD 防护
+  3. engine_env 密钥文件热读：~/.config/argo/env 保底、os.environ 优先、
      改文件无需重启
   4. quota 跨进程热读：另一进程写状态文件，本进程无需重启即可见
 """
@@ -97,7 +97,7 @@ class TestShouldReload(unittest.TestCase):
 
 
 class TestEnvFileHotRead(unittest.TestCase):
-    """get_env 的 ~/.config/argo/env 兜底与热轮换。"""
+    """get_env 的 ~/.config/argo/env 保底与热轮换。"""
 
     def setUp(self):
         self._td = tempfile.TemporaryDirectory()

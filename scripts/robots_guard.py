@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-robots_guard.py — robots.txt 尊重层（合规抓取门禁）
+robots_guard.py — robots.txt 尊重层（合规抓取检查）
 
 RFC 9309 定义的 robots.txt 是站点所有者声明抓取意愿的公开协议。
 本层在发起任何抓取前查询目标域的 robots.txt，尊重其 Disallow 规则：

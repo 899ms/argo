@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""工作包交接、可判定门禁、dossier 契约、本地文件入账。"""
+"""工作包交接、可判定检查、dossier 契约、本地文件入账。"""
 
 from __future__ import annotations
 
@@ -232,7 +232,7 @@ class TestLocalFileInputs(unittest.TestCase):
 
 
 class TestLocalSourcesDossier(unittest.TestCase):
-    """file_inputs 入账：哈希/血缘，内容不入账。"""
+    """file_inputs 入账：哈希/来源记录，内容不入账。"""
 
     def _collection(self):
         return {

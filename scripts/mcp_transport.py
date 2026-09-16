@@ -20,7 +20,7 @@ try:
 except Exception:  # pragma: no cover
     hot_state = None  # type: ignore[assignment]
 
-# 版本真源：与 package.json / SKILL.md 保持一致（发布时统一升版；
+# 版本来源：与 package.json / SKILL.md 保持一致（发布时统一升版；
 # tests/test_consistency_gates.py 会四端对账，漂移即红）
 ARGO_MCP_VERSION = "2.8.8"
 

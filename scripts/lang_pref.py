@@ -44,7 +44,7 @@ HABIT_MIN_SAMPLES = 5
 HABIT_MIN_RATIO = 0.55
 HABIT_WINDOW = 80  # 滑动窗口最大事件数
 
-# 与 lang_detect 对齐的可学习标签（排除 mixed/other 噪声）
+# 与 lang_detect 保持一致的可学习标签（排除 mixed/other 噪声）
 _TRACKABLE = frozenset({
     "zh", "en", "ja", "ko", "latin", "cyrillic", "thai",
     "arabic", "hebrew", "greek", "devanagari",
@@ -159,7 +159,7 @@ def _save_state(state: dict[str, Any]) -> None:
     with _lock:
         try:
             state["updated_at"] = time.time()
-            # 原子写走单一真源（唯一 tmp 名）——旧实现固定 `.tmp` 名，
+            # 原子写走唯一来源（唯一 tmp 名）——旧实现固定 `.tmp` 名，
             # 并发进程会互相搬走临时文件导致写失败。
             import argo_paths as _paths
             _paths.atomic_write_json(STATE_PATH, state, indent=None)
@@ -257,7 +257,7 @@ def prefer_langs(
     for b in BASELINE_LANGS:
         _push(b)
 
-    # 极端兜底：若全部过滤空，仍返回中英
+    # 极端保底：若全部过滤空，仍返回中英
     return ordered or list(BASELINE_LANGS)
 
 

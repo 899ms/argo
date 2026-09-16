@@ -315,7 +315,7 @@ def _build_baidu_baike_engine(spec: dict[str, Any]) -> Any:
                         })
             except Exception:
                 pass
-        # 相关度门禁：英文实体问返回「我们选择登月」等零重叠词条时丢弃，触发 recovery
+        # 相关度检查：英文实体问返回「我们选择登月」等零重叠词条时丢弃，触发 recovery
         q_keys = set()
         for t in re.findall(r"[A-Z]{2,}|[a-zA-Z]{3,}|[\u4e00-\u9fff]{2,}", q):
             if t.isupper() and len(t) >= 2:
@@ -637,7 +637,7 @@ def _build_models_dev_engine(spec: dict[str, Any]) -> Any:
                         continue
                 elif not any(k in ql for k in ("模型", "model", "llm", "gpt", "claude",
                          "gemini", "glm", "llama", "mistral", "deepseek", "价格", "price")):
-                    # 无明确搜索词也无能力词 → 诚实零结果（不兜底热门模型，
+                    # 无明确搜索词也无能力词 → 诚实零结果（不保底热门模型，
                     # 避免产出「看起来像结果」的噪声稀释融合）
                     continue
 
@@ -1033,7 +1033,7 @@ def _build_octen_engine(spec: dict[str, Any]) -> Any:
                             "score": r.get("score", 0.5),
                         })
 
-                # 如果结果太少，补充 quick 数据源的查询（不走 broad 兜底）
+                # 如果结果太少，补充 quick 数据源的查询（不走 broad 保底）
                 if not results and not use_broad:
                     logger.info("Octen 标准搜索无结果，兜底空列表返回")
                 return results
@@ -1157,7 +1157,7 @@ def _chem_result_overlaps(query: str, title: str, snippet: str = "",
 
 
 def _build_pubchem_engine(spec: dict[str, Any]) -> Any:
-    """化学/药学化合物检索：PubChem PUG REST 主路径 + ChEMBL 兜底。
+    """化学/药学化合物检索：PubChem PUG REST 主路径 + ChEMBL 保底。
 
     支持化合物名、分子式、CAS 号、IUPAC 名查询，返回分子式/分子量/IUPAC/SMILES。
     质量闸门：ChEMBL 结果须与查询 token 重叠，否则丢弃当 no-results（宁空勿假）。
@@ -1228,7 +1228,7 @@ def _build_pubchem_engine(spec: dict[str, Any]) -> Any:
             except Exception as e:
                 logger.warning(f"PubChem 属性失败: {e}")
 
-        # 2. ChEMBL 兜底：仅保留与查询重叠的结果（无重叠 = 空，禁止交差评）
+        # 2. ChEMBL 保底：仅保留与查询重叠的结果（无重叠 = 空，禁止交差评）
         if not results:
             seen_ids: set[str] = set()
             for name in lookup_names:
@@ -1644,7 +1644,7 @@ def _build_gutenberg_engine(spec: dict[str, Any]) -> Any:
             }
             # 源内全文直出：`/ebooks/{id}` 是下载门户页（实测首段全是 noprint
             # 脚本），不是正文；gutendex 本来就把纯文本 URL 放在 formats 里，
-            # 此前只在缺 id 时当兜底，正常路径直接丢掉。这里单独带上，供下游
+            # 此前只在缺 id 时当保底，正常路径直接丢掉。这里单独带上，供下游
             # 取正文时优先使用（省掉从门户页找下载链这一步）。
             if txt:
                 _row["full_text_url"] = txt
@@ -2265,7 +2265,7 @@ def _build_thesportsdb_engine(spec: dict[str, Any]) -> Any:
             "球队", "球星", "效力", "夺冠", "卫冕", "助攻", "得分王",
         }
         tokens = re.findall(r"[A-Za-z\u4e00-\u9fff]{2,}", q)
-        # 纯数字年号单独收集，用于 event 年份对齐，不当主检索词
+        # 纯数字年号单独收集，用于 event 年份保持一致，不当主检索词
         # 注意：必须整年捕获；r"(19|20)\d{2}" 的 findall 只会返回 "20"，
         # 导致 "20" in "2016-11-24" 恒真、年份过滤失效。
         years = re.findall(r"\b((?:19|20)\d{2})\b", q)

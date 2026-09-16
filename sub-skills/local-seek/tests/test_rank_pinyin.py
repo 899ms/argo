@@ -2,7 +2,7 @@
 """local-seek 文件名相关性排序 + 拼音首字母单测（离线）
 
 覆盖：
-  1. pinyin_initials：中文→拼音首字母（pypinyin 优先 / GB2312 兜底）
+  1. pinyin_initials：中文→拼音首字母（pypinyin 优先 / GB2312 保底）
   2. _fzf_score：fzf 式文件名评分（smart case / 连续 / 边界 / 全等）
   3. _file_pinyin_bonus：正向（中文→缩写）与反向（缩写→中文文件名）加分
   4. _rank_path_results：按相关性 + mtime 排序

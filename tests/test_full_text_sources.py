@@ -7,7 +7,7 @@
 不等价，实测（2026-09-13）：
 
   - gutenberg：`/ebooks/{id}` 是下载门户页（去标签首段全是 noprint 脚本），
-    而 gutendex 在 `formats` 里本来就给了纯文本 URL ——此前只在缺 id 时当兜底，
+    而 gutendex 在 `formats` 里本来就给了纯文本 URL ——此前只在缺 id 时当保底，
     正常路径直接丢掉；
   - egov_law：`/law/{id}` 是 JS 空壳页（实测去标签后只剩「e-Gov 法令検索」），
     拿不到条文，而 `/api/1/lawdata/{id}` 返回该法令官方全文 XML。

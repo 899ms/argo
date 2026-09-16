@@ -655,7 +655,7 @@ class HttpClient:
                     "elapsed_ms": 0, "error": str(e)[:200]}
 
     def _curl_proxies(self, url: str) -> dict | None:
-        """curl_cffi 的 proxies 参数；出口解析唯一真源在 net_proxy。"""
+        """curl_cffi 的 proxies 参数；出口解析唯一来源在 net_proxy。"""
         try:
             from net_proxy import resolve_proxy
             p = resolve_proxy(url)
@@ -806,7 +806,7 @@ class HttpClient:
 
     def _do_post(self, url: str, payload: bytes | None,
                  extra_headers: dict | None, follow_redirects: bool) -> dict:
-        """实际执行 POST（使用 http.client，逻辑与 _do_get 对齐但不改 GET 路径）。"""
+        """实际执行 POST（使用 http.client，逻辑与 _do_get 保持一致但不改 GET 路径）。"""
         start = time.time()
         current_url = url
         redirects_left = 5 if follow_redirects else 0

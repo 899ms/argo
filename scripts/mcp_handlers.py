@@ -3,7 +3,7 @@
 
 路径引导、延迟导入缓存、结果压缩、10 个工具的 execute_tool 分派、
 后台预热（含 local-seek 模块导入预热，为进程内调用铺路）。
-schema 真源在 mcp_tools.py；JSON-RPC 帧处理在 mcp_transport.py。
+schema 来源在 mcp_tools.py；JSON-RPC 帧处理在 mcp_transport.py。
 """
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ def _local_read_preview(
 
 
 def _seek_py() -> str:
-    """定位 local-seek 的 seek.py（安装感知、单一真源，见 seek_locator）。
+    """定位 local-seek 的 seek.py（安装感知、唯一来源，见 seek_locator）。
 
     local-seek 已于 2026-08-05 收编为 argo 子技能，标准位置是打包的
     SUB_SKILLS_DIR/local-seek；自定义/遗留位置由 ARGO_LOCAL_SEEK_PATH 或
@@ -148,11 +148,11 @@ def _get_cache():
 
 
 def _dumps(obj: Any, pretty: bool = False) -> str:
-    """MCP 的 JSON 序列化：复用 CLI stdout 的同一套口径（cli_io 是唯一真源）。
+    """MCP 的 JSON 序列化：复用 CLI stdout 的同一套计算方式（cli_io 是唯一来源）。
 
     两边此前各写一份实现（这里 separators=(",", ":")、CLI 侧各写 indent=2），
-    同一份载荷两套格式——口径分叉后没人会发现「MCP 紧凑、CLI 美化」这件事本身
-    就是不一致。合并后只留一个真源；`pretty=True` 仍供人读场景使用。
+    同一份载荷两套格式——计算方式分叉后没人会发现「MCP 紧凑、CLI 美化」这件事本身
+    就是不一致。合并后只留一个来源；`pretty=True` 仍供人读场景使用。
     """
     return cli_io.dumps_pretty(obj) if pretty else cli_io.dumps(obj)
 
@@ -205,13 +205,13 @@ def _compact_search_result(result: dict[str, Any], summary: bool = False) -> dic
         for k in ("selection", "absorption", "credibility_fast", "evidence_flags"):
             if k in r:
                 item[k] = r[k]
-        # 证据闭环 P0：保留核验信号（仅存在时，避免空字段噪音）
+        # 证据完整链路 P0：保留核验信号（仅存在时，避免空字段噪音）
         for k in ("fetch_suggested", "has_fetched_evidence", "post_fetch_absorption"):
             if r.get(k) is not None:
                 item[k] = r[k]
         results.append(item)
     out["results"] = results
-    # 证据闭环 P0：顶层门控信号（轻量 4 字段，供 Agent 判断「能否下结论」）
+    # 证据完整链路 P0：顶层门控信号（轻量 4 字段，供 Agent 判断「能否下结论」）
     if result.get("fetch_required") is not None:
         out["fetch_required"] = result["fetch_required"]
     el = result.get("evidence_loop")
@@ -300,7 +300,7 @@ def _compact_research_result(report: dict[str, Any], summary: bool = False) -> d
     )
     out: dict[str, Any] = {k: report[k] for k in keys if k in report and report[k] is not None}
 
-    # 证据闭环 P0：研究包门控（pending_fetch 截断到 5 条，保留可编程核验信号）
+    # 证据完整链路 P0：研究包门控（pending_fetch 截断到 5 条，保留可编程核验信号）
     el = report.get("evidence_loop")
     if isinstance(el, dict):
         out["evidence_loop"] = {
@@ -366,7 +366,7 @@ def _warm_local_seek() -> None:
 
     用 importlib 从文件加载 seek.py 为命名模块（模块级代码安全，无副作用），
     缓存进 _module_cache["local_seek"]；失败仅记日志，本地搜索继续走
-    subprocess 兜底，不影响核心预热。
+    subprocess 保底，不影响核心预热。
     """
     try:
         seek_py = _seek_py()
@@ -468,7 +468,7 @@ def _search_social_platforms(
                 platform_results[platform] = []
                 errors.append(f"{platform}: timeout (>{timeout}s)")
     finally:
-        # 不等待未完成平台，让卡住的线程自生自灭（各引擎内部有 10-15s 兜底超时）
+        # 不等待未完成平台，让卡住的线程自生自灭（各引擎内部有 10-15s 保底超时）
         ex.shutdown(wait=False, cancel_futures=True)
     return platform_results, engines_used, errors
 
@@ -493,7 +493,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _clamp_int(value: Any, default: int, lo: int, hi: int) -> int:
-    """边界夹取（与工具 schema 的 min/max 同口径）：非法回默认，越界取边界。"""
+    """边界夹取（与工具 schema 的 min/max 同计算方式）：非法回默认，越界取边界。"""
     try:
         return max(lo, min(int(value), hi))
     except (TypeError, ValueError):
@@ -747,7 +747,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             platforms_str = arguments.get("platforms", "hackernews,zhihu,bilibili")
             platforms = [p.strip() for p in platforms_str.split(",") if p.strip()]
             query = arguments["query"]
-            # 边界夹取与 schema（1..20）同口径：客户端越界值不放大平台请求
+            # 边界夹取与 schema（1..20）同计算方式：客户端越界值不放大平台请求
             n = _clamp_int(arguments.get("max_results", 5), 5, 1, 20)
             platform_results, engines_used, errors = _search_social_platforms(platforms, query, n)
             if arguments.get("mode", "text") == "sentiment":
@@ -800,7 +800,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         elif name == "argo_crawl":
             crawl_mod = _lazy_cached("crawl")
             strategy = arguments.get("strategy", "bfs")
-            # 夹取与 schema 同口径（max_pages 1..50，max_depth 1..5）
+            # 夹取与 schema 同计算方式（max_pages 1..50，max_depth 1..5）
             max_pages = _clamp_int(arguments.get("max_pages", 10), 10, 1, 50)
             max_depth = _clamp_int(arguments.get("max_depth", 2), 2, 1, 5)
             timeout = _env_int("ARGO_MCP_TIMEOUT_CRAWL", int(arguments.get("timeout", 8)))
@@ -844,7 +844,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             )
             focus_query = arguments.get("focus")
             if focus_query and result.get("success"):
-                # 裁剪契约唯一真源在 focus_extract.apply_focus（CLI 的
+                # 裁剪契约唯一来源在 focus_extract.apply_focus（CLI 的
                 # `argo fetch --focus` 走同一函数），此处不再自写一套：
                 # 两处各写一份的代价是语义静默分叉（CLI 侧曾整个漏掉该参数）。
                 focus_mod = _lazy_cached("focus_extract")
@@ -918,7 +918,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 out = job_mod.search(
                     arguments["query"],
                     city=arguments.get("city", ""),
-                    # 夹取与 schema 同口径（num 1..20，fetch_detail 0..10）：
+                    # 夹取与 schema 同计算方式（num 1..20，fetch_detail 0..10）：
                     # 六平台并发 × 越界条数会同时放大请求量与返回体积
                     num=_clamp_int(arguments.get("num", 5), 5, 1, 20),
                     platforms=arguments.get("platforms", ""),

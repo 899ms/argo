@@ -6,7 +6,7 @@
 argo 要在 macOS / Linux / BSD / Windows 上都能按**各自惯例**找到两样东西：
 状态目录（缓存、配额、准入记录）与密钥文件。此前两处都是写死的：
 
-- `argo_paths.state_root()` 兜底 `~/.cache/unified-search`（Windows 上不符合
+- `argo_paths.state_root()` 保底 `~/.cache/unified-search`（Windows 上不符合
   `%LOCALAPPDATA%` 惯例；Linux 上无视 `XDG_CACHE_HOME`）；
 - `engine_env._envfile_path()` 写死 `~/.config/argo/env`（Windows 该用
   `%APPDATA%`，自定义 `XDG_CONFIG_HOME` 的用户无处安放密钥）。
@@ -179,7 +179,7 @@ class TestEnvFileConventions:
 
 
 class TestArchiveRedactionCrossPlatform:
-    """归档脱敏要认三家平台的家目录（Windows 路径此前原样落盘）。"""
+    """归档脱敏要认三家平台的家目录（Windows 路径此前原样写入文件）。"""
 
     @pytest.mark.parametrize("path", [
         r"C:\Users\alice\Documents\secret.txt",
@@ -310,7 +310,7 @@ class TestLegacyStateMigration:
 
 
 class TestPathSelfCheck:
-    """`argo paths --check`：任何平台一条命令自证「这台机器上实际发生了什么」。"""
+    """`argo paths --check`：任何平台一条命令自行验证「这台机器上实际发生了什么」。"""
 
     def test_all_results_are_structured(self, monkeypatch, tmp_path):
         monkeypatch.setenv(argo_paths.ENV_STATE_DIR, str(tmp_path))

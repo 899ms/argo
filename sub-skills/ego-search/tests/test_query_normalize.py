@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ego-search query 归一化前处理单测（对齐 argo 核心 query_enhance）
+"""ego-search query 归一化前处理单测（保持一致 argo 核心 query_enhance）
 
 设计约束：
   - 只做词形规范化（全角→半角、拆斜杠、压空格）
@@ -43,7 +43,7 @@ class TestQueryNormalize(unittest.TestCase):
         # 核心规则：只拆「点号版本」斜杠（LongCat-2.0/1.6），普通斜杠可能是
         # 路径/日期/分数，必须原样保留。本测试曾检查 "a/b c" → "a b c"，
         # 是旧实现（全斜杠拆分）的遗留，与核心 normalize_query 矛盾，
-        # 且子技能测试不在主门禁收集范围，红了一年没人看见。
+        # 且子技能测试不在主检查收集范围，红了一年没人看见。
         self.assertEqual(es._normalized_query("a/b c"), "a/b c")
 
     def test_import_fallback(self):

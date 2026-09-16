@@ -145,7 +145,7 @@ _JA_MARKERS = ("の", "・", "､")
 
 def _has_japanese_kanji(text: str) -> bool:
     # 假名标点（如「の」其实是假名，会被 script_profile 计入 kana，
-    # 这里作为兜底处理可能的漏网情况）
+    # 这里作为最后再处理可能的漏网情况）
     if any(m in text for m in _JA_MARKERS):
         return True
     hits = sum(1 for c in text if c in _JA_SHINJITAI)
@@ -257,7 +257,7 @@ def assess_results(query: str, results: list[dict[str, Any]], *,
         else:
             reasons.append("语言相符但相关度极低 → 引擎未按查询检索（静默降级）")
     else:
-        # 0.2 ~ 0.5：部分相关，可能是分词口径导致命中率偏低，不武断判噪声
+        # 0.2 ~ 0.5：部分相关，可能是分词计算方式导致命中率偏低，不武断判噪声
         verdict = "low"
         reasons.append("相关度偏低")
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""已废弃：多副本 rsync 同步违反「单一真源」。
+"""已废弃：多副本 rsync 同步违反「唯一来源」。
 
 请改用：
   python3 scripts/link_source.py --to <消费者入口>

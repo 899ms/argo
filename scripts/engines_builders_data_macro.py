@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """专用构建器：宏观数据引擎（FRED / 汇率 / 世界银行 / 国家统计局 / Eurostat）
 
-自 engines_builders_data.py 拆分，减少单文件体积；数据表随各自 builder 内聚。
+自 engines_builders_data.py 拆分，减少单文件体积；数据表随各自 builder 集中。
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def _build_fred_engine(spec: dict[str, Any]) -> Any:
     @safe_search
     def _engine(query: str, n: int = 5, _timeout: float | None = None, **kwargs) -> list[dict[str, Any]]:
         to = _timeout or timeout
-        # 国家词守卫：FRED 序列均为美国或全球口径，明确指向其他国家时放弃，
+        # 国家词守卫：FRED 序列均为美国或全球计算方式，明确指向其他国家时放弃，
         # 避免「中国GDP」被美国序列冒充（由 worldbank 按国家参数接管）
         if is_foreign_macro_query(query):
             return []

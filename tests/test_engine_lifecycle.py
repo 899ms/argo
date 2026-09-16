@@ -41,7 +41,7 @@ class TestEngineEnv(unittest.TestCase):
 
     def test_missing_env_tavily(self):
         env = {k: v for k, v in os.environ.items() if "TAVILY" not in k}
-        # 同步屏蔽密钥文件兜底（本机 ~/.config/argo/env 真有 tavily key）
+        # 同步屏蔽密钥文件保底（本机 ~/.config/argo/env 真有 tavily key）
         with patch.dict(os.environ, env, clear=True), \
              patch("engine_env._envfile_paths",
                    lambda: [Path("/nonexistent/argo/env")]):
@@ -158,7 +158,7 @@ class TestFirecrawlKeyless(unittest.TestCase):
 
 
 class TestPostHeaderKeyless(unittest.TestCase):
-    """POST 型 HTTP 引擎缺 key 时不发送认证残留头（与 GET 路径对齐）。
+    """POST 型 HTTP 引擎缺 key 时不发送认证残留头（与 GET 路径保持一致）。
 
     回归背景：firecrawl 为 POST，此前 POST 分支无 _header_meaningful 过滤，
     keyless 时会把 'Bearer {FIRECRAWL_API_KEY}' 原样发出导致 401。

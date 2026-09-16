@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""配额自愈闭环回归（F7，2026-08-29）。
+"""配额自愈完整链路回归（F7，2026-08-29）。
 
 设计目标（用户场景）：引擎远端配额耗尽（如 byted 10406 Free quota exhausted）
 → 执行层自动标记 → 路由组合层全模式排除、备用源自然接管 → 周期边界惰性
@@ -24,7 +24,7 @@ import route as route_mod  # noqa: E402
 
 
 def _fresh_manager() -> QuotaManager:
-    """不落盘的 QuotaManager（隔离真实 quota.json 状态与热读监视器）。"""
+    """不写入文件的 QuotaManager（隔离真实 quota.json 状态与热读监视器）。"""
     mgr = QuotaManager()
     mgr._state = {}
     mgr._save_state = lambda: None

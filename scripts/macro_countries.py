@@ -22,7 +22,7 @@ import re
 __all__ = ["WORLDBANK_COUNTRIES", "match_country", "is_foreign_macro_query"]
 
 # 国家名/别名 → ISO 代码。worldbank 引擎解析国家、fred 引擎国家词守卫、
-# route 层分流的单一真源（此前注释里写着「共用」，但三处都在同一个模块里，
+# route 层分流的唯一来源（此前注释里写着「共用」，但三处都在同一个模块里，
 # 拆出来之后这句话才真正成立）。
 WORLDBANK_COUNTRIES: dict[str, str] = {
     "中国": "CHN", "china": "CHN", "美国": "USA", "usa": "USA", "us": "USA",
@@ -60,7 +60,7 @@ def match_country(query: str, mapping: dict[str, str]) -> str:
     return ""
 
 
-# 非美国国家/地区子集：FRED 是美国口径，只有「明确指向别国」时才让位。
+# 非美国国家/地区子集：FRED 是美国计算方式，只有「明确指向别国」时才让位。
 # 从主表派生而非另抄一份，避免两张表漂移。
 _NON_US_COUNTRIES: dict[str, str] = {
     name: code for name, code in WORLDBANK_COUNTRIES.items() if code != "USA"
@@ -70,7 +70,7 @@ _NON_US_COUNTRIES: dict[str, str] = {
 def is_foreign_macro_query(query: str) -> bool:
     """查询是否明确指向非美国国家/地区。
 
-    FRED 序列均为美国或全球口径，遇到「中国GDP」「日本通胀」这类查询时
+    FRED 序列均为美国或全球计算方式，遇到「中国GDP」「日本通胀」这类查询时
     应放弃响应（返回 True），由 worldbank 按国家参数接管，避免美国数据冒充。
 
     判定复用 `match_country` 的词边界逻辑，而不是自己写一遍朴素子串匹配。

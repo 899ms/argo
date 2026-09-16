@@ -2,7 +2,7 @@
 """2026-09-02 审计加固回归门。
 
 覆盖（全部离线）：
-  1. subprocess 编码 AST 门禁：全仓 subprocess.run/Popen 一旦 text=True
+  1. subprocess 编码 AST 检查：全仓 subprocess.run/Popen 一旦 text=True
      必须显式 encoding（Windows 默认 GBK，中文输出/输入会 mojibake 或崩）
   2. recompute 白名单：Path/bytes 对象绕过 open 守卫已被堵 + os.open 原始
      fd 逃逸被封 + UTF-8 输出往返（-X utf8）
@@ -26,7 +26,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 
-# ── 1. subprocess 编码 AST 门禁 ──────────────────────────────────────────────
+# ── 1. subprocess 编码 AST 检查 ──────────────────────────────────────────────
 
 class TestSubprocessEncodingGate(unittest.TestCase):
     """全仓扫描：text=True 的 subprocess 调用必须显式 encoding。"""
@@ -81,8 +81,8 @@ class TestSubprocessEncodingGate(unittest.TestCase):
             f"请补 encoding='utf-8', errors='replace'：{offenders}")
 
     def test_gate_detects_alias_violation(self):
-        """门禁自检：`as sp` 别名 + text=True 无 encoding 必须被识别，
-        防止门禁自身对别名导入失明（search.py _sp 曾逃逸的教训）。"""
+        """检查自检：`as sp` 别名 + text=True 无 encoding 必须被识别，
+        防止检查自身对别名导入失明（search.py _sp 曾逃逸的教训）。"""
         snippet = (
             "import subprocess as sp\n"
             "def f():\n"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_yaml_loader_centralized.py — YAML 加载器真源门禁。
+"""test_yaml_loader_centralized.py — YAML 加载器来源检查。
 
 ## 守的是什么（2026-09-15 冷启动优化）
 
@@ -7,14 +7,14 @@
 79 ms，而语义相同的 libyaml C 版（CSafeLoader）只要 10 ms。此前 8 个模块各自
 直接调 `yaml.safe_load`，「用哪个 loader」这个决定被复制了 8 份，没有任何一处
 能统一改进——与 fetch 的 `--focus` 参数同一种失败模式（各写一份 → 漏改没人
-发现）。修法是把 loader 选择收口到 `yaml_load.py`，本文件把它钉住。
+发现）。修法是把 loader 选择统一处理到 `yaml_load.py`，本文件把它钉住。
 
 ## 附带钉住的两个契约
 
 `config.peek_cache_db_path()` 的文档承诺「配置损坏时 fail-open 返回 None」，
 但它只 catch `(ImportError, ValueError)`——而 `yaml.YAMLError` **不是**
 ValueError 的子类，损坏配置实际会抛 `yaml.parser.ParserError`（2026-09-15
-实测确认）。文档说的和代码做的不一致，正是本仓最该被门禁抓住的那类漂移。
+实测确认）。文档说的和代码做的不一致，正是本仓最该被检查抓住的那类漂移。
 
 同时它曾在一进程内被连调 4 次（quota / adaptive / argo_engine_registry /
 cache 各自的模块级常量），每次重解析一遍 123 KB 配置。现按
@@ -39,7 +39,7 @@ if str(SCRIPTS) not in sys.path:
 import config  # noqa: E402
 import yaml_load  # noqa: E402
 
-# 允许直接调 yaml 的唯一文件（loader 选择的真源）
+# 允许直接调 yaml 的唯一文件（loader 选择的来源）
 _LOADER_SOURCE = "yaml_load.py"
 
 
@@ -55,7 +55,7 @@ def _load_argo_bin():
 
 
 class TestLoaderIsCentralized:
-    """源码门禁：除 yaml_load.py 外不得直接调 yaml.safe_load / yaml.load。"""
+    """源码检查：除 yaml_load.py 外不得直接调 yaml.safe_load / yaml.load。"""
 
     def test_no_direct_yaml_load_outside_loader(self):
         import re
@@ -121,8 +121,8 @@ class TestLoaderChoice:
 class TestPeekCacheDbPathContract:
     """peek 的契约：解析至多一次、失败不写记忆、损坏配置 fail-open。
 
-    这里的用例都关掉落盘缓存（ARGO_CONFIG_CACHE=0）：要测的是**解析链**的
-    记忆化与失败语义，而落盘缓存命中时压根不解析（那条路径由
+    这里的用例都关掉写入文件缓存（ARGO_CONFIG_CACHE=0）：要测的是**解析链**的
+    记忆化与失败语义，而写入文件缓存命中时压根不解析（那条路径由
     TestConfigDiskCache 覆盖）。
     """
 
@@ -225,7 +225,7 @@ class TestArgoInterpreterWindowsCandidates:
 
     上游 v2.8.5 的社区贡献只在 node 启动器（bin/argo.js）里按平台分流，
     `bin/argo` 自身的候选链一直只认 python3.x——Windows 上这段等于全靠
-    `sys.executable` 兜底。这里锁住两端：候选里有 Windows 名字，且 `py -3`
+    `sys.executable` 保底。这里锁住两端：候选里有 Windows 名字，且 `py -3`
     这类**启动器 + 参数**会被解析成真实解释器路径后才入缓存（缓存与 execv
     都只认单个绝对路径，存组合串会让缓存永远不命中）。
     """
@@ -385,9 +385,9 @@ class TestArgoInterpreterCache:
             "strict 档必须在 import yaml 之前先判版本"
 
     def test_probe_rejects_below_min_python(self, argo_bin):
-        """端到端：探测必须按 MIN_PYTHON 判版本，且两条路径口径一致。
+        """端到端：探测必须按 MIN_PYTHON 判版本，且两条路径计算方式一致。
 
-        这是「门禁有牙」用例：只断言脚本字符串里含 version_info 属于**文本
+        这是「检查真的有效」用例：只断言脚本字符串里含 version_info 属于**文本
         检查**——把比较写成 `<=`、或只在其中一条路径保留判据，它照样通过。
         这里用真实的两个解释器（当前解释器 + 一个版本号被伪装的）真跑判据。
 
@@ -422,7 +422,7 @@ class TestArgoInterpreterCache:
         assert low  # 说明伪造目标端的意图
 
     def test_self_capable_does_not_require_requests(self, argo_bin, monkeypatch):
-        """原地执行判定与廉价校验同一口径：只卡版本与 PyYAML，不卡 requests。
+        """原地执行判定与廉价校验同一计算方式：只卡版本与 PyYAML，不卡 requests。
 
         重现的事故：照 install.sh 只装 pyyaml 的正常机器并没有 requests，旧判定
         因此恒为 False，每次 CLI 都被迫重选解释器并重启（实测每次多约 96ms），

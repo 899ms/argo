@@ -4,7 +4,7 @@
 目标：让「简单问题首轮就命中、复杂问题才走多轮」，避免简单问题被拖成多轮
 浪费 token。纯规则，零外部依赖，中英双语。
 
-设计（对齐 Adaptive-RAG 的复杂度分流 + Algolia 的 query expansion/relaxation）：
+设计（保持一致 Adaptive-RAG 的复杂度分流 + Algolia 的 query expansion/relaxation）：
   1. normalize_query      词形规范化：全角→半角、拆斜杠、压多余空格。
                            治「型号/日期/分隔符检索命中难」，如 LongCat-2.0/1.6 万亿。
   2. retrieval_variants   生成有序检索变体（归一化主词 + 拆连字符型号词 + 概念/同义词）。
@@ -14,7 +14,7 @@
                            high → 允许多轮/全变体（复杂、多跳、对比）。
 
 复杂度信号来源：query_understanding 的 intents/confidence/multi_intent_splits + 长度 +
-多跳词（对比/因果/区别/为什么/vs 等）。与 query_understanding 正交，仅做启发式分级。
+多跳词（对比/因果/区别/为什么/vs 等）。与 query_understanding 互不相干，仅做启发式分级。
 """
 
 from __future__ import annotations

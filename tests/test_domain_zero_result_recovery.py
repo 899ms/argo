@@ -7,8 +7,8 @@ GDP 总量」macro_data 零结果收场，而通用引擎本可答好）。修�
   ① route：中国宏观词 → nbs_stats（国家统计局）前置（镜像 worldbank
     非美国前置模式）；
   ② route：engines_fallback 候选改为「域声明未试成员优先」，域最清楚
-    自己的兜底次序；
-  ③ execute：域命中零结果时恢复链放行 L3（域候选是路由的定向兜底声明，
+    自己的保底次序；
+  ③ execute：域命中零结果时恢复链放行 L3（域候选是路由的定向保底声明，
     不再被复杂度门压掉）。
 
 运行：
@@ -131,7 +131,7 @@ class TestZeroResultDomainRescue(unittest.TestCase):
                       "救援引擎应记入 engines_used")
 
     def test_control_general_zero_result_no_extra_machines(self):
-        """控制组：非域查询（general_search 兜底路径）行为不变——其
+        """控制组：非域查询（general_search 保底路径）行为不变——其
         engines_fallback 为空，恢复候选不凭空增员。"""
         decision = route_query("python asyncio tutorial",
                                mode="auto", depth="fast")

@@ -140,11 +140,11 @@ def _quota_ratio(engine: str, quota_state: dict,
                  profiles: dict | None = None) -> float:
     """计算配额剩余比例。返回 0.0-1.0，无记录时默认 1.0。
 
-    limit 的单一真源是 quota_profiles.json（声明文件）；配额状态文件里只有
+    limit 的唯一来源是 quota_profiles.json（声明文件）；配额状态文件里只有
     用量计数。此前本函数只读 state["limit"]，而写入方（quota.record）恒填 0，
     于是 limit<=0 走「无限配额」分支恒返回 1.0——配额感知惩罚（<0.2 砍到
     2×qr、<0.5 乘 0.5+qr）从来没生效过。与 quota.get_remaining_ratio 的
-    profile.get("limit") 口径对齐，缺省才回落到 state 里的值。
+    profile.get("limit") 计算方式保持一致，缺省才回落到 state 里的值。
     """
     info = quota_state.get(engine) or {}
     profile = (profiles if profiles is not None else _load_cost_profiles()).get(engine) or {}
@@ -184,7 +184,7 @@ def _cost_factor(engine: str, profiles: dict | None = None) -> float:
     if not isinstance(profile, dict):
         return 1.0
     tier = profile.get("cost_tier", "free")
-    # 成本因子查 config 的单一真源（此前本模块自带一张表，与 config 的值不一致）
+    # 成本因子查 config 的唯一来源（此前本模块自带一张表，与 config 的值不一致）
     try:
         from config import _COST_FACTOR_BY_TIER
         return _COST_FACTOR_BY_TIER.get(tier, 1.0)

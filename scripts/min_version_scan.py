@@ -10,7 +10,7 @@ argo 声明支持 Python 3.9（见 bin/argo 的 MIN_PYTHON），但开发机与 
   潜进去的。它还不只是「一条命令坏了」——`bin/argo` 会把选中的解释器写进
   缓存，于是一次探测失误被固化，此后每次调用都失败；而同一缓存下别的子命令
   照常运行，用户完全不知道自己在跑一个跑不动的解释器。
-* 静态门禁当时全部通过，因为 `ast.parse` 与 ruff 的 E9 都只用**当前**解析器，
+* 静态检查当时全部通过，因为 `ast.parse` 与 ruff 的 E9 都只用**当前**解析器，
   判的是「语法合法」，从不判「在声明支持的最低版本上合法」。
 
 ## 判定策略
@@ -25,7 +25,7 @@ argo 声明支持 Python 3.9（见 bin/argo 的 MIN_PYTHON），但开发机与 
 | PEP 604 `X \\| Y` 用在类型上 | 3.10+ | AST：BinOp(BitOr) 且两侧形如类型名，且文件无 `from __future__ import annotations` |
 | `match` 语句 | 3.10+ | AST：存在 Match 节点 |
 
-**刻意偏保守**：漏报只是少一层提示，误报会让门禁被豁免掉，那门禁就废了。
+**刻意偏保守**：漏报只是少一层提示，误报会让检查被豁免掉，那检查就废了。
 所以 `0x80 | length`、`{a} | {b}`、`os.O_CREAT | os.O_RDWR` 一律不报。
 
 ## 用法
@@ -33,7 +33,7 @@ argo 声明支持 Python 3.9（见 bin/argo 的 MIN_PYTHON），但开发机与 
     python3 scripts/min_version_scan.py scripts/ tests/ bin/argo
     python3 -c "from min_version_scan import scan_text; print(scan_text(src, (3,9)))"
 
-零依赖、不联网。作为库使用时返回结构化结果，供门禁断言。
+零依赖、不联网。作为库使用时返回结构化结果，供检查断言。
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ DEFAULT_TARGETS = ("scripts", "tests", "bin/argo")
 
 
 def read_min_python(bin_argo: Path | str) -> tuple[int, int]:
-    """从 bin/argo 读 MIN_PYTHON（版本下限的唯一真源）。
+    """从 bin/argo 读 MIN_PYTHON（版本下限的唯一来源）。
 
     不在各处另写常量：两处各写一遍版本号、改一处漏一处，正是「3.9 被选中并
     固化进缓存」那次事故的成因。读不到返回 (0, 0)，由调用方判为失败。
@@ -78,7 +78,7 @@ def scan_text(source: str, minver: tuple[int, int]) -> list[tuple[int, str]]:
     顺序很关键：PEP 701 的检查**先跑**，而且不依赖 `ast.parse`。因为这种写法在
     低版本解释器上根本 parse 不过——若先 parse 再判别，跑在 3.9 上时只会得到
     一句笼统的「invalid syntax」，拿不到「这是 3.12+ 语法、请改写」这个可行动
-    的结论。门禁的价值恰恰在于给出可行动的诊断。
+    的结论。检查的价值恰恰在于给出可行动的诊断。
     """
     findings: list[tuple[int, str]] = []
     if minver < (3, 12):
@@ -90,7 +90,7 @@ def scan_text(source: str, minver: tuple[int, int]) -> list[tuple[int, str]]:
         # 已由上面的专项检查给出更具体的原因时，不再补一条笼统的语法错误。
         if findings:
             return sorted(set(findings))
-        # 当前解释器都解析不了，交给别的门禁（ruff E9）报，这里不重复
+        # 当前解释器都解析不了，交给别的检查（ruff E9）报，这里不重复
         return [(e.lineno or 0, f"语法错误：{e.msg}")]
 
     if minver < (3, 10):

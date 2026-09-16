@@ -11,7 +11,7 @@ argo 的对外宣称是「多语言检测与跨语言回退」，但实测发现
 没有完整矩阵，任何「该补哪门语言」的决策都是拍脑袋。本脚本产出
 「语言 × 引擎」的返回量 + 相关度，作为 B 阶段的决策依据。
 
-## 度量口径
+## 度量计算方式
 
 对每个 (引擎, 语言) 组合：
   - count   ：返回条数（0 = 无能力）
@@ -98,7 +98,7 @@ ENGINES = [
 
 
 def relevance(query: str, item: dict) -> float:
-    """查询词元在结果中的命中率（0~1）。口径见模块 docstring。"""
+    """查询词元在结果中的命中率（0~1）。计算方式见模块 docstring。"""
     blob = ((item.get("title") or "") + " " + (item.get("snippet") or "")).lower()
     if not blob.strip():
         return 0.0
@@ -122,7 +122,7 @@ def relevance(query: str, item: dict) -> float:
 
 
 def _one_call(eng: str, q: str, n: int, timeout: float) -> dict:
-    """单次 (引擎, 查询) 调用 → cell 结果。任何异常都收敛为 error 字段。"""
+    """单次 (引擎, 查询) 调用 → cell 结果。任何异常都收紧为 error 字段。"""
     import engines as eng_mod
     t0 = time.time()
     try:
@@ -168,7 +168,7 @@ def probe(engines: list[str], langs: list[str], n: int = 5,
     实测跑 35 分钟仅消耗 12 秒 CPU —— 即 99% 时间在等网络。
     改为 8 并发后同样的工作量约 2-3 分钟。
 
-    ## 增量落盘
+    ## 增量写入文件
 
     每完成一批（batch）就把当前矩阵写入 out_path。这样即使中途被中断，
     已得数据仍可用——长任务不该「要么全有要么全无」。
@@ -201,7 +201,7 @@ def probe(engines: list[str], langs: list[str], n: int = 5,
                         "latency_ms": 0, "error": f"future:{type(e).__name__}"}
             cells.setdefault((lang, eng), []).append(cell)
             done += 1
-            # 增量落盘：每 50 次完成写一次
+            # 增量写入文件：每 50 次完成写一次
             if out_path and done % 50 == 0:
                 _flush_matrix(cells, langs, engines, out_path,
                               {"langs": langs, "engines": engines, "n": n,
@@ -232,7 +232,7 @@ def probe(engines: list[str], langs: list[str], n: int = 5,
 
 def _flush_matrix(cells: dict, langs: list[str], engines: list[str],
                   out_path: str, meta: dict) -> None:
-    """把当前 cells 组装成矩阵并落盘（增量与最终共用）。"""
+    """把当前 cells 组装成矩阵并写入文件（增量与最终共用）。"""
     matrix: dict[str, dict] = {}
     for lang in langs:
         row: dict[str, dict] = {}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_local_search_registry — 子技能登记表 / 文档 / 主清单三方一致门禁。
+"""test_local_search_registry — 子技能登记表 / 文档 / 主清单三方一致检查。
 
 ## 守的是什么
 

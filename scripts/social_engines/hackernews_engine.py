@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hacker News 搜索引擎（HN Algolia 公开 API，零密钥）
 
-对齐 social_engines 统一 schema（title/url/snippet/source/score/social_meta），
+保持一致 social_engines 统一 schema（title/url/snippet/source/score/social_meta），
 sentiment 聚合（aggregate_social_sentiment）按 social_meta 互动字段直接可用。
 """
 

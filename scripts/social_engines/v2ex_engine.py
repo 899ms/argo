@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """V2EX 社区搜索引擎（公开网页，零密钥）
 
-复用 argo route 库 v2ex builder 的 HTML 解析逻辑，对齐 social_engines schema。
+复用 argo route 库 v2ex builder 的 HTML 解析逻辑，保持一致 social_engines schema。
 """
 
 from __future__ import annotations

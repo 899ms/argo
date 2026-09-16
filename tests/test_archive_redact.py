@@ -4,7 +4,7 @@
 覆盖：
   1. redact_secrets 按类别：URL query 密钥 / Bearer 头 / 家目录路径
   2. 无害内容原样透传（脱敏不过度破坏日志可用性）
-  3. 写入路径集成：write_search_archive 落盘文件里找不到注入的密钥
+  3. 写入路径集成：write_search_archive 写入文件文件里找不到注入的密钥
 """
 
 import json
@@ -72,7 +72,7 @@ class TestRedactDeep:
 
 
 class TestWritePathIntegration:
-    """写入时生效：落盘文件里找不到密钥（核心契约）。"""
+    """写入时生效：写入文件文件里找不到密钥（核心契约）。"""
 
     def test_archive_files_redacted(self, tmp_path):
         secret = "sk-ARGO-TEST-SECRET-VALUE"

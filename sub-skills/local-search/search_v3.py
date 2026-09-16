@@ -283,7 +283,7 @@ def _build_url(spec: dict[str, Any], query: str, n: int,
     extra = spec.get("extra_params", {})
     params = {qp: query}
     # 语言参数动态化（v2.7）：根据查询主语言覆盖静态 setlang/hl/lang，
-    # 表在 lang_detect 单真源维护。
+    # 表在 lang_detect 单来源维护。
     for k, v in extra.items():
         if k in ("setlang", "hl", "lang", "uselang"):
             v = _lang_param(k, query) or v
@@ -321,7 +321,7 @@ def _build_url(spec: dict[str, Any], query: str, n: int,
 
 
 def _lang_param(param: str, query: str) -> str:
-    """按查询主语言返回引擎语言参数；表在 lang_detect 单真源维护。"""
+    """按查询主语言返回引擎语言参数；表在 lang_detect 单来源维护。"""
     try:
         from lang_detect import engine_lang_param
         return engine_lang_param(param, query)
@@ -345,7 +345,7 @@ def _select_first_with_bs4(soup: Any, selector: str) -> Any:
 
 def _fallback_extract(html: str, engine_name: str, base: str,
                          default_score: float = 0.45, max_items: int = 8) -> list[dict[str, Any]]:
-    """通用解析兜底：选择器 0 命中时，用链接 + 锚文本启发式回退。
+    """通用解析保底：选择器 0 命中时，用链接 + 锚文本启发式回退。
 
     零依赖：只用 BeautifulSoup 已有能力，抽页面内最像「结果卡片」的链接块，
     避免页面改版导致整引擎 0 结果。命中者 score 保守（0.45 起），不与主映射抢位。
@@ -798,7 +798,7 @@ def _run_cli_engine(spec: dict[str, Any], query: str, n: int, timeout: float,
                 continue
             return [], last_err
 
-        # 0 字节/解析失败或无 -o 引擎：文本解析兜底（handles text/news/images/videos）
+        # 0 字节/解析失败或无 -o 引擎：文本解析保底（handles text/news/images/videos）
         parsed, parse_err = _parse_cli_output(result.stdout, key)
         if parsed:
             return parsed, parse_err
@@ -861,7 +861,7 @@ def _check_cli_available(cmd: str) -> bool:
     """Check if a CLI command is available（结果缓存 TTL=_CLI_AVAIL_TTL）。
 
     `ddgs --help` 冷启动 ~190ms/次；多 ddgs 引擎并行搜索时若每次都检查，
-    单次搜索白付 N×190ms 纯检查开销。缓存按命令名 + 60s TTL。
+    单次搜索白等 N×190ms 纯检查开销。缓存按命令名 + 60s TTL。
     """
     now = time.time()
     hit = _CLI_AVAIL_CACHE.get(cmd)
@@ -1034,7 +1034,7 @@ def _search_one(engine_name: str, query: str, n: int = 5,
                             results = _parse_xml(engine_name, text, maps, is_rss=(fmt=="rss"))
                 except Exception:
                     pass
-                # 时间窗兜底过滤（与 HTTP 路径同语义；仅带时间能力引擎）
+                # 时间窗保底过滤（与 HTTP 路径同语义；仅带时间能力引擎）
                 if time_aware and (since or until) and results:
                     results = _apply_time_window(results, since, until)
         if not results:
@@ -1069,7 +1069,7 @@ def _search_one(engine_name: str, query: str, n: int = 5,
     else:
         results = []
 
-    # 时间窗过滤（通用兜底）：URL 参数下推之外的引擎同样受益，
+    # 时间窗过滤（通用保底）：URL 参数下推之外的引擎同样受益，
     # 仅保留 published_at 落在 [since, until] 内的结果；
     # 仅带时间能力引擎执行（其余引擎无 published_at 可滤）。
     if time_aware and (since or until):
@@ -1240,9 +1240,9 @@ def search_engines(
         # 运行中的线程受各自 HTTP 超时约束自然结束，见 total_budget docstring。
         ex.shutdown(wait=False, cancel_futures=True)
 
-    # 融合：多引擎时接主仓单一真源 rrf_merge——WG-RRF 引擎加权 +
+    # 融合：多引擎时接主仓唯一来源 rrf_merge——WG-RRF 引擎加权 +
     # canonical URL 跨引擎去重合并 + consensus_engines 标注。此前是
-    # 「位次自证」排序：score=0.9-i*0.05 只是单引擎内位次，同位次必然
+    # 「位次自行验证」排序：score=0.9-i*0.05 只是单引擎内位次，同位次必然
     # 同分，全局 sort 退化为提交顺序（稳定排序），且无跨引擎去重
     # （2026-09-13 审查 BUG-4）。单引擎保留位次序（引擎自身的相关性序
     # 比单列表 RRF 更有信息量）；主仓不可用时退回旧排序（子技能仍可

@@ -3,7 +3,7 @@
 """WebBridge 适配：登录态 search / fetch / api（用户 Chrome/Edge + 扩展桥）。
 
 协议：POST http://127.0.0.1:10086/command
-输出字段与 ego 路径对齐，source=webbridge，login provenance 由调用方 stamp。
+输出字段与 ego 路径保持一致，source=webbridge，login provenance 由调用方 stamp。
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ DEFAULT_TIMEOUT = int(os.environ.get("EGO_SEARCH_WEBBRIDGE_TIMEOUT", "90"))
 from serp_spec import SEARCH_URLS, build_serp_js  # noqa: E402  单一真源
 
 # 页面内 SERP 提取（与 ego 选择器同构）
-# SERP 提取 IIFE 见 serp_spec.SERP_EXTRACT_TEMPLATE（单一真源，与 ego_search 共用）
+# SERP 提取 IIFE 见 serp_spec.SERP_EXTRACT_TEMPLATE（唯一来源，与 ego_search 共用）
 
 # ── 时间窗工具（ego/webbridge 双路径共用）──────────────────────────────
 def _parse_time(s: str | None) -> str | None:
@@ -70,7 +70,7 @@ def _to_epoch_ms(s: str | None) -> str:
 
 
 def time_url_params(engine: str, since: str | None, until: str | None) -> dict[str, str]:
-    """各引擎 URL 时间筛选参数（尽力而为；引擎改版失效时由解析后过滤兜底）。"""
+    """各引擎 URL 时间筛选参数（尽力而为；引擎改版失效时由解析后过滤保底）。"""
     since_iso, until_iso = _parse_time(since), _parse_time(until)
     if engine == "google":
         if since_iso or until_iso:
@@ -241,7 +241,7 @@ def search(
         results = _parse_jsonish(results)
     if not isinstance(results, list):
         results = []
-    # 解析后时间窗过滤（URL 参数之外的通用兜底）
+    # 解析后时间窗过滤（URL 参数之外的通用保底）
     if since or until:
         results = filter_window(results, since, until)
     return {

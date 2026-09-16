@@ -8,7 +8,7 @@
   - crawl BFS 从原始 HTML 发现链接（raw=True）
   - crawl sitemap elapsed_ms 是耗时而非时间戳
   - pdf_extract 页码解析
-  - MCP schema 契约：单真源、无死 actions 参数
+  - MCP schema 契约：单来源、无死 actions 参数
   - argo_local_search 零结果契约（count=0 而非报错）
   - P2：_understand_cached lru_cache 语义、死模块 fetch_v2/mcp_payload 已移除、
     社交并行搜索超时返回已完成部分
@@ -141,7 +141,7 @@ def test_parse_pages_specs():
     assert _parse_pages("2", 10) == [2]
 
 
-# ── MCP schema 契约（单真源；argo_fetch 无死 actions）────────────────────────
+# ── MCP schema 契约（单来源；argo_fetch 无死 actions）────────────────────────
 
 def test_mcp_tools_full_list_single_source():
     names = [t["name"] for t in TOOLS]

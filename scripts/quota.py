@@ -41,7 +41,7 @@ QUOTA_STATE_PATH = QUOTA_STATE_DIR / "quota.json"
 class QuotaManager:
     """配额追踪与消耗速率计算（v2）。"""
 
-    # 远端配额周期候选；本地 period=second/minute 只是限频口径，不代表远端
+    # 远端配额周期候选；本地 period=second/minute 只是限频计算方式，不代表远端
     # 配额周期（火山免费额度按日），过短一律按 24h 保守处理
     _PERIOD_SECONDS = {"hour": 3600, "day": 86400, "month": 30 * 86400}
 
@@ -58,7 +58,7 @@ class QuotaManager:
             from hot_state import HotFile
             self._profiles_hot = HotFile(QUOTA_PROFILES_PATH)
             self._state_hot = HotFile(QUOTA_STATE_PATH)
-            # 基线与 init 加载的内存态对齐（load 已读过磁盘）：预建签名，
+            # 基线与 init 加载的内存态保持一致（load 已读过磁盘）：预建签名，
             # 消除 HotFile「首次 changed 只建基线」把 init 之后、首次访问之前
             # 的他进程写入吃掉的窗口
             self._profiles_hot.reset()
@@ -106,7 +106,7 @@ class QuotaManager:
         argo_paths.atomic_write_json(QUOTA_STATE_PATH, self._state)
 
     def _mutate_locked(self, mutator) -> None:
-        """跨进程安全的「重读 → 改 → 落盘」序列。
+        """跨进程安全的「重读 → 改 → 写入文件」序列。
 
         进程内 threading.Lock 只挡得住同进程线程；CLI / MCP server /
         评测脚本三者并行时，各自读到旧状态、各自 +1、后写者覆盖前写者，
@@ -133,12 +133,12 @@ class QuotaManager:
         cutoff = now - 3600
         kept = [t for t in st.get("calls", []) if t > cutoff]
         st["calls"] = kept
-        # errors 没有逐条时刻，无法精确对齐：上界取窗口内调用数，
+        # errors 没有逐条时刻，无法精确保持一致：上界取窗口内调用数，
         # 窗口清空则归零。保证 errors 恒 ≤ 窗口 calls。
         st["errors"] = min(st.get("errors", 0), len(kept))
 
     def record_many(self, entries, *, credits: int = 1) -> None:
-        """批量记录（entries: (engine, success) 可迭代），只落盘一次。
+        """批量记录（entries: (engine, success) 可迭代），只写入文件一次。
 
         批次搜索一次为每个引擎各写一次状态，而每次写都是「全量序列化 +
         rename」。合并后写盘次数从 N 降到 1，且整批在同一个文件锁内完成。
@@ -224,7 +224,7 @@ class QuotaManager:
     def clear_remote_exhausted(self, engine: str) -> bool:
         """手动清除远端耗尽标记（充值后提前恢复）。"""
         with self._lock:
-            # 与 record/mark 同口径：先热读磁盘，防止用陈旧内存态覆盖他进程写入
+            # 与 record/mark 同计算方式：先热读磁盘，防止用陈旧内存态覆盖他进程写入
             self._fresh_locked()
             st = self._state.get(engine)
             if st and "remote_exhausted" in st:
@@ -256,7 +256,7 @@ class QuotaManager:
         """处于「远端配额耗尽」状态的引擎 → {reason, until}。
 
         一次性快照，供 `--list-engines` 展示：逐引擎调 is_remote_exhausted 会
-        重复走热读检查。顺带做过期自愈（与 _refresh_remote_state_locked 同口径），
+        重复走热读检查。顺带做过期自愈（与 _refresh_remote_state_locked 同计算方式），
         坏标记（非 dict）按过期处理。
         """
         with self._lock:
@@ -353,7 +353,7 @@ class QuotaManager:
                 continue
             profile = self._profiles[engine]
             # 残缺状态防御：state JSON 手工编辑/截断时 mark 可能非 dict，
-            # 与 _refresh_remote_state_locked 的 .get 口径保持一致
+            # 与 _refresh_remote_state_locked 的 .get 计算方式保持一致
             raw_mark = (self._state.get(engine) or {}).get("remote_exhausted")
             mark = raw_mark if isinstance(raw_mark, dict) else None
             stats[engine] = {

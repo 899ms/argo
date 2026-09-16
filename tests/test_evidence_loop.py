@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_evidence_loop.py — 证据闭环 P0 回归测试
+test_evidence_loop.py — 证据完整链路 P0 回归测试
 
 覆盖：fetch 证据提取 / URL 证据缓存 / 回填 / 高后果门控 / verify 核验模式。
 全部 mock fetch，不打真实网络。缓存用 tmp_path 隔离，不碰生产 SQLite。

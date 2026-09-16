@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """批次九构建器：免密钥垂直数据源扩展（2026-09-13）。
 
-收录原则与批次七/八一致：免密钥开箱可用、填真空白、过收录门禁。
+收录原则与批次七/八一致：免密钥开箱可用、填真空白、过收录检查。
 本批聚焦 argo 此前的七个真实空白域：
 
   who_don         公共卫生事件（WHO 官方 OData）
@@ -895,7 +895,7 @@ def _build_egov_law_engine(spec: dict[str, Any]) -> Any:
             name = mnm.group(1).strip()
             blob = f"{name} {mno.group(1) if mno else ''}"
             score = sum(1 for t in terms if t in blob)
-            # 命中任一检索词即入选，完全没命中则只保留含「法」的条目做兜底
+            # 命中任一检索词即入选，完全没命中则只保留含「法」的条目做保底
             if score or any(t in blob for t in terms):
                 hits.append((score, name, mid.group(1).strip() if mid else "",
                              mno.group(1).strip() if mno else ""))

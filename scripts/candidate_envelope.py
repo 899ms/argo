@@ -26,7 +26,7 @@ _TZ_CN = timezone(timedelta(hours=8))
 
 
 def canonicalize_url(url: str) -> str:
-    """URL 归一化（薄转发到 url_canon 单一真源）。
+    """URL 归一化（薄转发到 url_canon 唯一来源）。
 
     本函数曾自带一份较短的追踪参数表（缺 share_token/spm 族等），与
     search/plan/research_dossier 的实现不一致；现统一到 url_canon。
@@ -211,7 +211,7 @@ def build_limitations(
     """结果局限声明——agent 判断「这批结果能用到什么程度」的依据。
 
     这是**质量信号，与归档开关无关**：envelope 模式与精简模式共用本实现，
-    避免两处各写一份导致口径漂移（本仓对「同一件事写两遍」的一贯态度）。
+    避免两处各写一份导致计算方式漂移（本仓对「同一件事写两遍」的一贯态度）。
 
     2026-09-15 输出契约审查发现：精简档（--no-envelope，文档推荐给 agent
     的档位）此前整块拿不到局限声明，于是 agent 无从知晓自己拿到的是

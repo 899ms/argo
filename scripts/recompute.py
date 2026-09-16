@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """recompute.py — 可复算执行器：本地数据 + 计算脚本 → 可核查数值。
 
-设计（P0-2，对齐「结论可重算」）：
+设计（P0-2，保持一致「结论可重算」）：
 
 默认拒绝：
   - 默认拒绝运行，需显式 `--allow-exec` 或环境 ARGO_ALLOW_RECOMPUTE=1
@@ -43,7 +43,7 @@ def _kill_process_group(proc: subprocess.Popen) -> None:
     Windows：无 killpg/getpgid（POSIX-only），os.kill 也只能杀单进程，
     taskkill /T 才可递归，但依赖外部命令；此处退化为 proc.kill()，仍保证
     「父进程被杀、communicate 退出」的默认拒绝语义（子进程虽可能残留，
-    但由独立 temp 工作目录 + 断网防护兜底，不扩散）。
+    但由独立 temp 工作目录 + 断网防护保底，不扩散）。
     """
     try:
         # POSIX-only：Windows 抛 AttributeError
@@ -237,8 +237,8 @@ def _allowed_paths(inputs: list[dict[str, Any]]) -> list[str]:
 
 def _env_allowed() -> bool:
     # 默认关（该开关是授权语义，不是能力开关）：未设置或为空 → 不放行。
-    # 统一走 env_flag，与全仓其他布尔开关同一口径（0/false/no/off 都算关）；
-    # expand=False 是授权位专有的口径：只认 ARGO_ALLOW_RECOMPUTE 这一字面名，
+    # 统一走 env_flag，与全仓其他布尔开关同一计算方式（0/false/no/off 都算关）；
+    # expand=False 是授权位专有的计算方式：只认 ARGO_ALLOW_RECOMPUTE 这一字面名，
     # 不认裸名 ALLOW_RECOMPUTE。此前走别名展开，环境里任何工具设一个少写前缀
     # 的同名变量就等于替用户放行了「受限子进程执行脚本」——授权只认明确信号。
     from engine_env import env_flag

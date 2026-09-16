@@ -6,7 +6,7 @@
 1. --engine 逗号多引擎拆分（route_query engine_override 分支）：
    曾整串直通——「local_bing,local_baidu」被当成一个引擎名进 combo，
    registry 查无 → 「未知引擎」空跑，用户显式指定的引擎全部失效
-   （--list-engines 路径一直是拆的，两条路径口径分裂）。
+   （--list-engines 路径一直是拆的，两条路径计算方式分裂）。
 
 2. tfidf_scores 只在 TF-IDF 真正参与决策时输出：
    域命中路径曾照搬原始 TF-IDF 前三，与实际执行的域 combo 无关
@@ -33,7 +33,7 @@ from route import route_query  # noqa: E402
 
 
 class TestEngineOverrideCommaSplit(unittest.TestCase):
-    """--engine 逗号串必须拆分（与 --list-engines 路径同口径）。"""
+    """--engine 逗号串必须拆分（与 --list-engines 路径同计算方式）。"""
 
     def test_comma_separated_engines_are_split(self):
         d = route_query("test", engine_override="local_bing,local_baidu")
@@ -74,7 +74,7 @@ class TestTfidfScoresEmission(unittest.TestCase):
         self.assertEqual(scores[0]["engine"], d["engines_combo"][0])
 
     def test_fallback_path_hides_below_threshold_scores(self):
-        # 兜底路径 tfidf_best 必为空：低于阈值的候选分不是路由依据。
+        # 保底路径 tfidf_best 必为空：低于阈值的候选分不是路由依据。
         d = route_query("zzz qqx unrelated tokens 2026", mode="auto",
                         depth="fast")
         if d.get("reason", "").startswith("TF-IDF 语义路由"):

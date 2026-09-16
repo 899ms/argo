@@ -2,10 +2,10 @@
 """answer.py — 直答端点（Answer 形态）：带引用的合成答案。
 
 吸纳自 2026-09 对标研究：Brave Answers / Perplexity Sonar / Seltz Answer
-三家同形态，行业已收敛为「搜索的 Answer 端点」标配。当前通道：
+三家同形态，行业已收紧为「搜索的 Answer 端点」标配。当前通道：
 Seltz POST /v1/answer（x-api-key 鉴权，注册赠 20000 次）。
 
-置信口径：上游响应无置信度标量（2026-09-14 实测），故输出诚实计数——
+置信计算方式：上游响应无置信度标量（2026-09-14 实测），故输出诚实计数——
 引用条数 + 唯一引用域名数；上游若日后提供 confidence 字段则原样透传。
 不造模拟精确度的单一分数。
 
@@ -83,7 +83,7 @@ def main() -> None:
         sys.exit(1)
 
     citations = data.get("citations") or []
-    # 上游无置信度标量：诚实计数口径；有则透传（前向兼容）
+    # 上游无置信度标量：诚实计数计算方式；有则透传（前向兼容）
     confidence = {"citations": len(citations),
                   "unique_domains": _unique_domains(citations)}
     if isinstance(data.get("confidence"), (int, float)):

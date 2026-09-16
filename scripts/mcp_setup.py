@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """mcp_setup.py — Argo 多客户端 MCP 一键注入/诊断/还原（自研，零第三方依赖）
 
-设计对齐 Argo 单一真源哲学（config.yaml / engines/specs/*.yaml）：
-  - 客户端描述真源 = mcp/clients.yaml（改客户端不改代码；加一行 YAML 即可）
+设计保持一致 Argo 唯一来源哲学（config.yaml / engines/specs/*.yaml）：
+  - 客户端描述来源 = mcp/clients.yaml（改客户端不改代码；加一行 YAML 即可）
   - PHP/Python 均为 stdlib，不引入 tomlkit/toml 等第三方依赖
 
 安全与可逆（借鉴分布式系统写入范式，而非复制任何外部代码）：
@@ -44,7 +44,7 @@ def _backup_dir() -> Path:
     return _home() / ".argo" / "mcp-backup"
 
 
-# ── 真源加载 ──────────────────────────────────────────────────────────────
+# ── 来源加载 ──────────────────────────────────────────────────────────────
 
 def _clients_file() -> Path:
     override = os.environ.get("ARGO_CLIENTS_PATH", "").strip()
@@ -54,7 +54,7 @@ def _clients_file() -> Path:
 
 
 def load_clients() -> list[dict[str, Any]]:
-    """读取 mcp/clients.yaml（声明式真源）。读取失败抛异常（fail-loud）。"""
+    """读取 mcp/clients.yaml（声明式来源）。读取失败抛异常（fail-loud）。"""
     path = _clients_file()
     if not path.exists():
         raise FileNotFoundError(f"客户端真源不存在: {path}")
@@ -69,7 +69,7 @@ def load_clients() -> list[dict[str, Any]]:
 
 
 def _home() -> Path:
-    # 对齐 install.sh 的 HOME 解析；KEENABLE 式 HOME 覆盖便于 e2e 隔离，但用 Argo 自有名
+    # 保持一致 install.sh 的 HOME 解析；KEENABLE 式 HOME 覆盖便于 e2e 隔离，但用 Argo 自有名
     override = os.environ.get("ARGO_HOME_OVERRIDE", "").strip()
     home = Path(override).expanduser() if override else Path.home()
     return home
@@ -100,7 +100,7 @@ def _mcp_command(client: dict[str, Any]) -> dict[str, Any]:
     """生成该客户端应写入的 argo MCP entry（stdio 命令 + 可选 env）。
 
     v2.8.5 起 command 指向 mcp_launch.sh 启动器而非 python 直启：
-    启动器负责注入引擎密钥（~/.config/argo/env 唯一真源 + launchctl 兜底），
+    启动器负责注入引擎密钥（~/.config/argo/env 唯一来源 + launchctl 保底），
     任何客户端/启动上下文行为一致——密钥配置一次，处处生效。
     """
     install_dir = Path(__file__).resolve().parent.parent
@@ -141,10 +141,10 @@ def list_backups(file_name: str) -> list[Path]:
 # ── 原子写 ──────────────────────────────────────────────────────────────
 
 def atomic_write(path: Path, content: str, secret: bool = False) -> None:
-    """原子写文本（薄转发到 argo_paths 单一真源）。含密钥时 0600 权限。
+    """原子写文本（薄转发到 argo_paths 唯一来源）。含密钥时 0600 权限。
 
     本函数曾自带一份 mkstemp + replace 实现，与 argo_paths.atomic_write_text
-    逐行重复；收敛到真源后，唯一 tmp 名/失败清理等不变量只有一处维护。
+    逐行重复；收紧到来源后，唯一 tmp 名/失败清理等不变量只有一处维护。
     """
     import argo_paths
     argo_paths.atomic_write_text(path, content, mode=0o600 if secret else None)

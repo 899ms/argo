@@ -10,7 +10,7 @@ import os
 import subprocess
 
 
-# 内部子进程超时（秒）。此前硬编码 15s，比编排层的单引擎墙钟预算（10s）还长，
+# 内部子进程超时（秒）。此前硬编码 15s，比调度层的单引擎墙钟预算（10s）还长，
 # 属「内层白跑」：外层 subprocess 会在预算处 kill，但内层已消耗的时间追不回。
 # 收到 8s —— 与 execution.default_timeout 一致，且短于预算，
 # 使内层能在被 kill 前主动超时返回（走 except 分支），行为更干净。

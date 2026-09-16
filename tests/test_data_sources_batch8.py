@@ -11,7 +11,7 @@
   flk_law       orderByParam 对象体（扁平字符串会 500）+ 高亮剥离 + sxx 映射
   wikisource    标题空格编码拼 wiki 路径 + searchmatch 剥离
   google_news   RSS 2.0 解析 + 「 - 媒体名」短尾巴剥离 + 语言整组切换
-  met_museum    两跳（objectIDs → objects/{id}）+ 空署名兜底
+  met_museum    两跳（objectIDs → objects/{id}）+ 空署名保底
   stackoverflow site: 前缀切站点族 + 前缀剥离
   http_client   Location 未编码中文重定向修复（latin-1 还原 + 补编码）
   声明式         crt_sh 顶层数组 / nasa_images 嵌套 url_template / zhihu_hot_app 无查询参数
@@ -424,7 +424,7 @@ class TestMetMuseum:
         assert any("/search?" in c and "hasImages=true" in c for c in calls)
         assert len(out) == 2
         assert "Vincent van Gogh" in out[0]["snippet"]
-        # 空署名兜底：标题仍是作品名
+        # 空署名保底：标题仍是作品名
         assert out[1]["title"] == "Cypresses"
 
 

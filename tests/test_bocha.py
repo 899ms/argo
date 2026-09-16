@@ -96,7 +96,7 @@ class TestBochaWebEngine(unittest.TestCase):
     def test_missing_key_returns_error_item(self):
         os.environ.pop("BOCHA_API_KEY", None)
         os.environ.pop("ARGO_BOCHA_API_KEY", None)
-        # get_env 会热读 ~/.config/argo/env 兜底，测试机可能真配了 key，须屏蔽
+        # get_env 会热读 ~/.config/argo/env 保底，测试机可能真配了 key，须屏蔽
         from unittest.mock import patch as _patch
         with _patch("engine_env._envfile_load", return_value={}):
             results = self.builder("测试", 3)
@@ -179,7 +179,7 @@ class TestBochaAiEngine(unittest.TestCase):
     def test_missing_key_returns_error_item(self):
         os.environ.pop("BOCHA_API_KEY", None)
         os.environ.pop("ARGO_BOCHA_API_KEY", None)
-        # get_env 会热读 ~/.config/argo/env 兜底，测试机可能真配了 key，须屏蔽
+        # get_env 会热读 ~/.config/argo/env 保底，测试机可能真配了 key，须屏蔽
         from unittest.mock import patch as _patch
         with _patch("engine_env._envfile_load", return_value={}):
             results = self.builder("测试", 3)
@@ -288,7 +288,7 @@ class TestModalCardRouting(unittest.TestCase):
             self.assertEqual(d.get("domain"), "modal_card", q)
             engines = d.get("engines") or d.get("engines_combo") or []
             self.assertIn("bocha_ai", engines, q)
-            # 纯结构化路径：应含 bocha 兜底，不混 local_bing / openstreetmap
+            # 纯结构化路径：应含 bocha 保底，不混 local_bing / openstreetmap
             self.assertIn("bocha", engines, q)
             self.assertNotIn("local_bing", engines, q)
             self.assertNotIn("local_openstreetmap", engines, q)

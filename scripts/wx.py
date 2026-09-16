@@ -5,7 +5,7 @@
   - 双源并行：wttr.in（信息全：体感/湿度/云量/能见度）+ Open-Meteo
     （结构化：中文 WMO 码 / 降水概率 / 空气质量），快者先返、结果融合去重
   - 地理编码：Open-Meteo Geocoding API（免 Key），中文/拼音/英文城市名 → 坐标，
-    让 Open-Meteo 兜底在任意地名输入下可用（此前仅坐标输入可兜底）
+    让 Open-Meteo 保底在任意地名输入下可用（此前仅坐标输入可保底）
   - 空气质量：Open-Meteo Air Quality API（免 Key），当前 PM2.5/PM10 + 等级
   - 天气描述中文化：wttr.in 英文 desc → 中文（WMO 常见词映射表）
   - 输入：地点名（城市/机场码/邮编）或 "lat,lon"，或两个位置参数 lat lon
@@ -233,7 +233,7 @@ def _aqi(lat: float, lon: float) -> str | None:
 
 
 def _open_meteo(loc: str) -> list[dict]:
-    """Open-Meteo 兜底源：坐标或地名（自动地理编码）。含降水概率与空气质量。"""
+    """Open-Meteo 保底源：坐标或地名（自动地理编码）。含降水概率与空气质量。"""
     try:
         lat, lon = (float(x) for x in loc.split(","))
         label = loc

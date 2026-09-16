@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""静态缺陷门禁：拦住「会让代码跑错或静默失效」的写法。
+"""静态缺陷检查：拦住「会让代码跑错或静默失效」的写法。
 
-## 为什么需要这道门禁
+## 为什么需要这道检查
 
-本仓已有一批很讲究的一致性门禁（版本四端对账、CommonFlags 契约、环境变量
+本仓已有一批很讲究的一致性检查（版本四端对账、CommonFlags 契约、环境变量
 别名一致性、原生工具 schema 漂移），但**没有任何一道在检查代码本身的静态
 缺陷**。2026-09-15 的审查用 ruff F 规则扫 108 个模块，扫出 5 处真缺陷：
 
@@ -16,7 +16,7 @@
   spec 的规模下，这类重复靠肉眼几乎不可能发现。
 
 这类缺陷的共同点：**不报错、不崩溃、只是悄悄不生效**。靠 code review 发现
-它们的概率极低，应该由门禁兜住。
+它们的概率极低，应该由检查兜住。
 
 ## 收了哪些规则
 
@@ -84,7 +84,7 @@ TARGETS = [str(SCRIPTS), str(TESTS), str(BIN)]
 
 # 「低于 MIN_PYTHON 就解析不了」的语法扫描器。逻辑独立成模块
 # （scripts/min_version_scan.py）而不是塞在本文件里：它有自己的一套 AST/token
-# 判据与用例，且 bin/argo 侧也可能用到。这里只做门禁装配。
+# 判据与用例，且 bin/argo 侧也可能用到。这里只做检查装配。
 sys.path.insert(0, str(SCRIPTS))
 import min_version_scan  # noqa: E402
 
@@ -119,7 +119,7 @@ def _ruff_findings(targets: list[str]) -> list[str] | None:
     """跑 ruff，返回违规行列表；ruff 不可用返回 None。
 
     用 JSON 输出而非 concise：concise 在「无违规」时会打印
-    "All checks passed!"，按行解析会把这句话当成一条发现——本门禁首次
+    "All checks passed!"，按行解析会把这句话当成一条发现——本检查首次
     落地时就是这么红的（等于把「全绿」误判成「有问题」）。
     """
     prefix = _resolve_ruff()
@@ -153,7 +153,7 @@ def _duplicate_dict_keys(paths: list[Path]) -> list[str]:
     """内建 ast 检测：字典字面量里的重复常量键。
 
     只认字面量常量键——`{k: 1, **other, k2: 2}` 这类动态键不在静态可判范围。
-    零依赖引擎：没有任何外部工具时，这道门禁依然拦得住最典型的「静默覆盖」。
+    零依赖引擎：没有任何外部工具时，这道检查依然拦得住最典型的「静默覆盖」。
     """
     problems: list[str] = []
     for path in paths:
@@ -193,7 +193,7 @@ def _duplicate_dict_keys(paths: list[Path]) -> list[str]:
 def _authorization_flags_are_explicit(paths: list[Path]) -> list[str]:
     """授权类布尔开关必须写明 `expand=False, strict=True`。
 
-    为什么这道门禁要存在（2026-09-15 审查发现）：`env_flag` 走 `get_env`，而
+    为什么这道检查要存在（2026-09-15 审查发现）：`env_flag` 走 `get_env`，而
     单名字符串会展开成「原名 + 去前缀裸名」候选链——这是给密钥准备的便利
     （`X_API_KEY` 与 `ARGO_X_API_KEY` 都认）。落在**授权位**上就变成了授权扩张：
     `ARGO_ALLOW_RECOMPUTE` 是「允许 argo 在受限子进程里执行脚本」的放行位，
@@ -201,7 +201,7 @@ def _authorization_flags_are_explicit(paths: list[Path]) -> list[str]:
     变量）就等于替用户放行了。
 
     另一项 `strict=True`（只认 1/true/yes/on/y/t 这类明确真值）同样必要：默认
-    口径是「非关即开」，对能力开关没问题（最坏换个行为），对授权位就是「拼错
+    计算方式是「非关即开」，对能力开关没问题（最坏换个行为），对授权位就是「拼错
     的值一律放行」——`ARGO_ALLOW_RECOMPUTE=0x0`、`=maybe`、`=ture` 都会授权。
 
     判据：调用名 `env_flag`、第一个实参是以 `ARGO_ALLOW_` 开头的字符串字面量
@@ -359,7 +359,7 @@ def _envfile_internal_writes(files: list[Path]) -> list[str]:
 
 
 class TestStaticLintGate(unittest.TestCase):
-    """静态缺陷门禁本体。"""
+    """静态缺陷检查本体。"""
 
     def test_no_external_writes_to_envfile_internals(self):
         """engine_env 的缓存与签名只能由 engine_env 自己改。"""
@@ -415,7 +415,7 @@ class TestStaticLintGate(unittest.TestCase):
     def test_min_python_is_declared_and_consistent(self):
         """MIN_PYTHON 必须可读，且三处带版本判据的落地脚本都与它一致。
 
-        mcp_launch.sh 曾经漏在门禁之外：它同样硬编码版本判据、注释里同样写着
+        mcp_launch.sh 曾经漏在检查之外：它同样硬编码版本判据、注释里同样写着
         「改一处就要改另外两处」，但只 gate 了 install.sh / install.ps1。于是
         MIN_PYTHON 调整时它会静默落后——把版本抬高的那侧（探测门槛）落单，
         表现是 MCP 客户端日志里的「server 未就绪」，而 CLI 路径一切正常。

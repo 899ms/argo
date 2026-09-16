@@ -2,7 +2,7 @@
 """matrix_search_eval.py — 多语言 × 引擎族 × 场景 全面测试 harness
 
 沿 loho / regression_p0p1 思路：
-  - offline：语言检测、路由矩阵、recovery 门禁、引擎族、lang_pref（无网络）
+  - offline：语言检测、路由矩阵、recovery 检查、引擎族、lang_pref（无网络）
   - live：多语金标 E2E（domain / primary / selection_hit / 污染）
 
 用法：
@@ -39,7 +39,7 @@ _CN_ONLY = frozenset({
     "weread", "douban_book", "juejin", "v2ex", "wenshu",
 })
 
-# recovery L3 禁止的无关垂直（与 recovery 门禁对齐）
+# recovery L3 禁止的无关垂直（与 recovery 检查保持一致）
 _RECOVERY_POLLUTE = frozenset({
     "pypi", "npm", "crates", "jin10", "cls_telegraph",
     "sina_quote", "finviz", "pubchem", "steam",
@@ -288,7 +288,7 @@ ROUTE_MATRIX: list[dict[str, Any]] = [
      "lang": "en", "domain": None, "forbid": ["pypi", "npm", "crates", "docker_hub"],
      "scenario": "tech"},
     {"id": "R_en_model_diffuse", "q": "DeepSeek Harness DSH 插件开发",
-     # 拉丁实体词主导，语言检测判 en（同 R_zh_package 口径）；守卫只检查
+     # 拉丁实体词主导，语言检测判 en（同 R_zh_package 计算方式）；守卫只检查
      # 域让位：ai_model/models_dev 不得锁死通用开发意图
      "lang": "en", "domain": None, "forbid": ["models_dev", "huggingface"],
      "scenario": "tech"},
@@ -310,9 +310,9 @@ ROUTE_MATRIX: list[dict[str, Any]] = [
      "domain": None, "scenario": "general"},
 
     # ── 2026-09-02 金标增补：fast 单引擎冗余事故回归钉 ──
-    # 事故：英文技术无域查询 fast 兜底为 anysearch 单引擎，首引擎上游波动
+    # 事故：英文技术无域查询 fast 保底为 anysearch 单引擎，首引擎上游波动
     # 返回高计数垃圾时早停吞掉次引擎（execution 层守卫见 search.py
-    # _query_coverage_ok；此处钉路由层契约：兜底 combo 必含 ≥2 个免费通用源）。
+    # _query_coverage_ok；此处钉路由层契约：保底 combo 必含 ≥2 个免费通用源）。
     {"id": "R_en_tech_nodomain", "q": "Crawl4AI pruning content filter extraction",
      "lang": "en", "domain": "general_search", "primary_any": ["anysearch", "duckduckgo"],
      "forbid_cn": True, "scenario": "general"},
@@ -507,7 +507,7 @@ def run_offline_route(c: Checker) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# OFFLINE C — recovery 门禁
+# OFFLINE C — recovery 检查
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_offline_recovery(c: Checker) -> None:
@@ -684,7 +684,7 @@ def run_offline_lang_pref(c: Checker) -> None:
 def run_offline_reachability(c: Checker) -> None:
     """可达性门：enabled 引擎必须被 ≥1 分发路径可达，防死源复发。
 
-    五条分发路径：域 combo / 兜底清单 / 选题 profiles / 研究 boosts /
+    五条分发路径：域 combo / 保底清单 / 选题 profiles / 研究 boosts /
     TF-IDF 语义画像（documents 非空）。local_* 视为经 local_search 展开
     可达。不可达引擎逐个 WARN（soft）——anysearch/zhihu_global/uapi 三次
     死源事故的系统性防线。2026-09-07。

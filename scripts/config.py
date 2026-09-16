@@ -26,7 +26,7 @@ CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
 # 外置引擎声明目录：engines/*.yaml（不含 plugins/、templates/、_ 前缀）
 ENGINES_DIR = Path(__file__).parent.parent / "engines"
 
-# 本地状态目录单一真源。argo_paths 只在函数体内反向 import config，
+# 本地状态目录唯一来源。argo_paths 只在函数体内反向 import config，
 # 因此此处模块级导入不会成环（config 未就绪时 argo_paths 会回落到历史目录）。
 import argo_paths  # noqa: E402
 from cli_io import dumps
@@ -39,7 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "engines": {
         "anysearch": {
             "enabled": True, "type": "anysearch",
-            # 进程内 JSON-RPC builder（对齐 config.yaml 真源）；不调用主机上的
+            # 进程内 JSON-RPC builder（保持一致 config.yaml 来源）；不调用主机上的
             # anysearch-skill CLI，避免写死 ~/.agents/skills 主机路径（纪律：禁止）。
             "label": "AnySearch", "cost_tier": "free",
             "search_args": ["search", "{query}", "--max_results", "{n}"],
@@ -53,7 +53,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "fallback": "anysearch", "parallel": True,
         },
     ],
-    # db_path 由 argo_paths 单一真源派生，不再字面量拼 ~/.cache/unified-search。
+    # db_path 由 argo_paths 唯一来源派生，不再字面量拼 ~/.cache/unified-search。
     # 无 ARGO_STATE_DIR 时展开结果与历史默认一致，存量缓存不失效。
     "cache": {"enabled": True, "db_path": str(argo_paths.db_path()), "ttl": 3600, "max_size_mb": 200},
     "execution": {"default_timeout": 8, "parallel_timeout": 6, "max_parallel_engines": 3, "retry_count": 0},
@@ -141,7 +141,7 @@ def _validate_engine_paths(config: dict[str, Any]) -> dict[str, Any]:
     合并外置声明之前就已执行，故这些路径不会被转成绝对路径。若这里用
     Path(cmd[-1]).exists() 判定，结果就随 CWD 变——实测同一份配置在仓库根
     目录下 165 个引擎可用、在 /tmp 下只剩 163（train/weather 被静默停用），
-    一致性门禁也随之红/绿漂移。
+    一致性检查也随之红/绿漂移。
     """
     import logging as _logging
     _log = _logging.getLogger("unified_search.config")
@@ -227,7 +227,7 @@ def _merge_external_engines(config: dict[str, Any]) -> dict[str, Any]:
         base.update(spec)
         engines[eid] = base
     # 注：不再维护独立的 cost_tiers 段。成本分级由 get_cost_tiers() 从 engines
-    # 段的 cost_tier 字段聚合，独立段是第二份口径（曾与声明矛盾：zhihu_global
+    # 段的 cost_tier 字段聚合，独立段是第二份计算方式（曾与声明矛盾：zhihu_global
     # 列在 free 而声明 api、tavily 列在 paid 而声明 api），且无任何读取方。
     return config
 
@@ -240,13 +240,13 @@ def _external_engines_scan_uncached() -> tuple[float, int, int, str]:
 
     为什么不能只报 mtime：**max 对「删除」与「回填旧时间」是盲的**——删掉一个
     不是最新的声明（engines/specs/train.yaml 之类），max 不变；`cp -p` 拷进来
-    一个新声明（mtime 被保留成旧值），max 也不变。两者都会让落盘配置缓存继续
+    一个新声明（mtime 被保留成旧值），max 也不变。两者都会让写入文件配置缓存继续
     命中，表现为「引擎删了还在 / 加了不生效」（审计实测）。文件数与总字节对
     集合变化敏感；摘要按**每个文件**的 (相对路径, 大小, mtime_ns, ctime_ns)
     聚合成一个值，能识别「总量不变但换了文件」这类集合替换。
 
     这里刻意**不读文件内容**：65 个声明逐个 read_bytes 实测 9.5 ms，等于把省下
-    的时间吃掉一半。跨平台语义兜底交给 config.yaml 的内容摘要（它是决定状态
+    的时间吃掉一半。跨平台语义保底交给 config.yaml 的内容摘要（它是决定状态
     目录的那份文件，见 _config_content_digest）：Windows 上 st_ctime 是创建
     时间而非元数据变更时间，本摘要因此退化为「路径集 + 大小 + mtime」，仍能
     覆盖编辑器改文件（mtime 变）与增删声明；只有「改写内容并还原 mtime」这种
@@ -278,7 +278,7 @@ def _ttl_memo(cache: tuple[float, float] | None, ttl: float,
     """TTL 记忆化的唯一实现：TTL 内复用 cache，否则调 compute 并回填。
 
     同一个形状（`if ttl>0 and cache and now-cache[0]<ttl: return cache[1]`）
-    此前在外置引擎 mtime 与 config_stamp 各写一遍，失效语义靠人工对齐——
+    此前在外置引擎 mtime 与 config_stamp 各写一遍，失效语义靠人工保持一致——
     一处改了 force 语义、另一处没改，就是这类漂移的温床（review 实测点出）。
     返回 (新 cache, 取值)：ttl<=0 时不写记忆（关闭记忆化的逃生门）。
     """
@@ -325,7 +325,7 @@ def _stamp_ttl() -> float:
     """stamp 记忆化的 TTL（秒）。每次读，便于测试与现场调参。
 
     走 engine_env.get_env 而非 os.environ 直读：开关写进 ~/.config/argo/env
-    （密钥与开关的规范位置）也要生效——这正是 env_flag 统一布尔口径时定下的
+    （密钥与开关的规范位置）也要生效——这正是 env_flag 统一布尔计算方式时定下的
     契约，同一个旋钮不该有两套可读位置。engine_env 只依赖标准库，懒导入避免
     与 config 成环；导入或读取失败一律回落到 os.environ 与默认值。
     """
@@ -366,11 +366,11 @@ def _stamp_uncached() -> float:
     return max(combined, _external_engines_mtime())
 
 
-# ── 跨进程配置缓存（落盘 JSON）─────────────────────────────────────────────────
+# ── 跨进程配置缓存（写入文件 JSON）─────────────────────────────────────────────────
 #
 # 为什么需要：每条命令都是一次新进程，config.yaml + 63 个外置声明的解析合并
 # 在**每个** CLI 调用里重付一遍；进程内记忆化救不了跨进程的重复。输入几乎从不
-# 变化，故把「归一化后」的配置按输入指纹落盘，命中时用 json.loads 取代整条链。
+# 变化，故把「归一化后」的配置按输入指纹写入文件，命中时用 json.loads 取代整条链。
 # 实测（新进程 min of 4，macOS/Python 3.14）：load_config 关缓存 50–82 ms、命中
 # 16–18 ms；其中 read+json.loads 约 2 ms，余下是每次都必须现算的外置声明扫描与
 # CLI 路径校验（那两项是「结论随环境变，不能连结论一起缓存」的部分）。
@@ -402,11 +402,11 @@ def _loader_sig() -> int:
 
 
 def _config_disk_cache_enabled() -> bool:
-    """落盘缓存开关（默认开）；ARGO_CONFIG_CACHE=0/false/no/off 关闭。
+    """写入文件缓存开关（默认开）；ARGO_CONFIG_CACHE=0/false/no/off 关闭。
 
-    走 engine_env.env_flag 而不是自己判真假：全仓布尔开关只有这一套口径（它
+    走 engine_env.env_flag 而不是自己判真假：全仓布尔开关只有这一套计算方式（它
     同时认 env 文件里的写法），再写一份 `in {"0","false",...}` 就是又一处会
-    漂移的第二口径。engine_env 只依赖标准库，懒导入避免与 config 成环。
+    漂移的第二计算方式。engine_env 只依赖标准库，懒导入避免与 config 成环。
     """
     try:
         from engine_env import env_flag
@@ -418,7 +418,7 @@ def _config_disk_cache_enabled() -> bool:
 
 
 def _config_disk_cache_path() -> Path:
-    """落盘缓存位置：**引导根目录**，按 config 路径分槽，不依赖配置解析。
+    """写入文件缓存位置：**引导根目录**，按 config 路径分槽，不依赖配置解析。
 
     这是解开「自锁」的关键：状态目录（argo_paths.state_root）要靠 config.yaml
     的 cache.db_path 才能算出来，而缓存的意义正是省掉这次解析——把缓存放进
@@ -464,7 +464,7 @@ def _config_content_digest(st: os.stat_result) -> str | None:
     的那份文件从此不可能读到旧版本。
 
     读不到（权限/被删）返回 None，调用方按「无摘要」处理——宁可不命中缓存，
-    也不要拿一份来源不明的摘要当命中依据。
+    也不要拿一份源文件不明的摘要当命中依据。
     """
     global _content_digest_memo
     key = _config_db_path_key(st)
@@ -539,7 +539,7 @@ _content_digest_memo: tuple[tuple[str, int, int, int], str | None] | None = None
 
 
 def _disk_cache_payload() -> dict[str, Any] | None:
-    """读落盘缓存文件的原始载荷（进程内按 config.yaml 的 stat 记忆）。
+    """读写入文件缓存文件的原始载荷（进程内按 config.yaml 的 stat 记忆）。
 
     peek 与 load_config 都从这里取，一次进程最多读盘一次；读取失败（无缓存 /
     损坏 / 被裁剪）一律返回 None，由调用方走完整解析链。
@@ -571,7 +571,7 @@ def _disk_cache_payload() -> dict[str, Any] | None:
 def _load_config_disk_cache(st: os.stat_result,
                            scan: tuple[float, int, int, str],
                            digest: str | None) -> dict[str, Any] | None:
-    """取落盘配置缓存；指纹不完全匹配或结构不对则返回 None（走完整解析链）。"""
+    """取写入文件配置缓存；指纹不完全匹配或结构不对则返回 None（走完整解析链）。"""
     if digest is None:
         return None          # 摘要取不到 → 不信任任何已存载荷（保守优先）
     raw = _disk_cache_payload()
@@ -583,7 +583,7 @@ def _load_config_disk_cache(st: os.stat_result,
 
 def _peek_disk_cache_db_path(st: os.stat_result,
                              digest: str | None) -> tuple[bool, str | None]:
-    """从落盘缓存里取 cache.db_path → (命中, db_path)。
+    """从写入文件缓存里取 cache.db_path → (命中, db_path)。
 
     命中时 import 链上的路径派生（argo_paths）连 YAML 都不用解析——这是冷启动
     固定开销里最后一块可省的重复劳动：config.yaml 有 121 KB，C 版 loader 解析
@@ -591,13 +591,13 @@ def _peek_disk_cache_db_path(st: os.stat_result,
 
     **必须校验 config_digest**：db_path 是状态目录的源头（argo_paths.state_root），
     只比 config_path 会漏掉「配置改了但缓存文件还在」的窗口——peek 拿到旧路径、
-    load_config 拿到新路径，两处口径分裂，长驻进程整个生命周期都会把状态文件
+    load_config 拿到新路径，两处计算方式分裂，长驻进程整个生命周期都会把状态文件
     写到旧目录（审计实测复现）。用内容摘要而不是 stat 字段，是因为 stat 可被
     `touch -r`/`cp -p` 还原、ctime 在 Windows 又只是创建时间（同一份代码在两个
     平台上失效保真度不同）。外置声明摘要不在此校验：db_path 只由 config.yaml
     本身决定。
 
-    返回的路径与走 YAML 时**同为展开后的形式**（~ 已展开）：两条分支口径必须
+    返回的路径与走 YAML 时**同为展开后的形式**（~ 已展开）：两条分支计算方式必须
     一致，否则同一个进程里先命中缓存、后走解析会拿到两种形态，给未来的调用者
     埋雷（当前唯一消费者 argo_paths 会再 expanduser 一次，所以现在看不出来）。
     """
@@ -623,7 +623,7 @@ def _peek_disk_cache_db_path(st: os.stat_result,
 def _save_config_disk_cache(st: os.stat_result, scan: tuple[float, int, int, str],
                             digest: str | None,
                             config: dict[str, Any]) -> None:
-    """原子写落盘缓存；任何失败静默（只读环境退回每次解析的老路）。
+    """原子写写入文件缓存；任何失败静默（只读环境退回每次解析的老路）。
 
     存的是**归一化后、校验前**的配置：`_validate_engine_paths` 的结论依赖
     运行环境（该机器 PATH 上有没有这个 CLI、文件在不在），必须每次现算——
@@ -641,7 +641,7 @@ def _save_config_disk_cache(st: os.stat_result, scan: tuple[float, int, int, str
     }
     path = _config_disk_cache_path()
     try:
-        # 原子写走 argo_paths 的单一真源（mkstemp 唯一 tmp + os.replace 的
+        # 原子写走 argo_paths 的唯一来源（mkstemp 唯一 tmp + os.replace 的
         # 正确性在一处维护，多进程并行写同一目标不会互相搬走 tmp）
         argo_paths.atomic_write_json(path, payload, indent=None)
     except (OSError, TypeError, ValueError):
@@ -787,7 +787,7 @@ def get_domains(config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
 # 配置被改写（mtime 或 size 变）即失效，语义与逐次读盘一致。
 #
 # 这份解析结果是 peek 与 load_config **共用**的：两处此前各解析一遍同一份
-# 123 KB 文本（C 版 loader 实测约 20 ms/遍），等于每个进程白付一遍。
+# 123 KB 文本（C 版 loader 实测约 20 ms/遍），等于每个进程白等一遍。
 _parsed_yaml_cache: tuple[tuple[int, int], dict[str, Any] | None] | None = None
 
 
@@ -841,10 +841,10 @@ def peek_cache_db_path() -> str | None:
     1.7s」，该数字无法复现。同一台机器实测 load_config() 为纯 Python loader
     107 ms / C 版 15 ms（含 63 个 yaml、220 个引擎），因此当时的真实成本是
     「一次合并约 0.1 s，而 import 链上被连调 4 次」而非单次 1.7 s。数字已按
-    可复现口径改写。）
+    可复现计算方式改写。）
     语义与 get_cache_config() 的 db_path 字段保持一致：用户未配置返回 None
     （由调用方回退 state_path）。返回值统一是**展开后的形式**（`~` 已展开）：
-    缓存命中与走解析两条分支必须同一口径，调用方再 expanduser 一次也无副作用。
+    缓存命中与走解析两条分支必须同一计算方式，调用方再 expanduser 一次也无副作用。
     PyYAML 缺失 / 配置损坏时 fail-open 返回 None，与 _config_db_path 契约一致。
 
     结果按 config.yaml 的 (mtime_ns, size, ctime_ns) 记忆化：同一进程内多次
@@ -852,7 +852,7 @@ def peek_cache_db_path() -> str | None:
     解析链不可用时（PyYAML 缺失 / 配置损坏）不写记忆，下次调用仍会重试，避免
     把一次瞬时故障固化成本进程的永久 None。
 
-    落盘缓存命中时**连 YAML 都不解析**：db_path 只取决于 config.yaml 本身，
+    写入文件缓存命中时**连 YAML 都不解析**：db_path 只取决于 config.yaml 本身，
     而缓存键里已经记着这份文件的 stat，与逐次读盘语义一致。缓存未命中或停用
     （ARGO_CONFIG_CACHE=0）则照旧走解析链。
     """
@@ -892,7 +892,7 @@ def get_output_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def get_cost_tiers(config: dict[str, Any] | None = None) -> dict[str, list[str]]:
-    """返回成本分级：从引擎声明的 cost_tier 字段聚合（唯一真源 config.yaml engines 段）。
+    """返回成本分级：从引擎声明的 cost_tier 字段聚合（唯一来源 config.yaml engines 段）。
 
     自 v2.6 起 cost_tiers 不再是独立配置段，新增引擎只需在 engines 段声明
     cost_tier 字段，此处自动归入对应分级。
@@ -915,7 +915,7 @@ def get_budget_config(mode: str = "auto") -> dict[str, Any]:
 
 
 def cost_tier_of(engine: str) -> str:
-    """引擎的成本档位：free / low / api / paid（未声明按 free 兜底）。"""
+    """引擎的成本档位：free / low / api / paid（未声明按 free 保底）。"""
     tiers = get_cost_tiers()
     for tier in ("free", "low", "api", "paid"):
         if engine in tiers.get(tier, []):
@@ -923,7 +923,7 @@ def cost_tier_of(engine: str) -> str:
     return "free"
 
 
-# 成本因子单一真源：越低越少被优先选中。
+# 成本因子唯一来源：越低越少被优先选中。
 # 语义打分（tfidf_router）与 n 桶化判定（engines）都从这里取，不再各维护一套表
 # ——此前 config 是 {free 1.0, low 0.7, paid 0.3}、tfidf_router 是
 # {free 1.0, low 0.85, paid 0.6}，同一个概念两个值。

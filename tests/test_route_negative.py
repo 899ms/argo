@@ -6,7 +6,7 @@
 请求；路由层同理——不含垂直意图词的日常查询若被路由进行情/漏洞/影视
 等垂直引擎，返回的全是不相关结果，且早停会让误路由难以自愈。
 
-用例单一真源在 scripts/matrix_search_eval.py ROUTE_MATRIX
+用例唯一来源在 scripts/matrix_search_eval.py ROUTE_MATRIX
 （scenario="negative"），本文件把它们钉进 pytest 套件，防止离线矩阵
 脚本与单测漂移。全部离线（mock 熔断/配额，无网络）。
 

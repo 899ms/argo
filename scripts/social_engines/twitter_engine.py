@@ -153,7 +153,7 @@ def _status_to_result(item: dict[str, Any], rank: int = 0) -> dict[str, Any] | N
 
 
 def fetch_status(status_id: str, timeout: int = 10) -> list[dict[str, Any]]:
-    """按推文 ID 拉取单条（v2 优先，旧端点兜底）。"""
+    """按推文 ID 拉取单条（v2 优先，旧端点保底）。"""
     endpoints = [
         f"{FXTWITTER_BASE}/2/status/{status_id}",
         f"{FXTWITTER_BASE}/status/{status_id}",
@@ -217,7 +217,7 @@ def search_fxtwitter(query: str, n: int = 5, timeout: int = 10) -> list[dict[str
 
 
 def search_nitter(query: str, n: int = 5) -> list[dict]:
-    """通过 nitter 公开实例搜索推文（零认证，兜底）。"""
+    """通过 nitter 公开实例搜索推文（零认证，保底）。"""
     nitter_instances = [
         "https://nitter.net",
         "https://nitter.privacydev.net",
@@ -296,7 +296,7 @@ def search(query: str, n: int = 5) -> list[dict]:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # 3) nitter 兜底
+    # 3) nitter 保底
     return search_nitter(query, n)
 
 

@@ -1,10 +1,10 @@
 # Argo 路由速查与选源经验
 
 > **全量引擎清单、费用、密钥、状态、域组合在 `docs/ENGINE_CATALOG.md`**（由
-> `scripts/gen_engine_catalog.py` 从声明生成，有门禁防漂移）——本页不重复清单，
+> `scripts/gen_engine_catalog.py` 从声明生成，有检查防漂移）——本页不重复清单，
 > 只放「清单生成不出来」的东西：语义分工与选源判断。
 >
-> 声明真源：`config.yaml` ＋ `engines/specs/*.yaml`（外置 spec 启动时合并、优先覆盖）。
+> 声明来源：`config.yaml` ＋ `engines/specs/*.yaml`（外置 spec 启动时合并、优先覆盖）。
 > 本机此刻哪些源就绪：`argo search --list-engines --detail`。
 
 ## 一、选源第一原则：先看语义，再看名字
@@ -41,7 +41,7 @@
 
 想强行当关键词搜（用 URL 找相关讨论），加 `--input-kind url-seed`。
 
-## 三、通用兜底链的层次（`engine_policy.GENERAL_FREE_FALLBACK`）
+## 三、通用保底链的层次（`engine_policy.GENERAL_FREE_FALLBACK`）
 
 `anysearch` → `local_bing` → `uapi` → `local_baidu` → `firecrawl` → `parallel_free` → `wikipedia`。
 顺序有讲究：通用检索优先，本地零成本引擎居中，百科殿后；

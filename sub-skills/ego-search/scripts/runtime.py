@@ -61,7 +61,7 @@ def ego_available() -> dict[str, Any]:
 
 
 def webbridge_available(*, try_start: bool = False) -> dict[str, Any]:
-    """探测 WebBridge 本地桥是否在线。try_start 时幂等 start（永不 stop）。"""
+    """探测 WebBridge 本地桥是否在线。try_start 时重复执行结果一致 start（永不 stop）。"""
     if try_start:
         _try_start_webbridge()
     try:

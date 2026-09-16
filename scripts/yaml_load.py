@@ -62,6 +62,6 @@ def load(path: str | Path) -> Any:
     try:
         return loads(text)
     except Exception:
-        # 与 yaml.safe_load 对 file 对象的错误语义对齐：把非 YAML 内容
+        # 与 yaml.safe_load 对 file 对象的错误语义保持一致：把非 YAML 内容
         # 造成的问题留给调用方判断（此前各自直接 safe_load 也是这个行为）
         raise

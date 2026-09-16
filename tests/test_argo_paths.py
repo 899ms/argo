@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_argo_paths.py — 本地状态目录单一真源回归测试
+test_argo_paths.py — 本地状态目录唯一来源回归测试
 
 背景：此前 11 个模块各自拼 ~/.cache/unified-search，构造方式 4 种分裂，
 config.yaml 的 cache.db_path 管不住 quota.json / health.db 等文件，

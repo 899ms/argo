@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""url_canon 单一真源契约测试。
+"""url_canon 唯一来源契约测试。
 
 锁定三件事：
   1. 折叠规则本身（追踪参数/www/移动站/尾斜杠/参数序/转义）
@@ -138,7 +138,7 @@ class TestTrackingParamPredicate(unittest.TestCase):
 
 
 class TestCallSitesAgree(unittest.TestCase):
-    """四个历史调用点必须与单真源一致（这是本模块的存在理由）。"""
+    """四个历史调用点必须与单来源一致（这是本模块的存在理由）。"""
 
     CASES = [
         "http://www.Ex.com/p/?utm_source=x&b=2&a=1#frag",

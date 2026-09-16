@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Chrome 泄漏修复回归测试：启动失败 kill / __init__ 兜底 / with 异常路径 stop。"""
+"""Chrome 泄漏修复回归测试：启动失败 kill / __init__ 保底 / with 异常路径 stop。"""
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock

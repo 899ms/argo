@@ -170,7 +170,7 @@ class TestMinhashEarlyStop:
     200 条结果要跑 19746 次相似度比较、84 ms；而 95% 的计算在下一行被丢掉。
 
     这里锁两件事：提前停的结果与不设上限**逐位一致**（这是它能被称为「优化」
-    而不是「降级」的全部理由），以及两条路径共用同一个池上限口径。
+    而不是「降级」的全部理由），以及两条路径共用同一个池上限计算方式。
     """
 
     @staticmethod
@@ -217,7 +217,7 @@ class TestMinhashEarlyStop:
             "不设上限时应返回全部非重复项，而不是也停在池上限"
 
     def test_pool_limit_is_single_source(self):
-        """池上限只有一处定义，且与放宽截断的旧口径逐值相同。"""
+        """池上限只有一处定义，且与放宽截断的旧计算方式逐值相同。"""
         from search import _rerank_pool_limit
         for max_results in (1, 5, 8, 10, 50):
             assert _rerank_pool_limit(max_results) == max(max_results * 3, 15), \

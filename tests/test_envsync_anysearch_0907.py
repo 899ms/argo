@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""test_envsync_anysearch_0907 — env 同步 + anysearch 升权/多语言注入 + 配额口径 回归门。
+"""test_envsync_anysearch_0907 — env 同步 + anysearch 升权/多语言注入 + 配额计算方式 回归门。
 
 2026-09-07 数据源权重盘点轮的三组修复：
-  1. env 文件 → os.environ 同步（只填缺失、不覆盖已有、幂等）——兼容口径：
+  1. env 文件 → os.environ 同步（只填缺失、不覆盖已有、重复执行结果一致）——兼容计算方式：
      读取方保持标准 os.environ 直读不动，入口同步一份过去；
   2. ja/ko 查询 anysearch 前二注入（策略/预算截断之后，防 must_keep 换位
      挤出）；english_tech/chinese_general 升权；
-  3. quota_profiles 对齐服务商真实口径（zhihu 5000/anysearch 2000/
+  3. quota_profiles 保持一致服务商真实计算方式（zhihu 5000/anysearch 2000/
      zhihu_global 5000）+ null 引擎计数周期归零。
 """
 from __future__ import annotations
@@ -139,7 +139,7 @@ class TestMultilingualAnysearchInjection(unittest.TestCase):
 
 
 class TestQuotaProfilesAligned(unittest.TestCase):
-    """对齐服务商面板真实口径（2026-09-06）：知乎搜索 5000/天、AnySearch
+    """保持一致服务商面板真实计算方式（2026-09-06）：知乎搜索 5000/天、AnySearch
     2000/天、知乎全网搜 5000/天。修复前 zhihu=1000 会在本地提前封禁
     （浪费 80% 额度）、anysearch=null 则完全没有次数限制保护。"""
 

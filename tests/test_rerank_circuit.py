@@ -11,7 +11,7 @@
 看不出端点其实已经死了。
 
 修法是复用引擎熔断器（`rerank:bocha` 键）的同一套语义：失败计数 → 冷却 →
-半开探测 → 自动禁用后周期复探，状态落盘，因此后续 CLI 单发进程也直接跳过。
+半开探测 → 自动禁用后周期复探，状态写入文件，因此后续 CLI 单发进程也直接跳过。
 
 ## 测试隔离（重要）
 
@@ -24,11 +24,11 @@
 ## 覆盖
 
   1. 连续失败打开熔断，之后的调用**不再触碰网络**（这是省下 223 ms 的那一步）；
-  2. 熔断态落盘，跨进程可见（CLI 是一次性进程，进程内记忆没有意义）；
+  2. 熔断态写入文件，跨进程可见（CLI 是一次性进程，进程内记忆没有意义）；
   3. 冷却期结束后半开探测，成功则闭合（人工充值后不该被历史失败永久拦住）；
   4. 未配置密钥时走 `skipped_no_key`，不污染熔断状态；
-  5. `skipped_circuit_open` 必须落在本地五维兜底的状态全集里——否则会退化成
-     「既不精排也不兜底」，最终顺序悄悄变成 RRF 原始序。
+  5. `skipped_circuit_open` 必须落在本地五维保底的状态全集里——否则会退化成
+     「既不精排也不保底」，最终顺序悄悄变成 RRF 原始序。
 
 运行：
   python3 -m pytest tests/test_rerank_circuit.py -v
@@ -110,7 +110,7 @@ def test_repeated_failure_opens_breaker_and_stops_calling_network(breaker, with_
 
 
 def test_breaker_state_is_persisted_for_next_process(breaker, with_key):
-    """熔断态必须落盘：CLI 是一次性进程，进程内记忆没有意义。"""
+    """熔断态必须写入文件：CLI 是一次性进程，进程内记忆没有意义。"""
     def _fail(req, timeout=None):
         raise _http_403()
 
@@ -172,7 +172,7 @@ def test_missing_key_does_not_touch_breaker(breaker):
 
 
 def test_circuit_open_status_triggers_local_fallback():
-    """熔断状态必须落在兜底全集里，否则退化成「既不精排也不兜底」。"""
+    """熔断状态必须落在保底全集里，否则退化成「既不精排也不保底」。"""
     assert "skipped_circuit_open" in search._RERANK_DEGRADED_STATUSES
     assert "ok" not in search._RERANK_DEGRADED_STATUSES, \
         "成功状态不得进入兜底全集，否则会重复重排"

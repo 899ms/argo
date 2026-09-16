@@ -2,7 +2,7 @@
 """fetch_render_tinyfish.py — TinyFish 直连渲染层（fetch_v3 第二级A）。
 
 从 fetch_v3 拆出：该层自包含（直连 HTTP、不依赖 fetch_v3 内部状态），
-独立成模块可让 fetch_v3 保持在主链编排职责上，避免文件继续膨胀。
+独立成模块可让 fetch_v3 保持在主链调度职责上，避免文件继续膨胀。
 
 定位：markdown-only 渲染。返回 clean markdown 作为 content，不产 raw html
 ——因此调用方若需要原始 HTML（爬取提取链接）必须显式跳过本层。
@@ -50,15 +50,15 @@ def enabled() -> bool:
 
 
 def _api_key() -> str:
-    """引擎密钥统一走 engine_env：os.environ 优先 + ~/.config/argo/env 热读兜底，
-    与 search 引擎的 {TINYFISH_API_KEY} 占位符解析同一真源——否则会出现
+    """引擎密钥统一走 engine_env：os.environ 优先 + ~/.config/argo/env 热读保底，
+    与 search 引擎的 {TINYFISH_API_KEY} 占位符解析同一来源——否则会出现
     「search 能用、fetch 渲染层静默禁用」的分裂（密钥只写在 env 文件时）。"""
     try:
         from engine_env import get_env
         return get_env("TINYFISH_API_KEY")
     except ImportError:
         # engine_env 不可达时仍要认两套名字（推荐名 ARGO_ 前缀 / 历史裸名），
-        # 与 engine_env._name_variants 判断一致——否则这条兜底会把「悄悄关掉」
+        # 与 engine_env._name_variants 判断一致——否则这条保底会把「悄悄关掉」
         # 从「env 文件」搬到「os.environ」再演一次。
         return (os.environ.get("ARGO_TINYFISH_API_KEY")
                 or os.environ.get("TINYFISH_API_KEY", ""))

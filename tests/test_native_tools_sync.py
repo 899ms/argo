@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_native_tools_sync.py — DSH 原生工具规格与 schema 真源的漂移门禁。
+"""test_native_tools_sync.py — DSH 原生工具规格与 schema 来源的漂移检查。
 
 packages/dsh-plugin/dsh/native-tools.mjs 由 scripts/gen_native_tools.py 从
 mcp_tools.py 生成。本测试保证两者一致：改 mcp_tools.py 而忘记重新生成时，

@@ -104,7 +104,7 @@ def print_deep_report(report: dict):
             print(f"  ⚠ {cv.get('unverified_count')} 个维度无结果可核实")
         print()
 
-    # 事实对齐：跨源事实冲突与印证
+    # 事实保持一致：跨源事实冲突与印证
     fa = report.get("fact_alignment")
     if fa:
         stats = fa.get("stats") or {}

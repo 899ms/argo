@@ -20,7 +20,7 @@ anysearch 曾同时具备两层重试：
   2. anysearch 声明 `timeout: 8` → `_engine_retries` 返回 0（设计好的逃生门）
   3. anysearch builder `max_retries=0` → 去掉 HTTP 级重试
 
-失败切换的职责归**编排层**（熔断 + hedged 补发 + 本预算），
+失败切换的职责归**调度层**（熔断 + hedged 补发 + 本预算），
 引擎内重复尝试只会放大延迟。
 
 本文件锁定：
@@ -185,7 +185,7 @@ class TestBackupFailover(unittest.TestCase):
 
         def _spy(query_, eng, **kw):
             calls.append(eng)
-            # 与 TestPerEngineBudget 同一口径：把 timeout 传给 fake，
+            # 与 TestPerEngineBudget 同一计算方式：把 timeout 传给 fake，
             # 否则 fake 签名带 to 会 TypeError（被引擎层吞掉→静默空结果）。
             return fake(query_, eng, kw.get("timeout"))
 

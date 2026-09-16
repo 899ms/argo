@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""test_http_attribution.py — P1 观测盲区收口门禁。
+"""test_http_attribution.py — P1 观测盲区统一处理检查。
 
 守的缺陷：手写引擎构建器里曾有近百处直连 `urllib.request.urlopen`。HTTP 失败
 只留一行 warning 就变成空结果，既不写归因寄存器，也不出现在
 `--list-engines --detail`——博查 AI Search 端点 `403 套餐额度不足` 就是这样长期
-显示 ready 的。本次把它们收口到 `engines_base.http_open`。
+显示 ready 的。本次把它们统一处理到 `engines_base.http_open`。
 
-这些门禁从真实入口取事实（AST 扫真实源码、调用真实函数、走真实熔断持久化），
+这些检查从真实入口取事实（AST 扫真实源码、调用真实函数、走真实熔断持久化），
 不做「用实现验证实现」式的同义反复：
 
   1. builder 文件里不得再出现直连 urlopen（否则归因又成盲区）。
@@ -35,7 +35,7 @@ SCRIPTS_DIR = SKILL_DIR / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-# 已收口的 builder 文件：这些文件里的 HTTP 必须全走 http_open
+# 已统一处理的 builder 文件：这些文件里的 HTTP 必须全走 http_open
 BUILDER_FILES = [
     "engines_builders_data.py",
     "engines_builders_cn.py",
@@ -60,7 +60,7 @@ class _FakeResp:
         return False
 
 
-# ── 1. 源码门禁：builder 不得直连 urlopen ────────────────────────────────────
+# ── 1. 源码检查：builder 不得直连 urlopen ────────────────────────────────────
 
 class TestNoDirectUrlopenInBuilders:
     def test_builders_have_zero_direct_urlopen(self):
@@ -104,12 +104,12 @@ _EGRESS_SOURCE = {"net_proxy.py"}
 
 
 class TestNoDirectUrlopenRepoWide:
-    """全仓门禁：任何脚本不得绕开代理感知的出口（issue #13 同类收口，2026-09-15）。
+    """全仓检查：任何脚本不得绕开代理感知的出口（issue #13 同类统一处理，2026-09-15）。
 
     issue #13 的修复只覆盖了 `http_open` 所在的引擎路径，于是 fetch_v3（正是
     该 issue 报的文件）、job、health_check、pdf_extract、readability_extract、
     train、wx、search 里的 13 处 `urlopen` 仍然直接调用——在「必须经代理才能出网」
-    的环境里那些出口一律连不上。上面那条 builder 门禁的作用域写死在
+    的环境里那些出口一律连不上。上面那条 builder 检查的作用域写死在
     BUILDER_FILES 上，所以看不见它们。
 
     这项检查把范围放宽到全部 scripts/**/*.py（含子目录）：唯一允许直调
@@ -148,7 +148,7 @@ class TestNoDirectUrlopenRepoWide:
         )
 
     def test_gate_has_teeth(self):
-        """故意造错验证：往一个原本干净的脚本里塞一处 urlopen，门禁必须报红。"""
+        """故意造错验证：往一个原本干净的脚本里塞一处 urlopen，检查必须报红。"""
         target = SCRIPTS_DIR / "wx.py"
         src = target.read_text(encoding="utf-8")
         patched = src.replace(
@@ -333,7 +333,7 @@ class TestQuotaExhaustedVisibility:
     """博查 AI Search 的 403 套餐额度不足长期显示 ready，是 P1 的起因。
 
     此前 quota-exhausted 分支为了让配额状态机接管而 `pass`，归因被 pop 后销毁，
-    可观测面反而没有任何改善。这组门禁锁住「配额耗尽也要可见且不可路由」。
+    可观测面反而没有任何改善。这组检查锁住「配额耗尽也要可见且不可路由」。
     """
 
     def test_engine_detail_marks_quota_exhausted_not_ready(self):
@@ -414,7 +414,7 @@ class TestSurveyFixes:
         """同一份配置在不同 CWD 下必须解析出同一批引擎。
 
         此前 _validate_engine_paths 用 Path(cmd).exists() 做 CWD 相对判定，
-        在 /tmp 下会把 train/weather 静默停用，一致性门禁随之红/绿漂移。
+        在 /tmp 下会把 train/weather 静默停用，一致性检查随之红/绿漂移。
         """
         import json
         import subprocess
@@ -437,7 +437,7 @@ class TestSurveyFixes:
         """未知 charset 不得把 200 响应降级成 status=0。
 
         `decode("x-unknown-8bit")` 抛 LookupError，而 LookupError 不是 OSError，
-        会被 get() 的兜底吞成「连接失败」并归因为 network。
+        会被 get() 的保底吞成「连接失败」并归因为 network。
         """
         from http_client import _charset_of, _decode_body
         assert _charset_of("text/html; charset=x-unknown-8bit") == "utf-8"
@@ -483,7 +483,7 @@ class TestSurveyFixes:
         assert pop_failure_note("bad_line")["category"] == "network"
 
     def test_quota_ratio_uses_profile_limit(self):
-        """配额惩罚必须真的会触发：limit 的真源是 quota_profiles.json。
+        """配额惩罚必须真的会触发：limit 的来源是 quota_profiles.json。
 
         state 文件里的 limit 恒为 0（写入方不维护它），此前 _quota_ratio 只读
         state → 恒返回 1.0，配额感知惩罚是死代码。现在应以 profile 的 limit

@@ -28,7 +28,7 @@ def test_route_zhihu_hot_list():
     from route import route_query
     from unittest.mock import patch
 
-    # 路由契约测试不依赖真实密钥：注入 fake 使其通过 env_ready 门禁
+    # 路由契约测试不依赖真实密钥：注入 fake 使其通过 env_ready 检查
     with patch.dict(
         os.environ, {"ARGO_ZHIHU_ACCESS_SECRET": "test-key-for-routing"},
         clear=False,

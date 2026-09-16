@@ -335,7 +335,7 @@ class _ChromeProcess:
             if c and os.path.isfile(c):
                 return c
         # Linux 常经 PATH 而非绝对路径发现（如 /snap/bin/chromium 是 symlink、
-        # chromium-browser 只在 PATH 中）：shutil.which 作为绝对路径后的兜底，
+        # chromium-browser 只在 PATH 中）：shutil.which 作为绝对路径后的保底，
         # 保留 macOS/Windows 既有优先顺序，不改变原行为。
         import shutil
         for name in ("google-chrome", "google-chrome-stable",

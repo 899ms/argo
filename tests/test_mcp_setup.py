@@ -22,7 +22,7 @@ class TestMcpSetupBase(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="argo-mcp-test-")
         # 隔离 home：配置路径 + 备份目录均落在 tmp，不污染真实 ~/.argo 与配置文件
         os.environ["ARGO_HOME_OVERRIDE"] = self.tmp
-        # 保证 mcp/clients.yaml 真源可被加载（真实路径）
+        # 保证 mcp/clients.yaml 来源可被加载（真实路径）
         os.environ["ARGO_CLIENTS_PATH"] = str(
             Path(__file__).resolve().parents[1] / "mcp" / "clients.yaml"
         )

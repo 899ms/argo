@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
+# 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 from engine_env import env_flag  # 布尔开关统一判断（见 env_flag 的说明）
 
@@ -28,7 +28,7 @@ _STREAM_VERSION = 1
 
 
 def _telemetry_dir() -> Path:
-    # ARGO_TELEMETRY_DIR 优先（测试隔离）；未设置时由单一真源派生
+    # ARGO_TELEMETRY_DIR 优先（测试隔离）；未设置时由唯一来源派生
     override = os.environ.get("ARGO_TELEMETRY_DIR", "").strip()
     if override:
         return Path(os.path.expanduser(override))

@@ -47,10 +47,10 @@ def test_stamp_does_not_override_explicit():
 
 
 def test_serp_and_body_templates_are_single_source():
-    """SERP 提取选择器单一真源 = serp_spec（P2-5）。
+    """SERP 提取选择器唯一来源 = serp_spec（P2-5）。
 
     ego_search 与 webbridge_adapter 曾各持一份逐字节相同的 SERP IIFE 与
-    SEARCH_URLS——修一处漏一处。现在真源唯一，两消费方零副本；BODY 提取
+    SEARCH_URLS——修一处漏一处。现在来源唯一，两消费方零副本；BODY 提取
     仍单源定义在 ego_search。
     """
     import serp_spec

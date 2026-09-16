@@ -3,7 +3,7 @@
 archive_run.py — 搜索/研究 run 工作区归档
 
 职责边界：
-  - 搜索只做发现；本模块把**当次 envelope** 落盘，便于复用与分析
+  - 搜索只做发现；本模块把**当次 envelope** 写入文件，便于复用与分析
   - **不**抓取正文、**不**下载媒体、**不**覆盖旧 run
   - known-url / 正文吸收仍走 fetch / extract / 其他打包工具
 
@@ -74,7 +74,7 @@ def _public_payload(result: dict[str, Any]) -> dict[str, Any]:
 # ── 凭证值级脱敏（写入时生效）────────────────────────────────────────────────
 # _public_payload 删的是「整个字段」（headers/cookie）；这里补的是「值里的片段」：
 # URL 查询串里嵌的密钥（很多引擎把 key 放 query）、正文里贴的凭证。脱敏必须
-# 发生在写入时，而不是读取/导出时——密钥一旦以明文落盘，就已经泄漏给所有
+# 发生在写入时，而不是读取/导出时——密钥一旦以明文写入文件，就已经泄漏给所有
 # 能读到该文件的人，事后清理依赖「有人记得在出口调用」，不可靠。
 _SECRET_QUERY_KEYS = (
     "key", "keys", "api_key", "apikey", "api-key", "access_key",
@@ -265,7 +265,7 @@ def write_search_archive(
             ]
             public["sources"] = sources
 
-    # 若无 candidates 但有 results，做最小投影（不 import 循环依赖时的兜底）
+    # 若无 candidates 但有 results，做最小投影（不 import 循环依赖时的保底）
     if not candidates and results:
         try:
             from candidate_envelope import result_to_candidate  # type: ignore

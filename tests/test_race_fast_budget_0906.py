@@ -196,7 +196,7 @@ class TestWave1Hedged(unittest.TestCase):
 
     def test_hedge_race_timeout_marks_and_closes_budget(self):
         """hedge 双成员都超 race 窗（fast 预算 0.5s 处截停）→ 双双标 timeout；
-        wave-2 不得在 deadline 后再起新引擎（2026-09-07 预算收口回归门，
+        wave-2 不得在 deadline 后再起新引擎（2026-09-07 预算统一处理回归门，
         与串行路径 `time.time() >= _deadline` 止损同语义）。"""
         def fake(_q, eng):
             if eng in ("slow_bad_a", "slow_bad_b"):
@@ -222,7 +222,7 @@ class TestWave1Hedged(unittest.TestCase):
 
     def test_auto_mode_wave2_runs_without_budget_cutoff(self):
         """对照：auto 无预算 → hedge 双成员超窗完成后均不合格，wave-2 正常
-        补跑 rescuer（证明 fast 收口只影响 fast 语义）。"""
+        补跑 rescuer（证明 fast 统一处理只影响 fast 语义）。"""
         def fake(_q, eng):
             if eng in ("slow_bad_a", "slow_bad_b"):
                 time.sleep(0.6)

@@ -59,7 +59,7 @@ class _FakeBreaker:
         return self._states.get(engine, {"state": "closed", "cooldown_remain": 0})
 
     def allow(self, engine: str) -> tuple[bool, str]:
-        """裁决语义对齐真实 circuit_breaker.allow()：cooldown_remain 由夹具
+        """裁决语义保持一致真实 circuit_breaker.allow()：cooldown_remain 由夹具
         直接给出（真实实现按 opened_at/disabled_at 时间戳推算）。
 
         disabled / open 且冷却中 → 拒绝；冷却已过（夹具 cooldown_remain=0
@@ -196,7 +196,7 @@ class TestBreakerRemoval(unittest.TestCase):
         self.assertIn("b", combo)
 
     def test_all_unusable_yields_empty(self):
-        """域内全部不可用 → 返回空集，交由 route_query 尾部兜底。"""
+        """域内全部不可用 → 返回空集，交由 route_query 尾部保底。"""
         from route import _get_engines_combo
         domain = {
             "name": "test",
@@ -265,7 +265,7 @@ class TestConfigCandidates(unittest.TestCase):
             d = doms.get(name)
             self.assertIsNotNone(d, f"域缺失: {name}")
             combo = d.get("engines_combo") or []
-            # 2026-09-14 口径演化：域可合法增员（如 stackexchange 进
+            # 2026-09-14 计算方式演化：域可合法增员（如 stackexchange 进
             # stackoverflow_search），钉死 combo[:2] 会挡住正确加源；
             # 保留本测试的原意——primary 居首 + fallback 声明在列
             self.assertEqual(combo[0], primary, f"{name}: primary 应居首")

@@ -301,7 +301,7 @@ def load_snapshot(path: str) -> Optional[dict]:
 
 
 def save_snapshot(path: str, payload: dict) -> None:
-    """写快照（原子写走 argo_paths 单一真源）。
+    """写快照（原子写走 argo_paths 唯一来源）。
 
     旧实现用固定的 `<path>.tmp`：两个 `argo job --watch` 并行时，
     先完成的进程会把后者的 tmp 一并 replace 走，后者再 replace 抛
@@ -875,10 +875,10 @@ def _fetch_detail(url: str, timeout: int = 10) -> Optional[dict]:
 
 
 def sort_jobs(items: list[dict]) -> list[dict]:
-    """岗位排序（单一真源）：级别 L1 > L2 > L3 > 0 为主键（稳定排序先按
+    """岗位排序（唯一来源）：级别 L1 > L2 > L3 > 0 为主键（稳定排序先按
     日期降序，级别内日期新→旧），过期垫底，空日期排最后。
 
-    CLI 与 MCP argo_job 共用，防止两处排序口径漂移。
+    CLI 与 MCP argo_job 共用，防止两处排序计算方式漂移。
     """
     out = list(items)
     out.sort(key=lambda r: r.get("date", ""), reverse=True)
@@ -988,7 +988,7 @@ def search(query: str, city: str = "", num: int = 5, engine: str = "all",
 
     # 排序：级别 L1 > L2 > L3 > 0 为主键（稳定排序先按日期降序，级别内日期新→旧），
     # 过期垫底。空日期排最后（byted/tavily 无日期字段）。
-    # 单真源 sort_jobs()：CLI --json 与 MCP argo_job 共用同一排序。
+    # 单来源 sort_jobs()：CLI --json 与 MCP argo_job 共用同一排序。
     unique = sort_jobs(unique)
 
     return {"query": full_query, "backends": engines,

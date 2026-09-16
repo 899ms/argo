@@ -49,7 +49,7 @@ LANG_LABELS = {
     "other": "其他",
 }
 
-# primary_lang → 书写系统类别（与 detect_language 同源，杜绝双真源）
+# primary_lang → 书写系统类别（与 detect_language 同源，杜绝双来源）
 _LANG_TO_SCRIPT: dict[str, str] = {
     "zh": "cjk",
     "ja": "kana",
@@ -206,7 +206,7 @@ def detect_language(query: str) -> str:
     # 已知且**有界**的残余局限：纯粹由中日共用汉字组成的短查询
     # （如「人工知能 最新 動向」——「動」繁体中文亦用，不能作判据）
     # 在字符层面与中文无从区分。此类查询若两道路径都不命中，会落到 zh。
-    # 不做硬猜：宁可保持现状（由调用方的语言覆盖/多语言回退兜底），
+    # 不做硬猜：宁可保持现状（由调用方的语言覆盖/多语言回退保底），
     # 也不引入会把简体中文误判成日文的正则。
     if han and (_has_ja_only_kanji(query)
                 or any(w in query for w in _JA_KANJI_ONLY_SIGNALS)):

@@ -112,7 +112,7 @@ def evidence_tier(source: str, source_grades: dict[str, Any] | None) -> str:
 
 
 def canonical_url(url: str) -> str:
-    """URL 归一化（薄转发到 url_canon 单一真源），供同源去重。
+    """URL 归一化（薄转发到 url_canon 唯一来源），供同源去重。
 
     本函数曾自带一份实现（去 www/尾斜杠、查询参数用 '&' 手工拼接而非
     urlencode），与融合层 search._canonical_url 的键不一致——融合层已合并
@@ -123,7 +123,7 @@ def canonical_url(url: str) -> str:
 
 
 def build_local_sources(file_inputs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """本地一手数据文件入账（血缘登记，内容不入账）。
+    """本地一手数据文件入账（来源记录登记，内容不入账）。
 
     每条：ref（[L1] 前缀与 URLs 的 [1] 区分）、规范 path、sha256、size、
     mtime、kind、role。读取失败的文件跳过（不入账、不中断取证）。

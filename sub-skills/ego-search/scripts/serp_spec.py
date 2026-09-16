@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""serp_spec.py — SERP 提取选择器/搜索 URL 单一真源（ego-search 内部共用）。
+"""serp_spec.py — SERP 提取选择器/搜索 URL 唯一来源（ego-search 内部共用）。
 
 背景：ego_search.py 与 webbridge_adapter.py 曾各自维护一份**逐字节相同**的
 SERP 提取 IIFE 和 SEARCH_URLS（2026-09-13 审查重复清单 #1/#2）——一份修了

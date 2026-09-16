@@ -53,7 +53,7 @@ def _runtime_status(engine_id: str,
     被动读取、无网络副作用：breaker 状态读进程内存（构造时已 load 磁盘态）；
     adaptive 分数用调用方传入的全表快照，缺失时按中性分 0.5。
     与主动探针（health_check.check_engine）互补：本函数是「当前可用性」快照，
-    探针是「立即连通性」验证，二者口径不同、各自保留。
+    探针是「立即连通性」验证，二者计算方式不同、各自保留。
     """
     out: dict[str, Any] = {"breaker": None, "adaptive_score": None,
                            "failure": None}
@@ -162,7 +162,7 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         "cost_tier": _cost_tier_of(engine_id, tiers),
         "status": status,
         # 设计上不进自动路由（需密钥的付费源 / 输入形态特殊），按 --engine 显式调用；
-        # 可达性门禁据此区分「有意显式」与「忘了接线」。
+        # 可达性检查据此区分「有意显式」与「忘了接线」。
         "explicit_only": bool(spec.get("explicit_only")),
         "env_ready": env_ok,
         "required_env": env["required_env"],
@@ -176,7 +176,7 @@ def engine_detail(engine_id: str, spec: dict[str, Any] | None = None,
         "quota_exhausted": quota_exhausted,
         "quota_exhausted_until": (quota_mark or {}).get("until"),
         "quota_exhausted_reason": (quota_mark or {}).get("reason") or "",
-        # 后端依赖（requires 声明）：缺什么、怎么装。与 missing_env（密钥）正交。
+        # 后端依赖（requires 声明）：缺什么、怎么装。与 missing_env（密钥）互不相干。
         "dep_ready": dep_ok,
         "requires": deps["requires"],
         "missing_deps": deps["missing_deps"],

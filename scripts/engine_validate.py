@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""engine_validate.py — 引擎标准化验证（准入门禁）
+"""engine_validate.py — 引擎标准化验证（准入检查）
 
 用法：
   python3 scripts/engine_validate.py --engine hackernews --stage health

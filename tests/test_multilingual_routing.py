@@ -109,7 +109,7 @@ class TestJaKoMacroRouting(unittest.TestCase):
         self.assertNotIn("gov_policy", d["engines_combo"])
 
     def test_ko_macro_prefers_anysearch(self):
-        # 韩文宏观兜底优先 anysearch（多语言源），不再只锁 local_bing
+        # 韩文宏观保底优先 anysearch（多语言源），不再只锁 local_bing
         from route import route_query
         d = route_query("미국 연준 금리 인하 전망")
         self.assertEqual(d["engines_combo"][0], "anysearch")
@@ -142,7 +142,7 @@ class TestJaKoTfidfSkip(unittest.TestCase):
         self.assertEqual(d["engine"], "gov_policy", d["reason"])
 
     def test_all_zh_candidates_skipped_falls_back_general(self):
-        # 候选全为中文引擎 → TF-IDF 分支作废，走通用兜底（anysearch 前置）
+        # 候选全为中文引擎 → TF-IDF 分支作废，走通用保底（anysearch 前置）
         from route import route_query
         scores = [("gov_policy", 0.50, ""), ("baidu_baike", 0.30, "")]
         with patch("route.semantic_route", return_value=scores):

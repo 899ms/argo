@@ -2,8 +2,8 @@
 """fetch_quality.py — 抓取结果的质量信号计算（fetch_v3 第三级）。
 
 从 fetch_v3 拆出：本模块只做纯信号计算（来源分类 / 页面类型 / 质量分 /
-内容安全），不参与抓取编排，也不持有外部状态。独立成模块可让 fetch_v3
-聚焦降级链编排，避免文件持续膨胀。
+内容安全），不参与抓取调度，也不持有外部状态。独立成模块可让 fetch_v3
+聚焦降级链调度，避免文件持续膨胀。
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-# 判定为 article 的最小正文字数阈值单一真源在 content_signals.MIN_ARTICLE_CHARS
+# 判定为 article 的最小正文字数阈值唯一来源在 content_signals.MIN_ARTICLE_CHARS
 # （detect_page_type 的 markdown-only 回退使用），此处不再复制常量防漂移。
 
 
@@ -105,7 +105,7 @@ def _detect_page_type(html: str, content: str, url: str = "") -> str:
 
     注意 page_type 目前只是报告字段，不参与 TTL / 质量分计算：
       - TTL 由 evidence_loop.ttl_for_fetch_result 取 source_type，而
-        _classify_domain 对任意 URL 都返回非空值（兜底 "unknown"），
+        _classify_domain 对任意 URL 都返回非空值（保底 "unknown"），
         `source_type or page_type` 恒短路，page_type 永不参与 TTL 判定；
       - _compute_quality(content, html) 不读 page_type。
     """
@@ -125,7 +125,7 @@ def _compute_quality(content: str, html: str) -> float:
     列表页把侧栏链接抽出来也能拼出上万字符，word_count 与 text_density 都虚高。
     用 html 里的结构信号（article/main 语义标签、段落数、链接密度）做修正。
 
-    口径保持兼容：修正项是**小幅加减分**（-0.1 ~ +0.15），不改变量纲，
+    计算方式保持兼容：修正项是**小幅加减分**（-0.1 ~ +0.15），不改变量纲，
     只让「有真实文章结构」的页面上浮。html 为空时修正为 0，退化为原行为
     （markdown-only 源没有原始 HTML）。
     """

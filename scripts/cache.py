@@ -32,14 +32,14 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     from config import get_cache_config
 
-# 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
+# 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths
 from cli_io import dumps
 
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
 
-# 由单一真源派生，不再字面量拼 ~/.cache/unified-search。
+# 由唯一来源派生，不再字面量拼 ~/.cache/unified-search。
 # 用 db_path() 而非 state_path()：config.yaml 显式改写 db_path 时尊重用户配置。
 DEFAULT_DB_PATH = str(argo_paths.db_path())
 DEFAULT_TTL = 3600
@@ -879,9 +879,9 @@ class SearchCache:
         key = self._key(url, "fetch", 0, "fetch", "auto", "any", kind="fetch")
         self._write(key, url, "fetch", 0, payload, "fetch", ttl)
 
-    # ── URL 证据分缓存（证据闭环 P0）──────────────────────────────────────
+    # ── URL 证据分缓存（证据完整链路 P0）──────────────────────────────────────
     # 与 fetch 正文缓存隔离（kind 不同），只存轻量证据分，不存正文/HTML。
-    # 生命周期：由 fetch_v3 写入（随正文抓取），TTL 与正文缓存策略对齐。
+    # 生命周期：由 fetch_v3 写入（随正文抓取），TTL 与正文缓存策略保持一致。
 
     def get_evidence(self, url: str) -> Optional[dict]:
         """读 URL → 正文级证据分缓存。未命中返回 None。"""

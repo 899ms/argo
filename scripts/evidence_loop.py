@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-evidence_loop.py — 证据闭环（P0）：fetch 后正文吸收分回写 + URL→证据分缓存 + 高后果门控
+evidence_loop.py — 证据完整链路（P0）：fetch 后正文吸收分回写 + URL→证据分缓存 + 高后果门控
 
 问题重定义（第一性）：
   Argo 搜索输出的 snippet 级证据分（credibility_fast）是「候选」分，
   Agent 高后果下结论前必须 fetch 正文复核。此前 fetch 结果不回填搜索结果、
-  不缓存 URL→证据分、无「该核验哪些」的可编程信号，证据闭环是开环。
+  不缓存 URL→证据分、无「该核验哪些」的可编程信号，证据完整链路是开环。
 
 MECE 分工（互不重叠）：
   A. fetch 证据提取  ：从 fetch_v3 结果提取正文级吸收分（extract_fetch_evidence）
@@ -14,7 +14,7 @@ MECE 分工（互不重叠）：
   D. 高后果门控      ：finance/health/legal 等域标记 fetch_required + fetch_suggested（gate_results）
   E. 核验模式        ：显式对 top-k 未核验结果 fetch 并产出 evidence_revision 分布（verify_results）
 
-闭环：search 输出（建议核验） → Agent fetch → fetch_v3 写证据缓存 → 下次 search 自动回填。
+完整链路：search 输出（建议核验） → Agent fetch → fetch_v3 写证据缓存 → 下次 search 自动回填。
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ def extract_fetch_evidence(fetch_result: dict[str, Any]) -> Optional[dict[str, A
 
 
 def ttl_for_fetch_result(fetch_result: dict[str, Any]) -> int:
-    """按页面类型选证据缓存 TTL（与 fetch_v3 写正文缓存的策略对齐）。"""
+    """按页面类型选证据缓存 TTL（与 fetch_v3 写正文缓存的策略保持一致）。"""
     st = fetch_result.get("source_type") or fetch_result.get("page_type") or ""
     if st in ("news", "realtime"):
         return EVIDENCE_NEWS_TTL

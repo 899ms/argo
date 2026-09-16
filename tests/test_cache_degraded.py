@@ -88,7 +88,7 @@ def test_degraded_size_mb_is_zero(readonly_dir):
 # ─── 正常路径不受影响 ─────────────────────────────────────────────────────────
 
 def test_healthy_cache_roundtrip(tmp_path):
-    """可写目录：功能完全正常（回归护栏，确保降级逻辑没有污染正常路径）。"""
+    """可写目录：功能完全正常（回归防护，确保降级逻辑没有污染正常路径）。"""
     db = str(tmp_path / "cache.db")
     c = cache.SQLiteCache(db_path=db)
     assert c.degraded is False

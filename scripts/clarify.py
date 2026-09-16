@@ -557,7 +557,7 @@ def analyze_query(query: str) -> dict[str, Any]:
 
 
 def _detect_language(text: str) -> str:
-    """检测主要语言（委托 lang_detect 单真源，兼容旧标签）。"""
+    """检测主要语言（委托 lang_detect 单来源，兼容旧标签）。"""
     try:
         from lang_detect import detect_language
         lang = detect_language(text or "")

@@ -13,7 +13,7 @@ import hashlib
 import json
 from typing import Any
 
-# URL 归一化单一真源 = 主仓 scripts/url_canon.py。本文件曾自带一份 7 参数
+# URL 归一化唯一来源 = 主仓 scripts/url_canon.py。本文件曾自带一份 7 参数
 # 的 `_TRACKING` + 手写归一（无 www/移动站折叠、无参数排序、无 fragment
 # 处理），与主仓 4 处实现互不一致——同一链接 public 侧与 login 侧归一成
 # 不同键，`dual_sourced`/`conflicts` 恒为空，融合报告形同虚设（2026-09-13

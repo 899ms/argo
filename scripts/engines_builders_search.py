@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""专用构建器：通用搜索 API（parallel.ai / you.com）——按官方文档对齐
+"""专用构建器：通用搜索 API（parallel.ai / you.com）——按官方文档保持一致
 
 parallel（docs.parallel.ai/search/search-quickstart）：
   - objective（自然语言目标）+ search_queries（数组）为官方推荐组合
   - mode: turbo(~200ms, $1/千次, 仅英日文) / basic(~1s, $5/千次) / advanced(~3s, $5/千次)
     argo 默认 basic，deep 模式 advanced
-  - advanced_settings: excerpt_settings.max_chars_per_result 与 argo snippet 截断对齐
+  - advanced_settings: excerpt_settings.max_chars_per_result 与 argo snippet 截断保持一致
 
 you.com（docs.you.com）：
   - 官方环境变量名 YDC_API_KEY
@@ -115,7 +115,7 @@ def _build_parallel_free_engine(spec: dict[str, Any]) -> Any:
     """Parallel 免费搜索：官方免费 MCP 端点的 web_search 工具，恒走免 key 通道。
 
     与 parallel（REST + PARALLEL_API_KEY，按量计费）同上游、不同经济模型，
-    故注册为独立引擎而非共用 cost_tier——「计费源不当免费」门禁的语义
+    故注册为独立引擎而非共用 cost_tier——「计费源不当免费」检查的语义
     对两条通道各自成立。本引擎**不看 key**：key 的有无/有效与否是 parallel
     的事；免费端点不收 key、按 key 计费，带了反而可能混淆计费归属。
     路由上以 daily_support 低优先级做补位：每家族 max_per_family=2 挡住
@@ -148,7 +148,7 @@ def _build_parallel_free_engine(spec: dict[str, Any]) -> Any:
         }
         try:
             from http_client import HttpClient
-            # max_retries=0：引擎内不做连接级重试（同 anysearch，防与编排层重试叠乘）
+            # max_retries=0：引擎内不做连接级重试（同 anysearch，防与调度层重试叠乘）
             client = HttpClient(timeout=to, max_retries=0, jitter=False)
             resp = client.post(_PARALLEL_FREE_MCP_URL, body=body,
                                extra_headers={"Content-Type": "application/json"})

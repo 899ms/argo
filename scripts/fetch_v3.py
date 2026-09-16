@@ -51,13 +51,13 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-# 渲染层（第二级A）：TinyFish 直连渲染，独立模块以保持本文件聚焦主链编排
+# 渲染层（第二级A）：TinyFish 直连渲染，独立模块以保持本文件聚焦主链调度
 import fetch_render_tinyfish as _render_tinyfish
 
 # 质量信号层（第三级）：来源分类 / 页面类型 / 质量分 / 内容安全
 import fetch_quality as _quality
 
-# 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
+# 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 from net_proxy import open_url  # 出口调度唯一入口（issue #13 同类修复）
 from engine_env import env_flag  # 布尔开关统一判断（见 env_flag 的说明）
@@ -109,7 +109,7 @@ def extract_content(html: str, max_chars: int = 8000) -> tuple[str, str]:
 
     P0 增强：readability 密度法为主（链接密度惩罚 + 标签权重 + 容器归并，
     保持文档顺序）；返回空时回退旧密度排序实现（链接列表页等无正文场景
-    不至于丢掉旧行为兜底的结果）。
+    不至于丢掉旧行为保底的结果）。
     """
     try:
         from readability_extract import extract_readability
@@ -378,7 +378,7 @@ def _identity_remember_mobile(host: str) -> None:
     _identity_load()
     _identity_mem[host] = time.time() + _IDENTITY_TTL
     try:
-        # 原子写走 argo_paths 单一真源（唯一 tmp 名）；旧实现固定 `.tmp` 名，
+        # 原子写走 argo_paths 唯一来源（唯一 tmp 名）；旧实现固定 `.tmp` 名，
         # 并发抓取进程会互相搬走临时文件，身份记忆静默丢失。
         _paths.atomic_write_json(Path(_IDENTITY_PATH), _identity_mem, indent=None)
     except Exception:
@@ -438,7 +438,7 @@ def _mobile_http_fetch(url: str, max_chars: int = 8000,
 
 
 def _mark_stop_signal(result: dict, resp: dict) -> dict:
-    """把 429/503 明确停止信号记录到结果，供主链门禁使用。
+    """把 429/503 明确停止信号记录到结果，供主链检查使用。
 
     429（速率限制）与 503（服务过载）是服务器明确的「请停止」信号，
     与请求方式（UA/TLS 指纹/浏览器）无关。收到后不应升级重链，
@@ -534,7 +534,7 @@ def _tls_spoof_fetch(url: str, max_chars: int = 8000, timeout: float = 8.0) -> d
 def _wayback_fetch(url: str, max_chars: int = 8000, timeout: float = 12.0) -> dict:
     """Wayback Machine 快照回退：CDX API 查最新快照 → 抓取。
 
-    用于 HTTP 失败 / 空内容 / 疑似被删页面的兜底，返回统一输出格式。
+    用于 HTTP 失败 / 空内容 / 疑似被删页面的保底，返回统一输出格式。
     """
     try:
         from http_client import HttpClient
@@ -902,7 +902,7 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
     # URL 优化（Reddit 重写、追踪参数清理）
     url = _optimize_url(url)
 
-    # robots.txt 尊重（合规门禁）：被禁路径直接拒绝，抓取失败放行
+    # robots.txt 尊重（合规检查）：被禁路径直接拒绝，抓取失败放行
     try:
         from robots_guard import robots_blocked
         if robots_blocked(url, timeout=min(timeout, 5.0)):
@@ -1101,7 +1101,7 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
             SearchCache().set_fetch(url, to_store, ttl=ttl)
         except Exception:
             pass
-        # 证据闭环 P0：同步写 URL → 正文级证据分缓存（独立 kind，轻量）
+        # 证据完整链路 P0：同步写 URL → 正文级证据分缓存（独立 kind，轻量）
         try:
             from evidence_loop import (
                 extract_fetch_evidence, store_fetch_evidence, ttl_for_fetch_result,
@@ -1139,7 +1139,7 @@ def fetch_page_v3(url: str, max_chars: int = 3000,
 
 
 # ─── 聚焦提取（--focus：BM25 段落聚焦，省 token）──────────────────────────────
-# 语义真源在 focus_extract.apply_focus（CLI 与 MCP 的 argo_fetch 共用同一份
+# 语义来源在 focus_extract.apply_focus（CLI 与 MCP 的 argo_fetch 共用同一份
 # 裁剪契约），此处只做接线。历史 bug：文档（SKILL.md / references/usage.md）
 # 一直写着 `argo fetch URL --focus 关键词`，但本文件的 CLI 没有该参数，
 # 调用方拿到的是 argparse 的 unrecognized arguments——文档承诺的能力只在

@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-# 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
+# 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 
 STATE_PATH = str(_paths.state_path("circuit_breaker.json"))
@@ -67,7 +67,7 @@ class CircuitBreaker:
 
     def _save(self) -> None:
         try:
-            # 原子写走单一真源（唯一 tmp 名 + 同目录 rename）。
+            # 原子写走唯一来源（唯一 tmp 名 + 同目录 rename）。
             # 旧实现写固定的 `<path>.tmp`：并发进程互相搬走对方的 tmp，
             # os.replace 抛 FileNotFoundError，熔断态静默丢失。
             _paths.atomic_write_json(
@@ -81,7 +81,7 @@ class CircuitBreaker:
     # ── 引擎熔断 ────────────────────────────────────────────────────────────
 
     def status(self, engine: str) -> dict[str, Any]:
-        """只读查询引擎熔断状态（不推进 half-open 探测、不落盘）。
+        """只读查询引擎熔断状态（不推进 half-open 探测、不写入文件）。
 
         供路由层做「配额/熔断感知沉底」：主引擎熔断打开时自动切换到
         相近备选，正常路径组合集合不变，缓存键不变，速度零影响。
@@ -194,7 +194,7 @@ class CircuitBreaker:
             # empty（无结果）与 blocked（被拦截）都是查询级/源站级信号，不驱动
             # open 熔断：否则「空结果→open 60s→half_open→再 open」无效 churn，
             # 还占主位阻塞 6s。仅 error/timeout 驱动稳定 state 切换（空结果由
-            # 负缓存短 TTL 兜底）。2026-08 修复；blocked 2026-09 并入同语义。
+            # 负缓存短 TTL 保底）。2026-08 修复；blocked 2026-09 并入同语义。
             if drives_opens and (st["failures"] >= FAILURE_THRESHOLD
                                  or st.get("state") == "half_open"):
                 st["state"] = "open"

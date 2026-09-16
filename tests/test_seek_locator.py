@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """seek_locator 单测：local-seek 子技能的安装感知定位（离线）
 
-目标：锁定「单一真源 + 不写死主机路径」的发现规则——打包子技能优先，
+目标：锁定「唯一来源 + 不写死主机路径」的发现规则——打包子技能优先，
 ARGO_LOCAL_SEEK_PATH / ARGO_LOCAL_SEEK_ROOTS 承载自定义与遗留位置。
 
 运行：

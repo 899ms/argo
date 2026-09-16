@@ -115,7 +115,7 @@ def _has_timeout_arg(call: ast.Call) -> bool:
 
 
 class TestNoAutoJoiningTimeout(unittest.TestCase):
-    """静态门禁：不要在 `with ThreadPoolExecutor(...)` 里用带超时的 as_completed。
+    """静态检查：不要在 `with ThreadPoolExecutor(...)` 里用带超时的 as_completed。
 
     因为 with 退出会自动 join 全部线程，把超时架空（慢任务照样拖住返回）。需要
     「最多等 N 秒」时一律用 bounded_run.run_bounded。有意等全部完成的场景

@@ -964,7 +964,7 @@ def extract_tweet_id(text: str) -> str | None:
 # 实测 2026-09-12（推文 1585841080431321088）：token=a、token=0、
 # token=aaaaaaaaaaaa 三者都返回完整推文，省略 token 参数则返回空响应体。
 # 因此这里用固定值——按 id 推导 base36 没有意义：那段手写浮点实现既与服务端
-# 口径无关（服务端不校验），也与它自己声称的公式不一致（固定 12 位小数 vs
+# 计算方式无关（服务端不校验），也与它自己声称的公式不一致（固定 12 位小数 vs
 # 最短往返表示；只去首尾 0 vs 去所有 0），测试还把它锁成了金标。
 # 若将来服务端真的开始校验，再按公开公式
 #   ((id / 1e15) * π).toString(36) 去掉所有 '0' 与 '.'
@@ -1131,7 +1131,7 @@ def _build_met_museum_engine(spec: dict[str, Any]) -> Any:
     """Met Museum 藏品库（艺术/博物馆藏品，两跳：search → objects/{id}）。
 
     search 只回 objectIDs 数组，详情逐个取（上限 6 条控二跳延迟）；artist 为空
-    是常态（大量藏品无署名），标题用 title 兜底。
+    是常态（大量藏品无署名），标题用 title 保底。
     """
     timeout = spec.get("timeout", 20)
     _BASE = "https://collectionapi.metmuseum.org/public/collection/v1"

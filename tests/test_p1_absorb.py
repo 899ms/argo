@@ -1,6 +1,6 @@
 """tests/test_p1_absorb.py — P1 精华吸纳测试
 
-P1-3 通用免费源清单单一真源（route 兜底 / recovery L3 同源，消除重复）
+P1-3 通用免费源清单唯一来源（route 保底 / recovery L3 同源，消除重复）
 P1-2 统一健康度视图（engine_detail.runtime = 熔断 + 学习分聚合）
 P1-1 多意图路由（match_domains 多命中 + 预算内次域补充，主域优先）
 """
@@ -17,7 +17,7 @@ if str(_SCRIPTS) not in sys.path:
 
 
 class TestGeneralFreeSingleSource(unittest.TestCase):
-    """P1-3：通用免费源清单单一真源"""
+    """P1-3：通用免费源清单唯一来源"""
 
     def test_recovery_uses_shared_constant(self):
         from engine_policy import GENERAL_FREE_FALLBACK
@@ -27,8 +27,8 @@ class TestGeneralFreeSingleSource(unittest.TestCase):
     def test_route_fallback_local_first(self):
         from engine_policy import GENERAL_FREE_FALLBACK
         from route import _general_fallback
-        # 取样集合从单一真源推导，不写死名单：名单增删时这条守的是
-        # 「本地优先 + 顺序与真源一致」这个契约，而不是某天的某个快照。
+        # 取样集合从唯一来源推导，不写死名单：名单增删时这条守的是
+        # 「本地优先 + 顺序与来源一致」这个契约，而不是某天的某个快照。
         enabled = {"local_search", "duckduckgo"} | set(GENERAL_FREE_FALLBACK)
         fb = _general_fallback(enabled)
         self.assertEqual(fb[0], "local_search")

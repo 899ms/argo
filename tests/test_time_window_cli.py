@@ -206,7 +206,7 @@ class TestCacheTimeWindowIsolation(unittest.TestCase):
         self.assertNotEqual(base, with_since)
         self.assertNotEqual(base, with_until)
         self.assertNotEqual(with_since, with_both)
-        # 同参幂等
+        # 同参重复执行结果一致
         again = SearchCache._key("rust async", "realtime_index", 5, kind="engine", since="7d")
         self.assertEqual(with_since, again)
 

@@ -3,7 +3,7 @@
 
 根据查询特征将请求路由到最优本地引擎组合，覆盖：
 - 中文通用 / 中文新闻 / 代码 / 学术 / 参考百科 / 事实问答 / 垂直实体
-- 与 unified-search 的 route.py 解耦，local-search 内部使用
+- 与 unified-search 的 route.py 拆开，local-search 内部使用
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def extract_features(query: str) -> dict[str, Any]:
     """提取查询特征向量。"""
     total = max(len(query), 1)
     chinese = len(_RE_CHINESE.findall(query))
-    # 主语言判定：优先复用 scripts/lang_detect 单真源
+    # 主语言判定：优先复用 scripts/lang_detect 单来源
     primary_lang = "en"
     try:
         from lang_detect import detect_language
@@ -166,7 +166,7 @@ def route_query(
         if features["is_news"]:
             candidates.append(("news", 0.9))
 
-    # 兜底
+    # 保底
     if not candidates:
         candidates.append(("web_general", 0.5))
 
@@ -198,7 +198,7 @@ def route_query(
         if len(selected) >= max_engines:
             break
 
-    # 兜底：如果都没选到，返回前几个启用的可用引擎
+    # 保底：如果都没选到，返回前几个启用的可用引擎
     if not selected:
         selected = reg.list_engines(available_only=require_available, enabled_only=True)[:max_engines]
         reasons = [f"{e}(fallback)" for e in selected]

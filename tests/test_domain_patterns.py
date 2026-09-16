@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_domain_patterns — 域级「静默失效」门禁（离线、确定性）。
+"""test_domain_patterns — 域级「静默失效」检查（离线、确定性）。
 
 ## 守的是什么
 

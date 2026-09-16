@@ -5,7 +5,7 @@ plan.py — 离线搜索计划（吸纳 yichen-unified-search 契约）
 目标：
   - 不联网，只产出 status / authorization / steps / limitations
   - 分流 input_kind：keyword | url-seed | known-url
-  - 与 route_query 对齐，供 deep/research 路径挂载元数据
+  - 与 route_query 保持一致，供 deep/research 路径挂载元数据
 
 执行分层（产品纪律，禁止日常「先确认再搜」）：
   - daily：fast/auto/budget + 非 deep depth → 直搜，不挂 plan，不等用户确认
@@ -130,7 +130,7 @@ def _is_single_tweet(url: str) -> bool:
 
 
 def canonicalize_url(url: str) -> str:
-    """URL 归一化（薄转发到 url_canon 单一真源）。
+    """URL 归一化（薄转发到 url_canon 唯一来源）。
 
     本函数曾自带一份追踪参数表与归一规则，与 search/candidate_envelope/
     research_dossier 的实现互不一致；现统一到 url_canon，保证同一条链接
@@ -270,7 +270,7 @@ def build_plan(
             "depth": depth,
         }
 
-    # ── 正常 keyword / url-seed：对齐 route_query（离线，无网络）──
+    # ── 正常 keyword / url-seed：保持一致 route_query（离线，无网络）──
     try:
         from route import route_query
         decision = route_query(

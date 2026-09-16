@@ -144,7 +144,7 @@ class TestSemanticRouting(unittest.TestCase):
 
 
 class TestStructuredPlatformDomain(unittest.TestCase):
-    """social 域提前：语法判定真源在 config.yaml social patterns（单一真源），
+    """social 域提前：语法判定来源在 config.yaml social patterns（唯一来源），
     route 侧只做命中顺序调整（_social_domain_first）。"""
 
     def test_social_syntax(self):

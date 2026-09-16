@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""P0 回归测试：Retry-After 尊重 + 停止信号门禁（全 mock，不联网）。
+"""P0 回归测试：Retry-After 尊重 + 停止信号检查（全 mock，不联网）。
 
 覆盖：
   1. http_client.retry_after_seconds 解析规则
   2. get() 对 429/503 + Retry-After 的合规等待重试 / 放弃
   3. get_impersonated 对 429/503 停止信号立即返回、不轮换指纹
   4. fetch_v3 主链收到停止信号后不再升级 TLS/wayback/CDP
-  5. fetch_v3 的 robots.txt 合规门禁
+  5. fetch_v3 的 robots.txt 合规检查
 """
 
 from __future__ import annotations
@@ -294,7 +294,7 @@ class TestFetchV3StopSignalGate(unittest.TestCase):
 
 
 class TestFetchV3RobotsGate(unittest.TestCase):
-    """fetch_v3 的 robots.txt 合规门禁。"""
+    """fetch_v3 的 robots.txt 合规检查。"""
 
     def test_blocked_path_returns_robots_blocked(self):
         import fetch_v3

@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-# 本地状态目录单一真源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
+# 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 
 logger = logging.getLogger("argo.engine_registry")

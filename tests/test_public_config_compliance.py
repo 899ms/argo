@@ -66,7 +66,7 @@ def _public_files() -> list[Path]:
 
 class TestNoShadowLibraryNames(unittest.TestCase):
     def test_public_files_exist(self):
-        """扫描面不能是空的——glob 写错会让本门禁静默全绿。"""
+        """扫描面不能是空的——glob 写错会让本检查静默全绿。"""
         files = _public_files()
         self.assertGreaterEqual(len(files), 60,
                                 f"仅扫到 {len(files)} 个对外文件，glob 可能失效")

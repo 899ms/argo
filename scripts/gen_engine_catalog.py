@@ -6,7 +6,7 @@ config.yaml / engines/specs/*.yaml / quota_profiles.json / engine_env 四处，
 手写文档必然与事实脱节（本仓 2026-09-12 就出现过「文档说 12 个 MCP 工具、
 实际 14 个」「文档说 150+ 引擎、分不清收录与可用」）。这里的做法是：
 文档从**运行时同一批函数**取事实，`--check` 比对磁盘上的文档，
-`tests/test_engine_catalog.py` 把 `--check` 挂进门禁——文档改不动也漂不掉。
+`tests/test_engine_catalog.py` 把 `--check` 挂进检查——文档改不动也漂不掉。
 
 用法：
   python3 scripts/gen_engine_catalog.py            # 生成/覆盖文档
@@ -30,7 +30,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 # 文档只用「声明事实」分档，不用运行时状态（密钥是否已配、是否被熔断/封锁
 # 都是本机瞬时状态）：文档要进仓库、要被别的机器生成复核，一旦写进
-# 「本机此刻缺哪些密钥」，换个环境生成就与磁盘不符，门禁随机变红。
+# 「本机此刻缺哪些密钥」，换个环境生成就与磁盘不符，检查随机变红。
 # 运行时状态交给 `argo search --list-engines --detail` 现场查。
 DOC_STATUS_KEY = "需自备密钥"
 DOC_STATUS_DEP = "需装后端工具"
@@ -82,7 +82,7 @@ FAMILY_LABEL = {
 
 
 def _collect() -> dict[str, Any]:
-    """从运行时取事实（与 CLI/MCP 同一批函数，不另建口径）。"""
+    """从运行时取事实（与 CLI/MCP 同一批函数，不另建计算方式）。"""
     from config import load_config, get_domains
     from engine_families import family_of
     from engine_policy import GENERAL_FREE_FALLBACK, get_engine_tier

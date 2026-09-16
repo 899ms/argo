@@ -5,14 +5,14 @@
 ```
 argo/
 ├── SKILL.md              # 技能注册文档（路由壳，本文件指回）
-├── config.yaml           # 引擎配置 & 路由规则（单一真源，~4000 行）
+├── config.yaml           # 引擎配置 & 路由规则（唯一来源，~4000 行）
 ├── backends/             # 注册表派生（sync_backends.py 生成）
 │   ├── domain_profiles.json   # TF-IDF 领域文档
 │   ├── engine_registry.yaml   # 引擎注册表
 │   └── quota_profiles.json    # 配额配置
 ├── engines/specs/        # 外置引擎声明（10 个，优先覆盖同名）
 ├── scripts/
-│   ├── search.py         # CLI 入口 & 执行编排
+│   ├── search.py         # CLI 入口 & 执行调度
 │   ├── route.py          # 三层路由决策
 │   ├── tfidf_router.py   # TF-IDF 语义路由
 │   ├── engine_families.py # 能力族分类（16 族，MECE）
@@ -21,7 +21,7 @@ argo/
 │   ├── adaptive.py       # 自适应学习（success×latency×cost）
 │   ├── quota.py          # 配额管理
 │   ├── search_types.py   # 统一类型系统
-│   ├── research.py       # 深度研究取证编排（dossier）
+│   ├── research.py       # 深度研究取证调度（dossier）
 │   ├── research_expand.py / research_work_packages.py
 │   ├── research_dossier.py / research_gates.py / research_cli.py
 │   ├── evidence.py       # 可信度评估工具

@@ -2,8 +2,8 @@
 """link_source.py 宿主入口校验/重建回归测试（全本地，不联网）。
 
 背景（2026-09-14 实测）：resolve_targets() 会先对目标做 resolve()，把「已经
-间接指向真源的 symlink」折叠成真源本体。后果有两个：
-  1. link_one 看到目标是真源本体 → 打印 [skip] 而不是把入口重建为直连；
+间接指向来源的 symlink」折叠成来源本体。后果有两个：
+  1. link_one 看到目标是来源本体 → 打印 [skip] 而不是把入口重建为直连；
   2. check_targets 报 [ok]，无法区分直连与「隔了一层」的链接——校验常年绿灯，
      实际入口挂在中转链接上，中间那环被删改就成断链（历史上踩过）。
 关键不变量：**规范化目标路径时不得跟随末级符号链接**。
@@ -28,7 +28,7 @@ import link_source  # noqa: E402
 
 
 def _make_repo(root: Path) -> Path:
-    """造一个「像 argo 真源」的目录（含 link_source 的软校验标记文件）。"""
+    """造一个「像 argo 来源」的目录（含 link_source 的软校验标记文件）。"""
     repo = root / "repo"
     (repo / "scripts").mkdir(parents=True)
     (repo / "scripts" / "search.py").write_text("# stub\n", encoding="utf-8")
@@ -45,7 +45,7 @@ def _run(fn, *args, **kwargs):
 
 
 class TestHopsToSource(unittest.TestCase):
-    """跳数判定：0 本体 / 1 直连 / >1 间接 / -1 未指向真源。"""
+    """跳数判定：0 本体 / 1 直连 / >1 间接 / -1 未指向来源。"""
 
     def test_source_itself_is_zero(self):
         with TemporaryDirectory() as td:
@@ -112,7 +112,7 @@ class TestHopsToSource(unittest.TestCase):
 
 
 class TestResolveTargetsKeepsSymlink(unittest.TestCase):
-    """目标路径必须是「链接自己」，不能被 resolve 折叠成真源。"""
+    """目标路径必须是「链接自己」，不能被 resolve 折叠成来源。"""
 
     def test_symlinked_target_not_collapsed(self):
         with TemporaryDirectory() as td:

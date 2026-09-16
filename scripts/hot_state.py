@@ -8,7 +8,7 @@
   密钥        → engine_env 直读 ~/.config/argo/env（本模块 HotFile 提供 mtime 缓存）
   数据配置    → config.py 已有 mtime 热读；quota.py / engines.py registry 补齐
 
-护栏：ARGO_NO_AUTORELOAD=1 关闭自重启；指纹防循环；检查节流 1s。
+防护：ARGO_NO_AUTORELOAD=1 关闭自重启；指纹防循环；检查节流 1s。
 """
 
 from __future__ import annotations

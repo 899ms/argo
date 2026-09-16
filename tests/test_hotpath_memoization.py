@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_hotpath_memoization.py — 热路径重复劳动的消除门禁（2026-09-15）。
+"""test_hotpath_memoization.py — 热路径重复劳动的消除检查（2026-09-15）。
 
 ## 守的是什么
 
@@ -144,7 +144,7 @@ class TestExternalEnginesMtimeTtl:
     def test_scan_fingerprint_sees_deletion_and_backdated_add(self, monkeypatch, tmp_path):
         """指纹必须覆盖「集合变化」，只有 max_mtime 时对删除与 cp -p 是盲的。
 
-        这是落盘配置缓存的黑洞：删掉一个不是最新的声明、或拷进来一个时间戳
+        这是写入文件配置缓存的黑洞：删掉一个不是最新的声明、或拷进来一个时间戳
         被保留成旧值的声明，max_mtime 都不变 → 缓存继续命中 → 「引擎删了还在 /
         加了不生效」。
         """
@@ -247,9 +247,9 @@ class TestConfigStampTtl:
 
 
 class TestConfigDiskCache:
-    """落盘配置缓存：省掉**每个新进程**的整条解析合并链（实测 57 ms → 11 ms）。
+    """写入文件配置缓存：省掉**每个新进程**的整条解析合并链（实测 57 ms → 11 ms）。
 
-    每条命令都是一次新进程，进程内记忆化救不了跨进程的重复，只有落盘缓存能省。
+    每条命令都是一次新进程，进程内记忆化救不了跨进程的重复，只有写入文件缓存能省。
     这里锁四件事：暖进程不再解析、配置变了必失效、force 不吃缓存、损坏缓存可
     自愈——外加「缓存结果与完整解析结果逐字段一致」这条等价性底线。
     """

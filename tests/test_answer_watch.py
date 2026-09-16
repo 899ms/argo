@@ -2,7 +2,7 @@
 """answer.py 与 watch.py（直答 / 观察模式）单元测试（mock，无网络）。
 
 覆盖 2026-09-14 收录：
-  answer：citations 置信口径计数（唯一域名去重）、缺 key 显式报错、
+  answer：citations 置信计算方式计数（唯一域名去重）、缺 key 显式报错、
           上游 confidence 字段透传
   watch：快照建立 / 变化检测 / 抓取失败不伪造变化 / 状态目录隔离
 """

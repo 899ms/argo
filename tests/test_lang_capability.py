@@ -85,7 +85,7 @@ class TestProfileAvailable:
         assert lc.engines_for_lang("ja") == set()
 
     def test_real_profile_has_expected_shape(self, monkeypatch):
-        """画像文件本身必须存在且形状正确（与有效期解耦）。
+        """画像文件本身必须存在且形状正确（与有效期拆开）。
 
         读文件内容而非 `_load()`：`_load()` 会被过期策略返回 None，
         把「文件缺失」和「文件过期」两种故障混成同一条检查。

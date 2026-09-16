@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""argo_paths.py — argo 本地状态目录的单一真源。
+"""argo_paths.py — argo 本地状态目录的唯一来源。
 
 背景：此前 11 个模块各自拼 ~/.cache/unified-search，构造方式分裂成 4 种
 （Path.home()/".cache"/...、expanduser("~/.cache/...")、字面量字符串、
@@ -39,7 +39,7 @@ ENV_LOCALAPPDATA = "LOCALAPPDATA"
 # 历史默认目录（也是 config.yaml 中 db_path 的默认前缀）
 _LEGACY_ROOT = "~/.cache/unified-search"
 
-# 缓存配置段未就绪时的兜底（config 不可用、PyYAML 缺失等场景）
+# 缓存配置段未就绪时的保底（config 不可用、PyYAML 缺失等场景）
 _FALLBACK_ROOT = _LEGACY_ROOT
 
 # 应用名（平台惯例目录里的子目录名）
@@ -85,7 +85,7 @@ def state_root() -> Path:
       3. 历史目录 ~/.cache/unified-search（**已存在**时继续用；不迁移）
       4. 平台惯例目录：Windows → %LOCALAPPDATA%\\unified-search；
          POSIX → $XDG_CACHE_HOME/unified-search（该变量设置时）
-      5. 兜底：~/.cache/unified-search（即 POSIX 惯例的 XDG 默认值）
+      5. 保底：~/.cache/unified-search（即 POSIX 惯例的 XDG 默认值）
 
     为什么「已存在的历史目录」排在平台惯例之前：平台变量（XDG_CACHE_HOME /
     LOCALAPPDATA）在 Windows 上恒有值、在部分 Linux 桌面也常被设置，若它们无条件
@@ -200,7 +200,7 @@ def migrate_legacy_state(*, yes: bool = False, dry_run: bool = False) -> dict[st
         return result
     if not yes:
         # 不用 TTY 探测做交互确认：一来「是不是 tty」不是「要不要执行」的可靠判据
-        # （本仓有专门门禁挡 isatty），二来数据搬迁命令在脚本里也该有完全一致的
+        # （本仓有专门检查挡 isatty），二来数据搬迁命令在脚本里也该有完全一致的
         # 行为——要么显式 --yes，要么不动。
         result["status"] = "拒绝：需显式加 --yes（该命令会移动用户数据；--dry-run 可先看内容）"
         return result
@@ -318,7 +318,7 @@ def run_checks(lock_hold_s: float = 0.6) -> list[dict[str, Any]]:
 
     为什么要有它：跨平台分支（Windows 用哪个目录、msvcrt 锁是否真互斥、解释器候选
     最终落到谁）在开发机上只能做契约级测试，真机验证此前得靠人肉翻代码。这里把
-    「这台机器上实际发生了什么」一次打印清楚——任何平台一条命令自证。
+    「这台机器上实际发生了什么」一次打印清楚——任何平台一条命令自行验证。
     """
     checks: list[dict[str, Any]] = []
 
@@ -602,7 +602,7 @@ def _make_lock_impl(fcntl: Any):
 
 
 def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None:
-    """原子写文本文件的单一真源（任意内容，非仅 JSON）。
+    """原子写文本文件的唯一来源（任意内容，非仅 JSON）。
 
     临时文件用 mkstemp 取**进程内唯一**名字（同目录，保证同文件系统
     rename 语义），失败路径只清理自己的 tmp。`mode` 非空时对最终文件
@@ -628,7 +628,7 @@ def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None
 
 
 def atomic_write_json(path: Path, payload: Any, *, indent: int | None = 2) -> None:
-    """原子写 JSON 状态的单一真源。
+    """原子写 JSON 状态的唯一来源。
 
     why：此前 quota / circuit_breaker / lang_pref / v2ex_nodes / job /
     fetch_v3 / redskill 多处各自手写 `p.with_suffix(".tmp")` + replace，

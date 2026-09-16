@@ -31,13 +31,13 @@
 
 | 库 | 关键语法 |
 |---|---|
-| arXiv | 分类码 `cat:cs.LG`/`cat:cs.CL`；`ti:` 高精度、`abs:` 广召回、`all:` 仅兜底；`ANDNOT` 排除；`sortBy=submittedDate`（求新）/ `relevance`（求准）；`max_results=15` |
+| arXiv | 分类码 `cat:cs.LG`/`cat:cs.CL`；`ti:` 高精度、`abs:` 广召回、`all:` 仅保底；`ANDNOT` 排除；`sortBy=submittedDate`（求新）/ `relevance`（求准）；`max_results=15` |
 | Semantic Scholar | `fieldsOfStudy` 学科过滤；`year=2022-2025` 区间；取 `influentialCitationCount`、`tldr`、`openAccessPdf`；`/paper/{id}/citations`、`/paper/{id}/references` |
 | Google Scholar | `intitle:"..."`、`author:"..."`、`source:"..."`；`as_ylo`/`as_yhi` 年份；`"exact phrase"` |
 
 ## 2. 多库协议与去重
 
-顺序：**Semantic Scholar 起步**（结构化元数据 + 引用图）→ **arXiv 补预印本**（48h 内新稿）→ **Google Scholar 兜底**（小会/学位论文/技术报告）→ 交叉去重。
+顺序：**Semantic Scholar 起步**（结构化元数据 + 引用图）→ **arXiv 补预印本**（48h 内新稿）→ **Google Scholar 保底**（小会/学位论文/技术报告）→ 交叉去重。
 
 去重优先级：DOI → arXiv ID → 标题+第一作者+年份（模糊）。版本冲突时保留已发表版为主条目，附 arXiv 开放获取链接。
 
@@ -95,17 +95,17 @@
 17. **禁忽略引用图** — top1–2 必做前向+后向滚雪球
 18. **禁重复计数** — 预印本与已发表版按同一篇处理
 
-## 6. 与 argo 证据体系的对齐
+## 6. 与 argo 证据体系的保持一致
 
 | 学术检索情形 | argo 归类 |
 |---|---|
 | 已发表的同行评审结论 | **事实**（可回源核验） |
 | 预印本结论 | **推断**——须显式标注 `[预印本]`，未同行评审 |
-| 引用数/venue 推断影响力 | **推断**，写清口径（总引用 vs 引用速度 vs 高影响力引用） |
+| 引用数/venue 推断影响力 | **推断**，写清计算方式（总引用 vs 引用速度 vs 高影响力引用） |
 | 单篇论文的结论外推到领域共识 | **未知**——除非多篇独立复现 |
 
 - 论文类问题命中高后果域时，`fetch_required=true`，先 `argo_fetch` 取正文（或摘要页）再下判断。
-- 冲突处理沿用研究协议：**并列不同口径，禁止未对齐口径就合并**；不靠"多数来源"定真值。
+- 冲突处理沿用研究协议：**并列不同计算方式，禁止未保持一致计算方式就合并**；不靠"多数来源"定真值。
 - 不得把 SERP 链（baidu/s、sogou/link）当作论文正文来源。
 
 ## 7. 输出条目模板

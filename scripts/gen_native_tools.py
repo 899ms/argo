@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""gen_native_tools.py — 从 schema 唯一真源生成 DSH 原生工具规格表。
+"""gen_native_tools.py — 从 schema 唯一来源生成 DSH 原生工具规格表。
 
-schema 真源是 scripts/mcp_tools.py（模型可见 inputSchema 只在该文件维护）。
+schema 来源是 scripts/mcp_tools.py（模型可见 inputSchema 只在该文件维护）。
 本脚本把它翻译为 packages/dsh-plugin/dsh/native-tools.mjs（纯 ESM 常量，
 Node 18 可直接 import），使 DSH 原生一等工具（nativeTools 配置）无需手写
 第二份 schema——此前 index.js 手写 argo_search/argo_fetch 两个规格，与
 Python 侧已经出现措辞/参数漂移空间。
 
-生成的规格覆盖除 argo_research 外的全部工具：research 是分钟级编排，
+生成的规格覆盖除 argo_research 外的全部工具：research 是分钟级调度，
 CLI 单发默认 60s 超时会拦腰杀研究，只应经 MCP 或 wide_research 入口使用。
 
-漂移门禁：tests/test_native_tools_sync.py 重算本脚本输出并与仓库内文件
+漂移检查：tests/test_native_tools_sync.py 重算本脚本输出并与仓库内文件
 逐字节比对——改 mcp_tools.py 后必须重新生成，否则测试红。
 
 用法：

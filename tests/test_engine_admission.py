@@ -129,7 +129,7 @@ class TestAdmissionReasonConsistency(unittest.TestCase):
 
 
 class TestAdmissionStateNotSelfContradictory(unittest.TestCase):
-    """状态自洽门禁：blocked 与 health.status 不得互相矛盾。
+    """状态自洽检查：blocked 与 health.status 不得互相矛盾。
 
     这条同时看守真实状态目录——若存量记录里出现「blocked=true 但
     health.status=pass」的形态，说明粘滞 bug 回归或有人手改了状态文件。
@@ -148,7 +148,7 @@ class TestAdmissionStateNotSelfContradictory(unittest.TestCase):
         from pathlib import Path as _P
 
         try:
-            # 模块的真源函数（不受测试环境变量污染）
+            # 模块的来源函数（不受测试环境变量污染）
             adm_dir = _P(str(engine_admission.admission_dir()))
         except Exception:
             adm_dir = _P(os.path.expanduser("~/.cache/unified-search")) / "admission"
@@ -185,7 +185,7 @@ class TestAdmissionStateNotSelfContradictory(unittest.TestCase):
     def test_validate_success_path_never_writes_reason(self):
         """engine_validate 成功路径不得写 reason（不变式的调用方一侧）。
 
-        上面那条锁的是**状态文件**；这条锁**写入方**，两道一起才闭环：
+        上面那条锁的是**状态文件**；这条锁**写入方**，两道一起才完整链路：
         只锁状态文件的话，下次改回写 validation_passed 要等状态目录被
         重新生成才会暴露。
         """
@@ -210,7 +210,7 @@ class TestAdmissionReadCache(unittest.TestCase):
     """读缓存契约：一次 routable 扫描不该对同一份记录读三遍（实测 668 次读盘）。
 
     缓存与文件是一对状态，只更新一半就是经典的自相矛盾——所以这两条一起锁：
-    重复读命中缓存、写入立刻失效。TTL 是跨进程的兜底，也要能关。
+    重复读命中缓存、写入立刻失效。TTL 是跨进程的保底，也要能关。
     """
 
     def setUp(self):

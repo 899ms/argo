@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ranking_eval.py — 排序质量度量（nDCG@10 / MRR@10 / 共识位次）。
 
-为什么存在：本仓此前对排序只有「过/不过」布尔门禁（route 金标 12 条 +
+为什么存在：本仓此前对排序只有「过/不过」布尔检查（route 金标 12 条 +
 离线矩阵），没有任何分级度量——排序管线的任何改动都无法回答「变好还是
 变坏」（2026-09-13 审查 P1-4：全仓 grep ndcg|mrr 零命中）。本脚本把
 rrf_merge + local_five_dim_rerank 的评测落成可跑的数字。
@@ -15,7 +15,7 @@ rrf_merge + local_five_dim_rerank 的评测落成可跑的数字。
 用法：
   python3 scripts/ranking_eval.py              # 人读汇总表
   python3 scripts/ranking_eval.py --json       # 机器可读
-  python3 scripts/ranking_eval.py --check      # 门禁：低于 floor 退出码 1
+  python3 scripts/ranking_eval.py --check      # 检查：低于 floor 退出码 1
   python3 scripts/ranking_eval.py --case <id>  # 单案明细（含 rerank_dims）
 
 指标：
@@ -113,8 +113,8 @@ def evaluate_case(case: dict) -> dict:
     ndcg = (_dcg(grades) / idcg) if idcg > 0 else 0.0
 
     # RED 基线（SkillForge 视角）：最强单引擎裸跑序。融合管线的存在价值
-    # 必须可证明——若「多引擎编排+融合」不赢过「只用最好的那个源」，
-    # 编排层就是纯开销。逐引擎按其原始返回序打分，取各指标的最强者。
+    # 必须可证明——若「多引擎调度+融合」不赢过「只用最好的那个源」，
+    # 调度层就是纯开销。逐引擎按其原始返回序打分，取各指标的最强者。
     best_single_mrr = 0.0
     best_single_ndcg = 0.0
     for eng_rows in _build_lists(case):
@@ -255,7 +255,7 @@ def check_floors(report: dict, golden_doc: dict) -> list[str]:
             bad.append(f"mean nDCG {report['mean_ndcg']} < {agg['mean_ndcg']}")
         # RED/GREEN 消融地板：融合管线相对最强单引擎的聚合增益不得转负——
         # 排序/融合层的任何改动若把增益改没了，绝对地板可能仍达标（合成
-        # 数据上限高），只有这条能抓到「编排层退化为摆设」的回归。
+        # 数据上限高），只有这条能抓到「调度层退化为摆设」的回归。
         f_edge = agg.get("fused_edge_ndcg_min")
         if f_edge is not None and report["mean_edge_ndcg"] + 1e-9 < f_edge:
             bad.append(f"mean 融合增益nDCG {report['mean_edge_ndcg']} "

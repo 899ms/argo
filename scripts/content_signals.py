@@ -381,7 +381,7 @@ def compute_content_quality(content: str, title: str = "") -> dict:
             title_bonus = min(hits / len(title_words), 1.0) * 0.1
 
     evidence = score_evidence_density(clean, title)
-    # 权重：长度 0.2 + 密度 0.2 + 结构 0.2 + 证据 0.3 + 标题对齐 0.1
+    # 权重：长度 0.2 + 密度 0.2 + 结构 0.2 + 证据 0.3 + 标题保持一致 0.1
     quality_score = min(
         length_score * 0.2
         + density_score * 0.2

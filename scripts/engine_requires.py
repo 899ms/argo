@@ -176,7 +176,7 @@ def requires_status(spec: dict[str, Any] | None) -> dict[str, Any]:
         "missing_deps": [{"bin": c["bin"], "reason": c["reason"],
                           "fix": c["fix"]} for c in missing],
         "dep_ready": not missing,
-        # 修复指引：缺失项自带 fix；未声明 fix 的给通用兜底提示
+        # 修复指引：缺失项自带 fix；未声明 fix 的给通用保底提示
         "dep_fixes": [
             c["fix"] or f"安装 {c['bin']} 并确保其在 PATH 上"
             for c in missing

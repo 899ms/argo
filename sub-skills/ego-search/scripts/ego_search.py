@@ -66,7 +66,7 @@ EGO_BIN = rt.EGO_BIN
 RESULT_MARKER = "EGO_RESULT|"
 SOURCE = "ego-browser"
 
-# SEARCH_URLS / SERP 提取选择器单一真源 = serp_spec（ego 与 webbridge 共用，
+# SEARCH_URLS / SERP 提取选择器唯一来源 = serp_spec（ego 与 webbridge 共用，
 # 2026-09-13 收编：此前两份逐字节相同的 IIFE 各自维护，修一处漏一处）
 from serp_spec import SEARCH_URLS, build_serp_js as _build_serp_js
 
@@ -201,7 +201,7 @@ def run_ego(js_script: str, timeout: int = DEFAULT_TIMEOUT) -> dict:
 # 转义纪律：页面内选择器写死在模板；Node 层只注入纯安全占位符。
 
 # 页面内 SERP 提取 IIFE 体（返回 JSON 字符串）。占位：%%ENGINE%% %%N%%
-# SERP 提取 IIFE 见 serp_spec.SERP_EXTRACT_TEMPLATE（单一真源）
+# SERP 提取 IIFE 见 serp_spec.SERP_EXTRACT_TEMPLATE（唯一来源）
 
 # 页面内正文提取 IIFE 体（返回 JSON 字符串）。占位：%%CONTENT_MAX%%
 BODY_EXTRACT_IIFE = r"""(() => {
@@ -382,7 +382,7 @@ def run_with_fallback(
 def _search_ego(args: argparse.Namespace) -> dict[str, Any]:
     q = urllib.parse.quote(_normalized_query(args.query))
     url = SEARCH_URLS[args.engine].format(q=q)
-    # 时间窗：URL 参数下推（google cdr / bing age-lt / baidu gpc）+ 解析后过滤兜底
+    # 时间窗：URL 参数下推（google cdr / bing age-lt / baidu gpc）+ 解析后过滤保底
     tparams = wb.time_url_params(args.engine, getattr(args, "since", None), getattr(args, "until", None))
     if tparams:
         sep = "&" if "?" in url else "?"

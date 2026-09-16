@@ -9,7 +9,7 @@ fact_align.py — 关键事实交叉标记（P0-004）
     - 同 type 不同 value → 冲突（fact_conflicts）：提示 Agent 谨慎
     - 同 value ≥2 域名   → 印证（fact_corroborated）：提升可信度
 
-MECE 事实类型（正交、可正则化）：
+MECE 事实类型（互不相干、可正则化）：
   version    版本号     v?\\d+\\.\\d+(\\.\\d+)?
   percent    百分比     \\d+(\\.\\d+)?%
   money      金额       ￥/$/€ + 数字（含亿/万/billion/million 单位）

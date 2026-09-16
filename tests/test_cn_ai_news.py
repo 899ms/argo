@@ -33,7 +33,7 @@ from config import load_config, get_engines  # noqa: E402
 
 LIVE = os.environ.get("ARGO_LIVE", "").strip() in {"1", "true", "yes"}
 
-# ── 真实 API 响应结构样例（取自在线抓包，字段名逐一对齐） ──────────────────
+# ── 真实 API 响应结构样例（取自在线抓包，字段名逐一保持一致） ──────────────────
 
 SAMPLE_ITEMS = {
     "count": 2,
@@ -188,7 +188,7 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(results[0]["source"], "cn_ai_news")
 
     def test_ensure_source_preserve_semantics(self) -> None:
-        """_ensure_engine_source preserve 参数：保留真实来源、空来源兜底引擎名。"""
+        """_ensure_engine_source preserve 参数：保留真实来源、空来源保底引擎名。"""
         kept = _ensure_engine_source(
             [{"title": "t", "url": "https://u", "source": "字节 Seed"}],
             "cn_ai_news", preserve=True,

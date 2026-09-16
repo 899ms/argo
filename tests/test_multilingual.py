@@ -199,7 +199,7 @@ class TestLanguageEngineUnified(unittest.TestCase):
     """P2-1：选择（_select_language_engines）与合并（_merge_language_engines）分离后，
     route_query 主路径与两条回退路径共用同一预计算 lang_engines。本类验证：
       - 选择按语言返回正确的本地引擎候选；
-      - 合并幂等（同一组合并两次结果不变）；
+      - 合并重复执行结果一致（同一组合并两次结果不变）；
       - 兼容入口 _add_language_engines == 选择 + 合并组合；
       - 日/韩噪声剔除不依赖 lang_engines 是否为空；
       - 非日/韩「combo 已有 local_」时不重复追加。

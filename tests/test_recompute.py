@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""recompute 可复算闭环：执行器安全四组 + 入账 + 门禁（P0-2）。"""
+"""recompute 可复算完整链路：执行器安全四组 + 入账 + 检查（P0-2）。"""
 
 from __future__ import annotations
 

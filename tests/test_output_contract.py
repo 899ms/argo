@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""输出质量契约门禁：质量信号字段不得被任何输出档位剥掉。
+"""输出质量契约检查：质量信号字段不得被任何输出档位剥掉。
 
 ## 背景（2026-09-15 输出契约审查）
 
@@ -16,10 +16,10 @@
 当正文用、把降级路由结果当主路由结果用、把未预确认的档位当已确认的档位用。
 
 根因是字段边界划错了：归档专用字段（candidates/sources/coverage）与质量信号
-（limitations）被绑在同一个开关上。本门禁锁死修复结果——**任何档位都不允许
+（limitations）被绑在同一个开关上。本检查锁死修复结果——**任何档位都不允许
 再丢质量信号**，无论出于「省体积」还是别的理由。
 
-## 门禁口径
+## 检查计算方式
 
 分两类，避免把「空值省略」误判成「被剥掉」：
 
@@ -29,12 +29,12 @@
 
 ## 实现方式
 
-**不跑端到端搜索**——门禁必须无网络、快且稳定（本仓门禁的一贯约定；
+**不跑端到端搜索**——检查必须无网络、快且稳定（本仓检查的一贯约定；
 实测 `ARGO_OFFLINE` 在代码中并无实现，端到端路径无法保证离线）。改为三层：
 
 1. 纯函数契约：`build_limitations`（零依赖）
 2. 档位裁剪契约：`_strip_for_agent` 的字段白名单（纯函数）
-3. 静态结构检查：局限声明的生成必须与 `if envelope:` 解耦（ast 解析源码）
+3. 静态结构检查：局限声明的生成必须与 `if envelope:` 拆开（ast 解析源码）
 
 每层都配了一个自检用例：先故意写坏一处，确认检查会失败。少了这一步，
 检查很容易写成「永远通过」的摆设。
@@ -91,7 +91,7 @@ def _scan_envelope_gating(src: str) -> tuple[list[str], bool]:
 
 
 class TestLimitationsSingleSource(unittest.TestCase):
-    """局限声明：生成口径必须是单一实现，且覆盖全部已知信号。"""
+    """局限声明：生成计算方式必须是单一实现，且覆盖全部已知信号。"""
 
     def test_covers_every_known_signal(self):
         """每个触发条件都必须在声明里留下痕迹。"""
@@ -119,7 +119,7 @@ class TestLimitationsSingleSource(unittest.TestCase):
         self.assertIn("engagement metrics", " ".join(lim))
 
     def test_attach_envelope_reuses_same_implementation(self):
-        """envelope 路径与精简路径必须同一口径（防两处各写一份漂移）。"""
+        """envelope 路径与精简路径必须同一计算方式（防两处各写一份漂移）。"""
         src = (SCRIPTS / "candidate_envelope.py").read_text(encoding="utf-8")
         tree = ast.parse(src)
         attach = next(
@@ -210,7 +210,7 @@ class TestAgentTierKeepsQualitySignals(unittest.TestCase):
 
 
 class TestLimitationsNotGatedByEnvelope(unittest.TestCase):
-    """静态结构检查：局限声明必须与归档开关解耦。"""
+    """静态结构检查：局限声明必须与归档开关拆开。"""
 
     def test_not_gated_in_real_source(self):
         src = (SCRIPTS / "search.py").read_text(encoding="utf-8")

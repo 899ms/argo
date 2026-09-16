@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_cli_stdin_and_positional.py — CLI 契约门禁（2026-09-15）。
+"""test_cli_stdin_and_positional.py — CLI 契约检查（2026-09-15）。
 
 ## 守的两类问题
 
@@ -7,8 +7,8 @@
 `/dev/null`、已关闭的 fd、以及非交互环境下的空 stdin 都不是 tty。而脚本 / CI /
 cron / agent 调用**正是 argo 的主战场**，全都在这一类里。实测后果：
 `argo evidence "query"`（usage 里就写着的用法）走进「读管道」分支、拿到空串后
-崩在 `json.load`（退出码 1 + Traceback）。判据收口到 `cli_io.stdin_is_piped()`
-（按 fd 类型判），并立门禁禁止 `isatty` 在别处复活。
+崩在 `json.load`（退出码 1 + Traceback）。判据统一处理到 `cli_io.stdin_is_piped()`
+（按 fd 类型判），并立检查禁止 `isatty` 在别处复活。
 
 **二、usage 写的位置参数必须真的能用。** `bin/argo` 的 usage 写着
 `argo extract "url"`，而 `extract.py` 的 argparse 只认 `--url` ——照文档敲直接
@@ -103,7 +103,7 @@ class TestIsattyIsNotAStdinPredicate:
             f"也不是 tty）。请改用 cli_io.stdin_is_piped()：{offenders}")
 
     def test_gate_has_teeth(self, tmp_path):
-        """故意造错验证：在别处塞一处 isatty，门禁扫描必须报红。"""
+        """故意造错验证：在别处塞一处 isatty，检查扫描必须报红。"""
         target = SCRIPTS / "wx.py"
         src = target.read_text(encoding="utf-8")
         target.write_text(src + "\n\ndef _m():\n    import sys\n    return sys.stdin.isatty()\n",
@@ -111,7 +111,7 @@ class TestIsattyIsNotAStdinPredicate:
         try:
             s = target.read_text(encoding="utf-8")
             assert "isatty" in s, "造错样本没生效"
-            # 复刻门禁的扫描逻辑
+            # 复刻检查的扫描逻辑
             found = [l for l in s.splitlines() if "isatty" in l]
             assert found, "造错之后检查没抓住——等于没检查"
         finally:

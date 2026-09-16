@@ -134,7 +134,7 @@ class TestFailureClassification:
 
         HTTP 层已把 503 当「合规等待信号」处理（带 Retry-After 则等，
         见 test_stop_signal.py），归因层若判 upstream 会给出「需更新解析
-        实现」的错误方向——两者必须同口径。
+        实现」的错误方向——两者必须同计算方式。
         """
         assert ef.classify(status_code=503)["category"] == ef.RATE_LIMITED
 
@@ -205,7 +205,7 @@ class TestExplainIntegration:
 
 
 class TestQualityQueriesDeclaration:
-    """引擎自述质量查询集：让候选池型引擎用对口径，而非放宽阈值。"""
+    """引擎自述质量查询集：让候选池型引擎用对计算方式，而非放宽阈值。"""
 
     def test_declared_queries_parsed(self, monkeypatch):
         import engine_validate as ev

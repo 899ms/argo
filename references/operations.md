@@ -28,7 +28,7 @@
 python3 scripts/mcp_server.py [--test]
 ```
 
-多客户端 MCP 一键接入（自研，注入/诊断/还原；客户端描述真源 `mcp/clients.yaml`）：
+多客户端 MCP 一键接入（自研，注入/诊断/还原；客户端描述来源 `mcp/clients.yaml`）：
 
 ```bash
 argo mcp status                 # 诊断各客户端（已安装/已配置）
@@ -44,7 +44,7 @@ argo mcp inject --all --dry-run # 只预览不写
 
 ## DeepSeek Harness 插件接入
 
-一键安装（原生 `argo_search` / `argo_fetch` 工具 + `web_search` seam + `wide_research` 编排；MCP 完整工具面默认不挂、按需在 profile patch 中开启——搜索/抓取高频路径走 CLI 单发同引擎同守卫，零常驻 token 开销）：
+一键安装（原生 `argo_search` / `argo_fetch` 工具 + `web_search` seam + `wide_research` 调度；MCP 完整工具面默认不挂、按需在 profile patch 中开启——搜索/抓取高频路径走 CLI 单发同引擎同守卫，零常驻 token 开销）：
 
 ```bash
 dsh plugin --profile web add "github:taxueseek/argo#main&path:packages/dsh-plugin"
@@ -56,7 +56,7 @@ dsh plugin --profile web add "github:taxueseek/argo#main&path:packages/dsh-plugi
 
 ```bash
 python3 scripts/quota.py stats              # 配额状态
-python3 scripts/search.py --list-engines    # 全量引擎清单（真源 config.yaml）
+python3 scripts/search.py --list-engines    # 全量引擎清单（来源 config.yaml）
 python3 scripts/search.py --list-engines --routable-only
 ```
 
@@ -82,11 +82,11 @@ export TINYFISH_API_KEY="sk-tinyfish-..."   # 去 agent.tinyfish.ai/api-keys 申
 
 - **搜索体验**：`python3 scripts/search.py "查询" --include-local` —— 联网结果尾部并入本机文件命中（file:// 带行号，source=local_files，不参与融合评分）
 - **本地分析**：MCP `argo_local_read`（白名单预览，`ARGO_LOCAL_READ_DIRS=~/data,~/notes` 配置；worker 侧在 wide_research 默认工具白名单）；数据计算走工作包 `recompute`（不授权就不执行）
-- **插件 wide_research 接入**：`file_inputs`（本地一手数据，登记血缘 sha256/路径，内容不入账）+ `recompute`（可复算契约，编排器侧受限执行，产出 `recomputed_values`）+ `include_local`（worker 搜索并入本机命中）；门禁 `recompute_skipped` / `recompute_conflict` 对齐核心，本地一手计入一手命中（防 no_source 假阴性）
+- **插件 wide_research 接入**：`file_inputs`（本地一手数据，登记来源记录 sha256/路径，内容不入账）+ `recompute`（可复算契约，调度器侧受限执行，产出 `recomputed_values`）+ `include_local`（worker 搜索并入本机命中）；检查 `recompute_skipped` / `recompute_conflict` 保持一致核心，本地一手计入一手命中（防 no_source 假阴性）
 - **成果复用**：`python3 scripts/research.py --search-archive "主题词" [--archive-since 日期]` —— 检索历史研究/搜索归档（`数据/argo-search-archive/runs/`），按主题词 + 时间窗列出历史 run 与来源统计
 
-## 工程纪律（单一真源）
+## 工程纪律（唯一来源）
 
-- **代码真源** = 本仓库；**引擎声明真源** = `config.yaml`（外置 `engines/specs/*.yaml` 优先覆盖同名引擎）；注册表由 `scripts/sync_backends.py` 派生到 `backends/*`
-- **宿主入口** 用 `scripts/link_source.py` symlink 指回真源（目标来自 `--to` / `ARGO_LINK_TARGETS` / 本机 `installs.local.yaml`）；禁止 rsync/多副本；禁止在产品代码写死主机 skill 路径
+- **代码来源** = 本仓库；**引擎声明来源** = `config.yaml`（外置 `engines/specs/*.yaml` 优先覆盖同名引擎）；注册表由 `scripts/sync_backends.py` 派生到 `backends/*`
+- **宿主入口** 用 `scripts/link_source.py` symlink 指回来源（目标来自 `--to` / `ARGO_LINK_TARGETS` / 本机 `installs.local.yaml`）；禁止 rsync/多副本；禁止在产品代码写死主机 skill 路径
 - **新增搜索源**：只改 `config.yaml`（必要时 `scripts/engines.py` 注册 builder）→ `python3 scripts/sync_backends.py && python3 scripts/sync_backends.py --check` → 回归 `python3 -m pytest tests/ -q`

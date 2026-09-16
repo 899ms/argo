@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`argo fetch --focus` 旗标契约 + 文档/实现一致性门禁。
+"""`argo fetch --focus` 旗标契约 + 文档/实现一致性检查。
 
 背景（2026-09-14 实测）：SKILL.md、references/usage.md、docs/ARGO_INTRO.md
 三处都把 `argo fetch URL --focus 关键词` 写成现成能力（usage.md 还承诺
@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import fetch_v3  # noqa: E402
 from focus_extract import apply_focus, focus_extract  # noqa: E402
 
-# 文档真源：这几处写的 fetch 用法就是对外承诺
+# 文档来源：这几处写的 fetch 用法就是对外承诺
 DOC_FILES = ("SKILL.md", "references/usage.md", "docs/ARGO_INTRO.md")
 
 _LONG = ("# 组合再平衡\n\n再平衡是控制风险敞口的手段，季度或阈值触发均可，代价是换手成本。\n\n"
@@ -119,7 +119,7 @@ class TestApplyFocusContract(unittest.TestCase):
 
 
 class TestFocusSingleSource(unittest.TestCase):
-    """CLI 与 MCP 必须共用同一份裁剪实现（源码级门禁）。"""
+    """CLI 与 MCP 必须共用同一份裁剪实现（源码级检查）。"""
 
     def _source(self, rel: str) -> str:
         return (ROOT / rel).read_text(encoding="utf-8")

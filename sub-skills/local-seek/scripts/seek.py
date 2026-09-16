@@ -4,7 +4,7 @@
 路由规则（Argo 式确定性路由，模型不必自己拼参数）：
   rg       正文/正则搜索（默认，最快，尊重 .gitignore）
   fd       按文件名查找（--filename）
-  mdfind   macOS Spotlight 全盘兜底（--spotlight 或 --scope all）
+  mdfind   macOS Spotlight 全盘保底（--spotlight 或 --scope all）
 
 输出原则：默认精简文本（路径:行号:截断片段），--json 供 Agent 消费。
 全链路零 token 消耗：工具输出本身就是压缩后的结果。
@@ -14,7 +14,7 @@
   seek.py "查询词" --path ~/notes      # 指定目录
   seek.py "查询词" --scope doc         # 文档类（含 pdf/docx 等文件名提示）
   seek.py "查询词" --filename          # 按文件名查找（fd）
-  seek.py "查询词" --spotlight         # Spotlight 全盘兜底（含 PDF/邮件/笔记）
+  seek.py "查询词" --spotlight         # Spotlight 全盘保底（含 PDF/邮件/笔记）
   seek.py "查询词" --count             # 先看每文件命中数，不输出内容
   seek.py "查询词" --context 3         # 带上下文行
   seek.py "查询词" --type py,ts        # 限定扩展名
@@ -238,7 +238,7 @@ def rg_search(patterns, path, excludes, exts, context, count, max_results,
     return out, None
 
 
-# ── 文件名相关性评分 + 拼音首字母（fzf 式；pypinyin 优先，GB2312 表兜底）──────────
+# ── 文件名相关性评分 + 拼音首字母（fzf 式；pypinyin 优先，GB2312 表保底）──────────
 
 # GB2312 首字母区间表（常用汉字全覆盖；生僻字回退原字）
 _GB2312_SECTIONS = (
@@ -263,7 +263,7 @@ def _gb2312_initial(b1: int, b2: int) -> str:
 
 def pinyin_initials(text: str) -> str:
     """文本的拼音首字母（中文→首字母，非中文保留原字符），用于「xjj→新建夹」。
-    pypinyin 可用则用；否则 GB2312 区间表兜底；两者都不可用时返回原文本。"""
+    pypinyin 可用则用；否则 GB2312 区间表保底；两者都不可用时返回原文本。"""
     if not text:
         return text
     try:
@@ -757,7 +757,7 @@ def git_blame(path, line):
 
 
 def _run_grep_fallback(args, patterns, fixed, path, excludes, exts, max_results):
-    """rg 缺失时的 grep 兜底（目录内/全盘共用）。
+    """rg 缺失时的 grep 保底（目录内/全盘共用）。
 
     返回 (results, err, mode)；rg 与 grep 都不可用时 results=None 且 err
     说明缺什么——调用方必须把「工具缺失」与「未找到匹配」区分开。
