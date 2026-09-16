@@ -78,14 +78,19 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
-  echo "需要 Python 3.10+，请先安装后再试。" >&2
+  echo "需要 Python 3.9+，请先安装后再试。" >&2
   exit 1
 fi
 
+# 版本下限与 bin/argo 的 MIN_PYTHON 必须一致：改一处就要改另一处。
+# 为什么是 3.9：唯一的必需第三方依赖 PyYAML 早已支持 3.9，脚本也几乎都带
+# `from __future__ import annotations`；早期这里写 3.10 的理由是「用了 X | None
+# 语法」，但实测全仓 0 处该写法。抬高门槛只会把 macOS 原生 python3、老 Debian
+# 和 python:3.9 容器这些环境挡在门外。
 PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-PY_OK=$(python3 -c 'import sys; print(1 if sys.version_info >= (3, 10) else 0)')
+PY_OK=$(python3 -c 'import sys; print(1 if sys.version_info >= (3, 9) else 0)')
 if [[ "$PY_OK" != "1" ]]; then
-  echo "当前 Python 为 ${PY_VER}，需要 3.10+。" >&2
+  echo "当前 Python 为 ${PY_VER}，需要 3.9+。" >&2
   exit 1
 fi
 

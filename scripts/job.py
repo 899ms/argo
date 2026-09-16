@@ -388,11 +388,13 @@ def _search_tavily(q: str, n: int) -> list:
 
 def _search_byted(q: str, n: int) -> list:
     out = []
+    # 先取出密钥再拼头：同一表达式里套引号要求 3.12+ 的 PEP 701，而 argo 支持 3.9。
+    token = get_env(["ARGO_BYTED_API_KEY", "ARGO_WEB_SEARCH_API_KEY", "WEB_SEARCH_API_KEY"])
     for domain, label in PLATFORMS:
         try:
             d = _post("https://open.feedcoopapi.com/search_api/web_search",
                       {"Query": f"site:{domain} {q}", "Count": n, "SearchType": "web"},
-                      {"Authorization": f"Bearer {get_env(["ARGO_BYTED_API_KEY", "ARGO_WEB_SEARCH_API_KEY", "WEB_SEARCH_API_KEY"])}"})
+                      {"Authorization": f"Bearer {token}"})
         except Exception:
             continue  # 单平台失败不拖累整体
         if not d or not isinstance(d, dict):
@@ -405,10 +407,12 @@ def _search_byted(q: str, n: int) -> list:
 
 def _search_bocha(q: str, n: int) -> list:
     """博查 Web Search：中文宽查询 + 白名单校验（site: 与宽查询均实测严格）。"""
+    # 同 _search_byted：先取密钥再拼头，保持 3.9 可解析。
+    token = get_env(["ARGO_BOCHA_API_KEY", "BOCHA_API_KEY"])
     d = _post("https://api.bochaai.com/v1/web-search",
               {"query": q, "summary": True, "freshness": "oneYear",
                "count": min(n * 3, 50)},
-              {"Authorization": f"Bearer {get_env(["ARGO_BOCHA_API_KEY", "BOCHA_API_KEY"])}"})
+              {"Authorization": f"Bearer {token}"})
     pages = (d.get("data") or {}).get("webPages") or {}
     return [{"title": i.get("name", "") or i.get("title", ""),
              "url": i.get("url", ""),

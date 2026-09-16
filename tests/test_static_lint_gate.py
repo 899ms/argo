@@ -64,6 +64,7 @@
 from __future__ import annotations
 
 import ast
+import io
 import json
 import os
 import re
@@ -71,6 +72,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tokenize
 import unittest
 from pathlib import Path
 
@@ -79,6 +81,12 @@ SCRIPTS = ROOT / "scripts"
 TESTS = ROOT / "tests"
 BIN = ROOT / "bin" / "argo"
 TARGETS = [str(SCRIPTS), str(TESTS), str(BIN)]
+
+# 「低于 MIN_PYTHON 就解析不了」的语法扫描器。逻辑独立成模块
+# （scripts/min_version_scan.py）而不是塞在本文件里：它有自己的一套 AST/token
+# 判据与用例，且 bin/argo 侧也可能用到。这里只做门禁装配。
+sys.path.insert(0, str(SCRIPTS))
+import min_version_scan  # noqa: E402
 
 # 只列「会跑错 / 会静默失效」的规则。基线：本文件落地时全仓零违规。
 RULES = "E9,F821,F822,F823,F811,F601,F631,F632,F701,F702,F704,F706,F707"
@@ -393,6 +401,85 @@ class TestStaticLintGate(unittest.TestCase):
         self.assertEqual(
             findings, [],
             "静态缺陷（会让代码跑错或静默失效）：\n  " + "\n  ".join(findings))
+
+    def test_no_syntax_below_min_python(self):
+        """全仓源码不得使用低于 MIN_PYTHON 的语法（本次 P0：job.py 的 PEP 701）。"""
+        minver = min_version_scan.read_min_python(BIN)
+        problems = min_version_scan.scan_paths(_iter_target_files(), minver)
+        self.assertEqual(
+            problems, [],
+            f"存在最低支持版本 {minver[0]}.{minver[1]} 解析不了的语法"
+            "（用户会直接 SyntaxError，且解释器缓存会把它固化）：\n  "
+            + "\n  ".join(problems))
+
+    def test_min_python_is_declared_and_consistent(self):
+        """MIN_PYTHON 必须可读，且三处带版本判据的落地脚本都与它一致。
+
+        mcp_launch.sh 曾经漏在门禁之外：它同样硬编码版本判据、注释里同样写着
+        「改一处就要改另外两处」，但只 gate 了 install.sh / install.ps1。于是
+        MIN_PYTHON 调整时它会静默落后——把版本抬高的那侧（探测门槛）落单，
+        表现是 MCP 客户端日志里的「server 未就绪」，而 CLI 路径一切正常。
+        """
+        minver = min_version_scan.read_min_python(BIN)
+        self.assertEqual(len(minver), 2)
+        self.assertGreaterEqual(minver, (3, 8), f"MIN_PYTHON 读不到或过于保守：{minver}")
+        want = f"({minver[0]}, {minver[1]})"
+        for rel in ("scripts/install.sh", "scripts/install.ps1",
+                    "scripts/mcp_launch.sh"):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            # 用 assertTrue 而非 assertIn：后者在断言失败时会把整个文件
+            # 打进报告（这里都是脚本全文），真正要读的那一行反而被淹没。
+            self.assertTrue(
+                want in text,
+                f"{rel} 的版本判据与 bin/argo 的 MIN_PYTHON={want} 不一致"
+                "——各写一份版本号正是本轮 P0 的成因")
+
+    def test_gate_has_teeth_min_python_rule(self):
+        """造 3.9 解析不了的样本，规则必须抓住；等价的安全写法不得误报。"""
+        # PEP 701：内嵌同类引号（3.12+；3.9~3.11 上是 SyntaxError）
+        bad = 'x = f"Bearer {get_env(["A_KEY", "B_KEY"])}"\n'
+        found = min_version_scan.scan_text(bad, (3, 9))
+        self.assertTrue(found, "PEP 701 样本没被抓住")
+
+        # 等价安全写法：先取变量（这正是本次 P0 的修法）
+        good = 'tok = get_env(["A_KEY"])\nx = f"Bearer {tok}"\n'
+        self.assertEqual(
+            min_version_scan.scan_text(good, (3, 9)), [],
+            "安全写法被误报——先取变量再拼接在 3.9 上合法")
+
+        # 外层单引号、内层双引号：3.9 也合法，不得误报
+        legal = 'x = f\'{"quoted"}\'\n'
+        self.assertEqual(
+            min_version_scan.scan_text(legal, (3, 9)), [],
+            "异类引号被误报（3.9 合法）")
+
+        # PEP 604 用在真类型上、且不在注解位（无 future import）→ 3.9 会崩
+        risky = ("CACHE: dict[str, int] = {}\n"
+                 "Handler = Callable | None\n")
+        self.assertTrue(
+            min_version_scan.scan_text(risky, (3, 9)),
+            "PEP604 用在类型上但无 future import 时未报出")
+
+        # 更典型的真实形态：模块级变量注解 + 无 future import
+        ann = "CACHE: dict[str, tuple[int, int] | None] = {}\n"
+        self.assertTrue(
+            min_version_scan.scan_text(ann, (3, 9)),
+            "模块级变量注解里的 PEP604 未报出")
+
+        # 真位运算 + 正则交替：均不得误报（这是最容易翻车的一类）
+        for safe in ("flags = READ | WRITE\n",
+                     'p = re.compile(r"(hrss|rsj)")\n',
+                     "fd = os.open(p, os.O_CREAT | os.O_RDWR, 0o600)\n"):
+            self.assertEqual(
+                min_version_scan.scan_text(safe, (3, 9)), [],
+                f"位运算/正则交替被误报：{safe!r}")
+
+        # 有 future import 时，注解位的 X | None 合法
+        with_future = ("from __future__ import annotations\n"
+                       "def f(x: int | None) -> str | None:\n    return None\n")
+        self.assertEqual(
+            min_version_scan.scan_text(with_future, (3, 9)), [],
+            "有 future import 的注解被误报")
 
     # ── 故意造错验证：证明两个引擎都不是恒真的摆设 ────────────────────────────
 

@@ -3,11 +3,14 @@
 
 本文件**必须保持 Python 3.8+ 可执行**：它是 entrypoint，会先被
 `/usr/bin/env python3` 解释一次（macOS 上就是 3.9），然后才轮到
-`_pick_python()` 去挑更高版本的解释器。因此这里禁止使用
+`_pick_python()` 去挑符合 MIN_PYTHON 的解释器。因此这里禁止使用
 `X | None` 之类的 3.10+ 语法——它不是注解解析问题，而是在
 函数定义求值期就抛 TypeError，让「选解释器」的兜底逻辑根本没机会执行。
 （历史 bug：`def _engine_count() -> int | None:` 让 `argo --help`
 在系统 python3 下直接崩在 import 阶段。）
+
+这个「entrypoint 必须比目标版本更低」的约束同时说明：本文件自身的语法下限
+（3.8）与受托管脚本的下限（MIN_PYTHON）是两回事，不要合并。
 """
 
 from __future__ import annotations
@@ -27,30 +30,54 @@ SCRIPTS = os.path.join(ARGO_HOME, "scripts")
 # 此前还要求 requests——那是历史误留下的幽灵依赖：全仓没有任何
 # `import requests`（真实的可选增强是 curl_cffi，TLS 指纹用，缺了只是降级）。
 # 后果是新机器（照 install.sh 装完）里 6 个候选解释器全部探测失败、缓存
-# 永远不命中，每次调用白付一遍探测；若系统 python3 是 3.9 还会被选中后崩在
-# `X | None` 语法上。
+# 永远不命中，每次调用白付一遍探测。
+#
+# 版本判据另有独立的历史 bug，见 MIN_PYTHON 上方说明：真正在选人并写缓存的
+# 那条路径反而没有版本闸门，3.9 会被选中并固化进缓存。
 _PY_CACHE = os.path.join(
     os.environ.get("ARGO_STATE_DIR", "").strip()
     or os.path.expanduser("~/.cache/unified-search"),
     ".argo_python",
 )
 
-# 廉价校验：版本 ≥ 3.10（脚本用了 `X | None` 语法）且 PyYAML 可被定位。
-# 用 find_spec 而非 import——存在性足以挡住缓存失效，而 import 正是探测成本
-# 的大头。
+# argo 脚本支持的最低 Python 版本。改这里就是改契约，install.sh 与此处必须一致。
+#
+# 为什么是 3.9 而不是 3.10：早期这里写着 3.10，理由是「脚本用了 `X | None` 语法」。
+# 该理由已被实测证伪——全仓 0 处 PEP604 注解，且几乎所有脚本都有
+# `from __future__ import annotations`（注解不求值，3.9 也能解析）。真实的最低
+# 门槛由**语法**决定：逐文件跨解释器 parse 对比后，全仓只剩 job.py 一处越界，
+# 而那处是 PEP 701（3.12+ 的 f-string 内嵌同类引号），已按 3.9 写法改写。
+MIN_PYTHON = (3, 9)
+
+# 两个校验脚本只差「怎么确认 PyYAML 可用」，**版本判据必须完全一致**：
+# 廉价档 find_spec（不 import，约 15 ms），严格档真 import（约 80–170 ms）。
+#
+# 历史 bug（2026-09-16 定位）：早先 strict=True 那条只有 `import yaml`、**没有版本
+# 判据**，而真正负责选人并写缓存的候选链走的正是 strict=True——于是 3.9 通过探测、
+# 被选中、被写进缓存，此后 `argo job` 永久 SyntaxError，同一缓存下其它子命令却照常
+# 运行（静默跑在不支持的解释器上）。根因是把「版本」和「依赖」两个判据拆到了两条
+# 分支上，谁抄漏一个就少一半闸门。现在两个脚本同源生成，只换 yaml 那一段。
+_PY_MIN_VER = ",".join(str(part) for part in MIN_PYTHON)
 _PY_CHEAP_CHECK = (
-    "import sys, importlib.util as u; sys.exit(0 if sys.version_info >= (3, 10) "
-    "and u.find_spec('yaml') is not None else 1)"
+    "import sys, importlib.util as u; sys.exit(0 if sys.version_info >= (%s,) "
+    "and u.find_spec('yaml') is not None else 1)" % _PY_MIN_VER
+)
+_PY_STRICT_CHECK = (
+    "import sys; sys.exit(0 if sys.version_info >= (%s,) else 1); import yaml"
+    % _PY_MIN_VER
 )
 
 
 def _probe_python(py, strict: bool) -> bool:
     """strict=True 真 import 依赖（首次探测）；False 只做廉价存在性校验。
 
+    两条路径都必须查版本（见 _PY_*_CHECK 的说明）：strict 不是「跳过校验」，
+    只是把依赖检查做得更实。少写版本判据会让 3.9 被选中并写进缓存。
+
     py 既可以是可执行文件路径，也可以是**参数列表**（Windows 官方启动器
     `py -3` 的形式——它本身不是解释器，要带参数才会选版本）。
     """
-    code = "import yaml" if strict else _PY_CHEAP_CHECK
+    code = _PY_STRICT_CHECK if strict else _PY_CHEAP_CHECK
     argv = [py] if isinstance(py, str) else list(py)
     if not argv:
         return False
@@ -109,9 +136,10 @@ def _remember_python(p: str) -> None:
 def _pick_python() -> str:
     """选择可用解释器：ARGO_PYTHON 优先，其次高版本 python3.x，兜底当前解释器。
 
-    背景：macOS 默认 /usr/bin/python3 是 3.9，而 argo 脚本用了 3.10+ 语法
-    （如 `X | None` 联合类型），3.9 会报 TypeError。逐个探测版本并验证
-    PyYAML 依赖后选第一个可用的。
+    逐个探测版本并验证 PyYAML 依赖后选第一个可用的（判据见 _PY_*_CHECK）。
+    候选链里的 `sys.executable` 排在具体版本号之后：它可能是 3.9（macOS 系统
+    python3），只有在没有更高版本时才被选中——那时 MIN_PYTHON 仍会兜住，
+    不会静默选一个跑不动的解释器。
 
     探测结果落盘缓存（见 _PY_CACHE）：命中时不再起子进程 import 依赖。显式
     指定 ARGO_PYTHON 时不查也不写缓存——用户的覆盖是权威，不该被缓存遮蔽，
@@ -168,7 +196,10 @@ def _self_capable() -> bool:
     False，于是每次调用都被迫重选解释器并 execv 重启——本该省掉的重复启动，
     在所有终端用户机器上静默失效，只在恰好装了 requests 的开发机上才生效。
     """
-    if sys.version_info < (3, 10):
+    # 版本判据必须与 _PY_*_CHECK 同源（MIN_PYTHON）。这里曾写死 (3, 10)，与
+    # 探测门槛各写一份——正是「两处各写版本号、改一处漏一处」那个形态，
+    # 一旦 MIN_PYTHON 调整就会造成「探测放行但原地执行拒绝」的不一致。
+    if sys.version_info[:2] < MIN_PYTHON:
         return False
     import importlib.util as _util
     return _util.find_spec("yaml") is not None

@@ -36,7 +36,8 @@ Claude / Codex / Kimi 等支持 MCP 的客户端，直接挂：
 
 ### 依赖
 
-- **必需**：Python 3.10+、`pip install pyyaml`
+- **必需**：Python 3.9+、`pip install pyyaml`
+  - 下限由语法决定，与 `bin/argo` 的 `MIN_PYTHON` / `scripts/install.sh` 保持一致（改一处就要改另外两处）。唯一越界过的 `job.py` 用了 3.12+ 的 PEP 701 f-string 写法，已按 3.9 改写，此后由跨解释器解析门禁兜住。
 - **可选**：`curl_cffi`（TLS 指纹，反爬站抓取更稳）、Chrome（截图）
 - 只有 npx 入口才需 Node.js 18+
 

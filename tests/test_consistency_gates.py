@@ -303,7 +303,22 @@ class TestDocNumbersMatchCode:
         mm = re.search(r'^ARGO_MCP_VERSION\s*=\s*"(\S+)"', mt, re.M)
         assert mm, "mcp_transport.py 缺 ARGO_MCP_VERSION"
         assert mm.group(1) == pkg["version"], \
-            f"版本不一致: mcp_transport={mm.group(1)} package={pkg['version']}"# ── 4. 派生件与运行时真源一致 ────────────────────────────────────────────────
+            f"版本不一致: mcp_transport={mm.group(1)} package={pkg['version']}"
+        # 第五面：DSH 插件在 MCP 握手时自报的 clientInfo.version。
+        # 此前是硬编码 '2.8.5'，而门禁只对账上面四处，于是一路漂到 2.8.8
+        # 都没人发现——向 argo server 报了不存在的客户端版本。现在插件从自己的
+        # package.json 读（见 dsh/index.js 的 PLUGIN_VERSION），这里确保它
+        # **不再出现硬编码版本字面量**：写法一旦回退，立刻报红。
+        plugin_js = (SKILL_DIR / "packages" / "dsh-plugin" / "dsh" / "index.js"
+                     ).read_text(encoding="utf-8")
+        assert "PLUGIN_VERSION" in plugin_js, \
+            "插件未使用 PLUGIN_VERSION（版本可能又被写死）"
+        hardcoded = re.search(
+            r"clientInfo\s*:\s*\{[^}]*version\s*:\s*['\"]([^'\"]+)['\"]", plugin_js)
+        assert hardcoded is None, (
+            "插件的 clientInfo.version 又写死成字面量"
+            f"（{hardcoded.group(1) if hardcoded else ''}）——请用 PLUGIN_VERSION，"
+            "否则发布升版时会静默漂移")# ── 4. 派生件与运行时真源一致 ────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
 def sb():

@@ -23,7 +23,7 @@
 
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
-  <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
+  <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-222-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
@@ -179,7 +179,7 @@ python3 ~/.local/share/argo/scripts/search.py --list-engines
 
 ### 方法二：GitHub から MCP（エージェントへ即接続）
 
-**Node.js 18+** と **Python 3.10+** が必要。初回：
+**Node.js 18+** と **Python 3.9+** が必要。初回：
 
 ```bash
 pip3 install pyyaml
@@ -298,7 +298,7 @@ argo evidence "検証したい主張"
 ### インストール後チェック
 
 ```bash
-python3 --version          # 3.10+ が必要
+python3 --version          # 3.9+ が必要
 python3 -c "import yaml; print('PyYAML OK')"
 python3 -m pytest tests/test_unit.py -q   # 任意
 python3 scripts/search.py --list-engines
@@ -422,7 +422,7 @@ python3 scripts/search.py "同一クエリ" --json | \
 
 | 項目 | 要件 |
 |------|------|
-| Python | 3.10+（CLI と MCP コア） |
+| Python | 3.9+（CLI と MCP コア） |
 | 依存 | `pip install pyyaml`（唯一のハード依存） |
 | Node.js | **`npx` 入口のみ** 18+ |
 | SearXNG | 不要（内蔵ローカルエンジン） |

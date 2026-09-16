@@ -23,7 +23,7 @@
 
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
-  <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
+  <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-222-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
@@ -179,7 +179,7 @@ python3 ~/.local/share/argo/scripts/search.py --list-engines
 
 ### Opción 2: MCP desde GitHub (enganche rápido del agente)
 
-Necesita **Node.js 18+** y **Python 3.10+**. Una vez:
+Necesita **Node.js 18+** y **Python 3.9+**. Una vez:
 
 ```bash
 pip3 install pyyaml
@@ -298,7 +298,7 @@ argo evidence "a claim to verify"
 ### Comprobación post-instalación
 
 ```bash
-python3 --version          # 3.10+
+python3 --version          # 3.9+
 python3 -c "import yaml; print('PyYAML OK')"
 python3 -m pytest tests/test_unit.py -q   # optional
 python3 scripts/search.py --list-engines
@@ -422,7 +422,7 @@ python3 scripts/search.py "same query" --json | \
 
 | Ítem | Requisito |
 |------|-------------|
-| Python | 3.10+ (CLI + núcleo MCP) |
+| Python | 3.9+ (CLI + núcleo MCP) |
 | Deps | `pip install pyyaml` (única dependencia dura) |
 | Node.js | **solo** para entrada `npx`, 18+ |
 | SearXNG | no requerido (motores locales integrados) |

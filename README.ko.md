@@ -23,7 +23,7 @@
 
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
-  <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
+  <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-222-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
@@ -179,7 +179,7 @@ python3 ~/.local/share/argo/scripts/search.py --list-engines
 
 ### 옵션 2: GitHub MCP (에이전트에 빠르게 붙이기)
 
-**Node.js 18+** 와 **Python 3.10+** 필요. 한 번:
+**Node.js 18+** 와 **Python 3.9+** 필요. 한 번:
 
 ```bash
 pip3 install pyyaml
@@ -298,7 +298,7 @@ argo evidence "a claim to verify"
 ### 설치 후 점검
 
 ```bash
-python3 --version          # 3.10+
+python3 --version          # 3.9+
 python3 -c "import yaml; print('PyYAML OK')"
 python3 -m pytest tests/test_unit.py -q   # optional
 python3 scripts/search.py --list-engines
@@ -422,7 +422,7 @@ python3 scripts/search.py "same query" --json | \
 
 | 항목 | 요구 |
 |------|-------------|
-| Python | 3.10+ (CLI + MCP 코어) |
+| Python | 3.9+ (CLI + MCP 코어) |
 | 의존성 | `pip install pyyaml` (필수 의존성 하나) |
 | Node.js | **`npx` 진입에만** 필요, 18+ |
 | SearXNG | 불필요 (내장 로컬 엔진) |

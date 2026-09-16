@@ -17,15 +17,42 @@
  */
 
 import { spawn } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 // 原生工具规格表：由 scripts/gen_native_tools.py 从 schema 唯一真源
 // （scripts/mcp_tools.py）生成，勿手改；漂移由
 // tests/test_native_tools_sync.py 把关。除 argo_research 外全部 13 个工具
 // 都可经 nativeTools 配置按需启用为原生一等工具（默认只注册 search/fetch，
 // 零常驻 token 开销）。
 import { NATIVE_TOOLS as NATIVE_TOOL_SPECS } from './native-tools.mjs'
+
+/**
+ * 本插件版本：从自己的 package.json 读，**不写死字面量**。
+ *
+ * 此前这里是 `version: '2.8.5'` 的硬编码，而仓内版本门禁
+ * （tests/test_consistency_gates.py::test_version_strings_agree）只对账
+ * package.json / SKILL.md / 插件 package.json / mcp_transport.py 四处，
+ * 于是这个值一路漂到 2.8.8 都没人发现——MCP 握手时向 argo server 自报
+ * 的是一个不存在的客户端版本。
+ *
+ * npm 无论如何都会随包发布 package.json（files 白名单管的是额外文件），
+ * 所以运行期读它是可靠的；读不到也不该让插件崩，回退到一个显式标记，
+ * 让「版本未知」在日志里可辨，而不是伪装成某个具体版本。
+ */
+function resolvePluginVersion() {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const raw = readFileSync(join(here, '..', 'package.json'), 'utf8')
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.version === 'string' && parsed.version !== '') return parsed.version
+  } catch { /* 打包裁剪/权限异常：回退，不阻断插件加载 */ }
+  return '0.0.0-unknown'
+}
+
+export const PLUGIN_VERSION = resolvePluginVersion()
 
 export const name = 'wide-research'
 // 'web' 是可选增强（headless 无 web 服务）：官方约定可选依赖不入 inject，
@@ -228,7 +255,7 @@ function createMcpConnection(options) {
       const init = await conn.request('initialize', {
         protocolVersion: '2025-06-18',
         capabilities: {},
-        clientInfo: { name: 'argo-dsh', version: '2.8.5' }
+        clientInfo: { name: 'argo-dsh', version: PLUGIN_VERSION }
       })
       conn.notify('notifications/initialized', {})
       return init

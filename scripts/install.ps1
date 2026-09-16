@@ -47,13 +47,14 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     exit 1
 }
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Error "需要 Python 3.10+，请先安装后再试。"
+    Write-Error "需要 Python 3.9+，请先安装后再试。"
     exit 1
 }
 
-$pyOk = (python -c "import sys; print(1 if sys.version_info >= (3, 10) else 0)" 2>$null).Trim()
+# 版本下限与 bin/argo 的 MIN_PYTHON、install.sh 保持一致：改一处就要改另外两处。
+$pyOk = (python -c "import sys; print(1 if sys.version_info >= (3, 9) else 0)" 2>$null).Trim()
 if ($pyOk -ne "1") {
-    Write-Error "当前 Python 版本低于 3.10，或 python 不在 PATH。"
+    Write-Error "当前 Python 版本低于 3.9，或 python 不在 PATH。"
     exit 1
 }
 

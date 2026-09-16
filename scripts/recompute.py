@@ -89,9 +89,7 @@ def _no_exec(*a, **k):
 for _f in ("system", "popen", "popen2", "popen3", "popen4", "spawnl", "spawnle",
            "spawnlp", "spawnlpe", "spawnv", "spawnve", "spawnvp", "spawnvpe",
            "fork", "forkpty", "posix_spawn", "posix_spawnp", "execv", "execve",
-           "execl", "execle", "execlp", "execlpe", "execvp", "execvpe", "startfile",
-           # os.open/os.fdopen 可拿原始 fd 绕过 builtins.open 白名单，一并封死
-           "open", "fdopen"):
+           "execl", "execle", "execlp", "execlpe", "execvp", "execvpe", "startfile"):
     if hasattr(_os_mod, _f):
         setattr(_os_mod, _f, _no_exec)
 del _abc, _mach, _os_mod
@@ -100,6 +98,134 @@ del _abc, _mach, _os_mod
 # _BlockImporter.find_spec 的函数体还要 raise 它，若一并 del 则被触发时
 # 全局名已被删，抛 NameError 而非预期错误。
 del _socket, _s2, _BlockedSocket, _no_dns
+"""
+
+
+# 注入到用户代码执行前的**文件白名单**防护段。
+#
+# 两条入口都要闸住，且共用同一把尺：
+#   * builtins.open / io.open —— 常规读取入口
+#   * os.open / os.fdopen    —— 拿原始 fd 的底层入口，不闸就能绕过上面那条
+#
+# 为什么 os.open 是「白名单门」而不是「一律禁」（2026-09-16 修）：
+# 原实现在这里把 os.open/os.fdopen 直接替换成抛异常。安全性没问题（实测
+# `os.open`+`os.read`、`os.open`+`os.fdopen`、`open(opener=os.open)` 三条绕过
+# 都被堵死），但它超出了必要的封堵面：**Python 3.11 之前，pathlib 的
+# `Path.read_text()/read_bytes()` 恰好经由 os.open**——
+#
+#     class _NormalAccessor(_Accessor):
+#         open = os.open                      # 直接别名
+#     Path._opener = lambda self, n, f, m=0o666: self._accessor.open(self, f, m)
+#
+# 于是 3.9/3.10 上「用 pathlib 读一个白名单内的文件」会被当成拿原始 fd 攻击
+# 而被拒绝（报 "recompute 禁止外部进程/系统调用"，与真实原因毫无关系）。
+# 3.11+ 改用 io.open 才不再经过 os.open，所以这个缺陷只在老解释器上出现。
+#
+# 改成白名单门后，安全性不降反升：原来只保证「读不到非白名单」，现在还额外
+# 禁止以写模式打开（白名单语义本就是只读），且非路径入参一律拒绝。
+_FS_GUARD_PRELUDE = """
+def _is_fs_path(p):
+    \"\"\"入参像不像文件系统路径（供 3.9 pathlib 的错位实参识别用）。\"\"\"
+    if isinstance(p, bool) or isinstance(p, int):
+        return False
+    return isinstance(p, (str, bytes)) or hasattr(p, "__fspath__")
+
+
+def _fs_path(p):
+    \"\"\"把入参归一成文件系统路径字符串；不像路径的直接拒绝。
+
+    拒绝而非放过是关键：3.9 的 pathlib 会把 accessor 实例塞进第一个实参，
+    若不校验类型，白名单检查会拿到一个非路径对象、realpath 抛 TypeError，
+    表现为「白名单内文件也读不了」。
+    \"\"\"
+    import os
+    if isinstance(p, bool) or isinstance(p, int):
+        # 整数是裸 fd：拿它去绕白名单正是要防的事
+        raise PermissionError("recompute 拒绝裸文件描述符")
+    if isinstance(p, str):
+        return p
+    if isinstance(p, bytes):
+        return os.fsdecode(p)
+    if hasattr(p, "__fspath__"):
+        return os.fsdecode(p.__fspath__())
+    raise PermissionError(
+        "recompute 拒绝非常规路径入参: %s" % type(p).__name__)
+
+
+def _assert_allowed(p):
+    \"\"\"路径必须在白名单内（realpath 后精确匹配）。
+
+    用 realpath 而非 abspath：`link -> /etc/passwd` 这类软链必须按真实目标判定，
+    否则白名单里放一个软链就等于放行它指向的任意文件。
+    \"\"\"
+    import os
+    rp = os.path.realpath(_fs_path(p))
+    if rp not in _ALLOWED:
+        raise PermissionError("recompute 只读白名单输入: %s" % (p,))
+
+
+_WRITE_MODES = set("wxa+")
+_WRITE_FLAGS = 0
+import os as _os_g
+for _fl in ("O_WRONLY", "O_RDWR", "O_CREAT", "O_APPEND", "O_TRUNC"):
+    if hasattr(_os_g, _fl):
+        _WRITE_FLAGS |= getattr(_os_g, _fl)
+del _fl
+
+# 先抓住原始实现，再安装包装（顺序不能颠倒：包装体引用这两个名字）
+_guard_open = open
+_guard_os_open = _os_g.open
+
+
+def _assert_read_only(mode):
+    # 白名单是「只读输入」：写模式一律拒绝。
+    # 这里挡的是把人给的原始数据改掉——重算的语义是「读输入、算结果」，
+    # 允许写会污染调用方的一手数据，且让「白名单=只读」的承诺不成立。
+    if isinstance(mode, str) and (_WRITE_MODES & set(mode)):
+        raise PermissionError("recompute 白名单为只读，拒绝写模式打开: %r" % (mode,))
+
+
+def _guarded_open(p, *a, **k):
+    _assert_allowed(p)
+    mode = k.get("mode", a[0] if a else "r")
+    _assert_read_only(mode)
+    return _guard_open(p, *a, **k)
+
+
+def _guarded_fdopen(fd, *a, **k):
+    # os.fdopen 接的是**已打开的描述符**（int），不是路径，所以不能走 _assert_allowed。
+    #
+    # 这里保持拒绝，与改动前一致（那时它被整个替换成 _no_exec，同样不可用）。
+    # 不引入 fd 记账表去放行「os.fdopen(os.open(白名单))」：那需要模块级状态，
+    # 而 fd 在 close 后会被系统复用，记账会失真——为一个此前从未可用的能力
+    # 增加有状态复杂度不划算。真正的读取入口是 open / io.open / pathlib，
+    # 它们都已可用。
+    raise PermissionError("recompute 不允许 os.fdopen（请用 open 或 pathlib 读取）")
+
+
+def _guarded_os_open(path, flags, *a, **k):
+    # os.open 的白名单门（也是 3.11 以前 pathlib 的真实入口）。
+    #
+    # 3.9/3.10 的 pathlib 以 self._accessor.open(self, flags, mode) 调用，而
+    # _NormalAccessor.open 就是 os.open 的别名——实测第一个实参落在 accessor
+    # 实例上、真正路径在第二位（这与「accessor 被当成绑定 self 吃掉」的直觉
+    # 相反，靠实测确认）。所以这里先判形参是不是路径，不是则把 flags 当路径、
+    # 原 flags 顺延，再做白名单与只读校验。
+    if not _is_fs_path(path) and _is_fs_path(flags):
+        path, flags = flags, (a[0] if a else 0)
+        a = a[1:]
+    _assert_allowed(path)
+    if flags & _WRITE_FLAGS:
+        raise PermissionError("recompute 白名单为只读，拒绝写模式打开: %s" % (path,))
+    return _guard_os_open(path, flags, *a, **k)
+
+
+import builtins, io
+builtins.open = _guarded_open
+io.open = _guarded_open
+_os_g.open = _guarded_os_open
+_os_g.fdopen = _guarded_fdopen
+del builtins, io, _os_g
 """
 
 
@@ -144,27 +270,7 @@ def run_recompute(
     prelude = (
         _NET_DISABLE_PRELUDE
         + f"\n_ALLOWED = {json.dumps(allowed)}\n"
-        + "def _assert_allowed(p):\n"
-        "    import os\n"
-        "    rp = os.path.realpath(p)\n"
-        "    if rp not in _ALLOWED:\n"
-        "        raise PermissionError(f'recompute 只读白名单输入: {p}')\n"
-        "_guard_open = open\n"
-        "def _guarded_open(p, *a, **k):\n"
-        "    if isinstance(p, str):\n"
-        "        _assert_allowed(p)\n"
-        "    elif isinstance(p, bytes):\n"
-        "        import os\n"
-        "        _assert_allowed(os.fsdecode(p))\n"
-        "    elif hasattr(p, '__fspath__'):\n"
-        "        # Path/pathlib 对象同样必须过白名单（原先只拦 str，\n"
-        "        # open(Path('/etc/passwd')) 可绕过）\n"
-        "        _assert_allowed(p)\n"
-        "    return _guard_open(p, *a, **k)\n"
-        "import builtins, io\n"
-        "builtins.open = _guarded_open\n"
-        "io.open = _guarded_open\n"
-        "del builtins, io\n"
+        + _FS_GUARD_PRELUDE
     )
     full_code = prelude + "\n" + script
 

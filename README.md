@@ -23,7 +23,7 @@
 
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
-  <img alt="python" src="https://img.shields.io/badge/python-3.10+-green">
+  <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
   <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-222-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
@@ -191,7 +191,7 @@ python3 ~/.local/share/argo/scripts/search.py --list-engines
 
 ### 方式二：MCP 不装包，直接用 GitHub（推荐 Agent 快速挂载）
 
-需要 **Node.js 18+** 和 **Python 3.10+**，首次执行一次：
+需要 **Node.js 18+** 和 **Python 3.9+**，首次执行一次：
 
 ```bash
 pip3 install pyyaml
@@ -281,7 +281,7 @@ python3 scripts/search.py --list-engines
 ### 安装后自检
 
 ```bash
-python3 --version          # 需要 3.10+
+python3 --version          # 需要 3.9+
 python3 -c "import yaml; print('PyYAML OK')"
 python3 -m pytest tests/test_unit.py -q   # 可选
 python3 scripts/search.py --list-engines
@@ -484,7 +484,7 @@ python3 scripts/search.py "同一查询" --json | \
 
 | 项目 | 要求 |
 |------|------|
-| Python | 3.10+（命令行与 MCP 核心） |
+| Python | 3.9+（命令行与 MCP 核心） |
 | 依赖 | `pip install pyyaml`（仅此一个硬依赖） |
 | 可选增强 | `pip install curl_cffi`（TLS 指纹伪造，MIT 许可）。装上后对指纹检测型反爬站（Cloudflare 等）免起浏览器即可抓取；缺失时自动降级，核心功能不受影响 |
 | Node.js | **仅**在使用 `npx` 入口时需要 18+ |

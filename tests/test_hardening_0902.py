@@ -170,6 +170,86 @@ class TestRecomputeHardening(unittest.TestCase):
 
 # ── 3. article 重定向逐跳 SSRF 校验 ─────────────────────────────────────────
 
+    # ── 白名单「只读」语义 + 解释器版本差异（2026-09-16）─────────────────────
+    #
+    # 背景：沙箱原先把 os.open/os.fdopen 一律替换成抛异常。安全性没问题，但
+    # **Python 3.11 之前 pathlib 的 read_text()/read_bytes() 恰好经由 os.open**：
+    #
+    #     class _NormalAccessor(_Accessor):
+    #         open = os.open
+    #     Path._opener = lambda self, n, f, m=0o666: self._accessor.open(self, f, m)
+    #
+    # 于是 3.9/3.10 上「用 pathlib 读白名单内的文件」被当成拿原始 fd 攻击而
+    # 拒绝，报的还是「禁止外部进程/系统调用」，与真实原因毫无关系。3.11+
+    # 改用 io.open 才暴露不出这个缺陷——所以它只在老解释器上出现。
+    #
+    # 修法：os.open 从「一律禁」改成与 builtins.open 同一把尺的白名单门，
+    # 并统一补上只读约束（写模式也拒）。下面几条钉住这个语义。
+
+    def test_pathlib_read_allowed_on_old_interpreters(self):
+        """pathlib 读白名单文件必须可用（本次修复的核心）。"""
+        code = ("import pathlib\n"
+                "print(pathlib.Path(_ALLOWED[0]).read_text(encoding='utf-8')[:4])\n")
+        r = self._run(code)
+        self.assertTrue(r["ok"], f"pathlib 读白名单文件被拒：{r}")
+        self.assertIn("year", r["stdout"])
+
+    def test_whitelist_is_read_only_for_builtin_open(self):
+        """白名单是只读输入：open(p,'w'/'a'/'x'/'r+') 一律拒绝。
+
+        改动前这里**能写成功**（实测把白名单文件内容改掉了）。重算的语义是
+        「读输入、算结果」，允许写会污染调用方的一手数据，也让「白名单=只读」
+        这个承诺不成立。
+        """
+        original = self.allowed.read_text(encoding="utf-8")
+        for mode in ("w", "a", "x", "r+"):
+            code = ("try:\n"
+                    f"    open(_ALLOWED[0], {mode!r}).write('HACKED')\n"
+                    "    print('WROTE')\n"
+                    "except Exception:\n"
+                    "    print('BLOCKED')\n")
+            r = self._run(code)
+            self.assertNotIn("WROTE", r["stdout"],
+                             f"写模式 {mode!r} 没被拦住：{r}")
+        self.assertEqual(self.allowed.read_text(encoding="utf-8"), original,
+                         "白名单文件被改写了")
+
+    def test_whitelist_is_read_only_for_os_open(self):
+        """同样的只读约束必须落在 os.open 上（否则换条路就能写）。"""
+        for flags in ("os.O_WRONLY", "os.O_RDWR", "os.O_WRONLY | os.O_CREAT",
+                      "os.O_WRONLY | os.O_APPEND", "os.O_RDWR | os.O_TRUNC"):
+            code = ("import os\n"
+                    "try:\n"
+                    f"    os.open(_ALLOWED[0], {flags})\n"
+                    "    print('WROTE')\n"
+                    "except Exception:\n"
+                    "    print('BLOCKED')\n")
+            r = self._run(code)
+            self.assertNotIn("WROTE", r["stdout"],
+                             f"os.open 写标志 {flags} 没被拦住：{r}")
+
+    def test_os_open_whitelist_gate_not_blanket_block(self):
+        """os.open 读白名单文件应当可用（证明它是门、不是墙）。
+
+        这条同时钉住 3.9 pathlib 的错位实参形态：那里第一个实参是 accessor
+        实例、路径在第二位；处理错了会变成「白名单内也读不了」。
+        """
+        code = ("import os\n"
+                "fd = os.open(_ALLOWED[0], os.O_RDONLY)\n"
+                "print(os.read(fd, 4).decode())\n"
+                "os.close(fd)\n")
+        r = self._run(code)
+        self.assertTrue(r["ok"], f"os.open 读白名单文件被拒：{r}")
+        self.assertIn("year", r["stdout"])
+
+    def test_write_attempt_leaves_file_intact(self):
+        """写攻击后白名单文件必须原封不动。"""
+        original = self.allowed.read_text(encoding="utf-8")
+        r = self._run("open(_ALLOWED[0], 'w').write('HACKED')\nprint('WROTE')\n")
+        self.assertNotIn("WROTE", r["stdout"], f"写白名单文件未被拦住：{r}")
+        self.assertEqual(self.allowed.read_text(encoding="utf-8"), original)
+
+
 class TestArticleRedirectGuard(unittest.TestCase):
     def _handler(self):
         from article import _SafeRedirectHandler

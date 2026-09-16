@@ -350,20 +350,76 @@ class TestArgoInterpreterCache:
         assert written == [], "显式覆盖被写进了缓存，会遮蔽后续的覆盖"
 
     def test_cheap_check_code_is_version_and_dep_gated(self, argo_bin):
-        """廉价校验必须同时卡版本与依赖存在性，否则缓存会放行坏环境。
+        """两条校验路径都必须同时卡版本与依赖存在性，否则缓存会放行坏环境。
 
         依赖只卡 PyYAML：它是 argo 唯一的必需第三方依赖（install.sh 装它）。
         此前这里检查必须含 requests——那是幽灵依赖（全仓无 `import requests`，
         真实可选增强是 curl_cffi）。要求一个不存在的包会让每台新机器的解释器
         探测全部失败、缓存永不命中，恰好害了它想保护的东西。
+
+        版本下限不在这里写死，改读 bin/argo 的 MIN_PYTHON：两者各写一份版本号
+        正是「3.9 被选中并固化进缓存」那次事故的成因。同时断言 **strict 路径
+        也带版本判据**——历史 bug 正是 strict 只有 `import yaml`、没有版本闸门，
+        而真正选人并写缓存的候选链走的恰恰是 strict。
         """
-        code = argo_bin._PY_CHEAP_CHECK
-        flat = code.replace(" ", "")
-        assert "version_info" in code and "(3,10)" in flat
-        assert "find_spec" in code and "yaml" in code
-        assert "requests" not in code, "幽灵依赖：仓库里没有任何 import requests"
-        # 不能真 import（那正是要省掉的成本）
-        assert "import yaml" not in code and "import requests" not in code
+        minver = getattr(argo_bin, "MIN_PYTHON", None)
+        assert isinstance(minver, tuple) and len(minver) == 2, \
+            "bin/argo 必须暴露 MIN_PYTHON，供门禁与测试共用同一份版本下限"
+        want = "(%d,%d,)" % minver
+
+        for name in ("_PY_CHEAP_CHECK", "_PY_STRICT_CHECK"):
+            code = getattr(argo_bin, name)
+            flat = code.replace(" ", "")
+            assert "version_info" in code and want in flat, (
+                f"{name} 未按 MIN_PYTHON={want} 卡版本"
+                "——少写版本判据会让过低版本被选中并写进缓存")
+            assert "requests" not in code, "幽灵依赖：仓库里没有任何 import requests"
+
+        # 廉价档不能真 import（那正是要省掉的成本）
+        assert "import yaml" not in argo_bin._PY_CHEAP_CHECK
+        assert "find_spec" in argo_bin._PY_CHEAP_CHECK and "yaml" in argo_bin._PY_CHEAP_CHECK
+        # 严格档要真 import yaml，但必须在版本判据之后
+        strict = argo_bin._PY_STRICT_CHECK.replace(" ", "")
+        assert "importyaml" in strict
+        assert strict.index("version_info") < strict.index("importyaml"), \
+            "strict 档必须在 import yaml 之前先判版本"
+
+    def test_probe_rejects_below_min_python(self, argo_bin):
+        """端到端：探测必须按 MIN_PYTHON 判版本，且两条路径口径一致。
+
+        这是「门禁有牙」用例：只断言脚本字符串里含 version_info 属于**文本
+        检查**——把比较写成 `<=`、或只在其中一条路径保留判据，它照样通过。
+        这里用真实的两个解释器（当前解释器 + 一个版本号被伪装的）真跑判据。
+
+        历史 bug 正是「廉价档有版本判据、严格档没有」，而选人走的是严格档；
+        任何削弱都会在这里变红。
+        """
+        minver = argo_bin.MIN_PYTHON
+        real = tuple(sys.version_info[:2])
+
+        # 1) 当前（合格）解释器：两条路径都通过
+        assert argo_bin._probe_python(sys.executable, True) is True
+        assert argo_bin._probe_python(sys.executable, False) is True
+
+        # 2) 伪造成低于下限的解释器：两条路径都必须拒绝。
+        #    用一个包装脚本把 sys.version_info 改小后再执行判据代码，
+        #    从而在不装旧解释器的前提下验证「低于下限会被拒」。
+        low = "(%d,%d)" % (minver[0], minver[1] - 1)
+        with tempfile.TemporaryDirectory() as td:
+            stub = Path(td) / "python"
+            stub.write_text(
+                "#!/bin/sh\n"
+                f'exec "{sys.executable}" -c '
+                f"'import sys; sys.version_info = (3, 0, 0); "
+                f"exec(sys.argv[1])' \"$@\"\n",
+                encoding="utf-8")
+            stub.chmod(0o755)
+            assert argo_bin._probe_python(str(stub), True) is False, \
+                f"低于 MIN_PYTHON={minver} 的解释器未被拒绝（strict 路径丢版本判据）"
+            assert argo_bin._probe_python(str(stub), False) is False, \
+                f"低于 MIN_PYTHON={minver} 的解释器未被拒绝（cheap 路径丢版本判据）"
+        assert (3, 0) < minver, f"样本版本应低于 MIN_PYTHON={minver}，否则无区分度"
+        assert low  # 说明伪造目标端的意图
 
     def test_self_capable_does_not_require_requests(self, argo_bin, monkeypatch):
         """原地执行判定与廉价校验同一口径：只卡版本与 PyYAML，不卡 requests。

@@ -56,19 +56,21 @@ set +a
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 # 解释器：ARGO_PYTHON 显式指定优先（客户端配置可覆盖）；否则自动探测，取第一个
-# 同时满足「版本 ≥3.10」且「能导入 PyYAML」的——脚本用了 `X | None`，3.9 会在
-# import 期抛 TypeError；而配置/引擎声明都靠 PyYAML 解析，版本够却没装 yaml 的
-# 解释器选了也只能用残缺的内置默认配置。这两点都达标才是「真能用」的解释器
-# （与 bin/argo 的原地执行判定同一把尺）。报错最终都落在客户端日志里，用户看到
-# 的是「MCP server 未就绪」，所以探测阶段就把不可用的解释器跳过。
+# 同时满足「版本 ≥3.9」且「能导入 PyYAML」的——版本下限与 bin/argo 的 MIN_PYTHON
+# 一致（改一处就要改另一处）。为什么不是更高的版本：早期这里写 3.10，理由是
+# 「脚本用了 `X | None`」，但实测全仓 0 处该写法。而配置/引擎声明都靠 PyYAML
+# 解析，版本够却没装 yaml 的解释器选了也只能用残缺的内置默认配置——所以这两点
+# 必须**同时**判，少判一个就会选到跑不动的解释器（bin/argo 曾因此把 3.9 选中
+# 并写进缓存）。报错最终都落在客户端日志里，用户看到的是「MCP server 未就绪」，
+# 所以探测阶段就把不可用的解释器跳过。
 # 全都不达标时回落 python3：宁可让错误信息可读，也不抛「找不到解释器」。
 if [ -n "$ARGO_PYTHON" ] && command -v "$ARGO_PYTHON" >/dev/null 2>&1; then
   PY="$ARGO_PYTHON"
 else
   PY=""
-  for c in python3 python3.14 python3.13 python3.12 python3.11 python3.10 python; do
+  for c in python3 python3.14 python3.13 python3.12 python3.11 python3.10 python3.9 python; do
     p="$(command -v "$c" 2>/dev/null)" || continue
-    if "$p" -c 'import sys, yaml; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+    if "$p" -c 'import sys, yaml; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
       PY="$p"
       break
     fi
