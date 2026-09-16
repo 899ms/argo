@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""阶段耗时埋点（--explain-timing）的测试。
+"""阶段耗时计时的测试（默认开，--no-timing 可关）。
 
 ## 为什么需要它
 
-本仓此前的性能结论只能靠**外挂**打点得出：importtime 看冷启动、cProfile 看
+本仓此前的性能结论只能靠**外挂**计时得出：importtime 看冷启动、cProfile 看
 CPU、临时包装模块级函数看阶段。「最大的瓶颈在哪」不是一个工具能自答的问题，
 换个人、换台机器就得重做一遍——而实测过的事实是：缓存命中的搜索里，**约六成
 墙钟花在进程固定开销上**（解释器启动 + import），它此前从不出现在任何输出里。
 
 这里锁三件事：
-  1. 默认关闭、不产生 `timing` 键（输出体积受 test_context_budget 约束）；
+  1. --no-timing 时不产生 `timing` 键；
   2. 开启后阶段齐全、占比自洽（按耗时降序、合计 ~100%）；
   3. 显式请求的字段不得被 `--fields agent` 剥掉——请求了却拿不到比不提供更糟。
 
@@ -64,7 +64,7 @@ def _fake_engine(query, engine, n=5, timeout=None, depth=None, mode=None,
 
 
 def _run(timing):
-    """跑一次真实编排（引擎被替换，不联网），返回结果。"""
+    """跑一次真实调度（引擎被替换，不联网），返回结果。"""
     decision = {
         "domain": "general", "engine": "anysearch",
         "engines_combo": ["anysearch"], "tfidf_scores": [],
@@ -80,10 +80,10 @@ def _run(timing):
 
 
 class TestInstrumentedPipeline:
-    def test_off_by_default_no_timing_key(self):
+    def test_not_measuring_means_no_timing_key(self):
+        """不传计时器（等价于 --no-timing）就不该产生 timing 键。"""
         out = _run(None)
-        assert "timing" not in out, \
-            "未开计时不得产生 timing 键（输出体积受门禁约束）"
+        assert "timing" not in out, "没在计时却输出了 timing 键"
 
     def test_on_collects_expected_stages(self, tmp_path):
         t = S.StageTiming()

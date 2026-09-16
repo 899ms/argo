@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-search.py — Unified Search v2 CLI 主入口 & 执行编排
+search.py — Unified Search v2 CLI 主入口 & 执行调度
 
 职责：
   - 解析命令行参数
@@ -60,7 +60,7 @@ _IMPORTS_DONE = time.perf_counter()
 #
 # 时间窗三层语义：
 #   1. 下推（since/until → 引擎）：入口统一归一化为绝对 ISO，引擎收到确定值
-#   2. 后过滤（结果层兜底）：引擎不带时间窗能力时，按 published_at 剔除超窗
+#   2. 后过滤（结果层保底）：引擎不带时间窗能力时，按 published_at 剔除超窗
 #   3. 排序（--sort）：仅展示顺序，不影响召回
 #
 # 归一化规则：相对量（Nd/Nh/Nw）→ 绝对日期；绝对时间无时区按本地时区解释
@@ -183,7 +183,7 @@ def _normalize_time_window(
 def _apply_time_window(
     results: list[dict[str, Any]], since_ts: float | None, until_ts: float | None
 ) -> tuple[list[dict[str, Any]], int]:
-    """结果后过滤兜底：剔除「有 published_at 且明确超窗」的条目。
+    """结果后过滤保底：剔除「有 published_at 且明确超窗」的条目。
 
     宽松策略：无时间字段的结果无法判断、予以保留（避免大多数引擎清空）；
     只有时间明确落在窗口外的才剔除。返回 (保留列表, 剔除数) 供 envelope 上报。
@@ -372,7 +372,7 @@ def _sufficient_internal(
 def _missing_env_for(eng: str) -> list[str]:
     """返回引擎缺失的环境变量名列表；检测不可用时返回空（不阻断搜索）。
 
-    与路由层 env_ready(spec) 同口径：查当前注册表拿 spec，否则
+    与路由层 env_ready(spec) 同计算方式：查当前注册表拿 spec，否则
     声明里自定义 required_env 的引擎在此拦截不到（仅 KNOWN_ENV_ALIASES
     成员能命中）。注册表值是 callable（spec 在闭包里）时退化为原名检测。
     """
@@ -390,7 +390,7 @@ def _missing_env_for(eng: str) -> list[str]:
 
 
 class _QuotaBatch:
-    """一次搜索的配额记账收集器（累积 → 一次性落盘）。
+    """一次搜索的配额记账收集器（累积 → 一次性写入文件）。
 
     为什么不是每引擎各写一次：每次 record 都是「全量状态序列化 + rename」，
     一次 5 引擎搜索即 5 次全量写。合并后写盘次数从 N 降到 1，且整批在
@@ -419,7 +419,7 @@ class _QuotaBatch:
 def _record_quota(engine: str, success: bool) -> None:
     """单条配额记账（真实打网后写）；失败静默。
 
-    批量路径请用 `_QuotaBatch`——它把同一次搜索的 N 条合成一次落盘。
+    批量路径请用 `_QuotaBatch`——它把同一次搜索的 N 条合成一次写入文件。
     """
     try:
         from quota import get_quota_manager
@@ -428,11 +428,11 @@ def _record_quota(engine: str, success: bool) -> None:
         pass
 
 
-# 配额耗尽错误关键词（单一真源）：_classify_engine_outcome 的 quota-exhausted
+# 配额耗尽错误关键词（唯一来源）：_classify_engine_outcome 的 quota-exhausted
 # 分类与自适应学习跳过逻辑共用。新增配额错误码（如新的 API 业务码）只改这里。
 _QUOTA_ERROR_KEYWORDS = ("quota", "10406")
 
-# 拦截页特征词（单一真源）：error 文本里出现即判 blocked。HTML 引擎的反爬
+# 拦截页特征词（唯一来源）：error 文本里出现即判 blocked。HTML 引擎的反爬
 # 命中没有 error 文本（静默空结果），走 engines_base 的归因寄存器；
 # 这张表兜住「error 结果里带拦截页字样」的可见路径。
 _BLOCKED_ERROR_KEYWORDS = (
@@ -468,7 +468,7 @@ class Stage(str, Enum):
 
 # ── RRF 融合 ───────────────────────────────────────────────────────────────────
 
-# URL 归一化的单一真源在 url_canon：本仓曾有四份各自实现的「URL 归一」
+# URL 归一化的唯一来源在 url_canon：本仓曾有四份各自实现的「URL 归一」
 # （search / plan / candidate_envelope / research_dossier，追踪参数表与
 # 大小写规则各不相同），导致同一链接在融合层与 dossier 层归一成不同键。
 # 此处只做薄转发，规则改动一律进 url_canon。
@@ -476,7 +476,7 @@ from url_canon import canonical_url as _canonical_url_impl  # noqa: E402
 
 
 def _canonical_url(url: str) -> str:
-    """URL 归一化（薄转发到 url_canon 单一真源）。"""
+    """URL 归一化（薄转发到 url_canon 唯一来源）。"""
     return _canonical_url_impl(url)
 
 
@@ -584,13 +584,13 @@ def rrf_merge(ranked_lists: list[list[dict[str, Any]]], k: int = 60,
 
     for _li, results in enumerate(ranked_lists):
         for i, r in enumerate(results):
-            # 无 URL 时用 title 兜底；模态卡再退到 card_type（避免空 title 互撞）。
-            # 最后兜底必须带**列表身份**：此前用裸 `i`（单列表内的局部索引），
+            # 无 URL 时用 title 保底；模态卡再退到 card_type（避免空 title 互撞）。
+            # 最后保底必须带**列表身份**：此前用裸 `i`（单列表内的局部索引），
             # 跨引擎必然同值 —— 两条都没有 url/title/card_type 的不同结果会在
             # `__idx__:0` 处相撞，表现为 ①丢结果 ②伪造 consensus_engines
             # （两个引擎"都投了"同一条，其实各是各的）③字段错配（_engine 留 A、
             # snippet 被 B 覆盖）。同文件 deduplicate_by_url 用全局递增计数器
-            # `anon:{len(out)}` 就没有这个问题，此处对齐该写法。
+            # `anon:{len(out)}` 就没有这个问题，此处保持一致该写法。
             key = (
                 _canonical_url(r.get("url", ""))
                 or (f"__title__:{r.get('title', '')}" if r.get("title") else "")
@@ -669,14 +669,14 @@ def _distinct_data_rows(ka: str, kb: str) -> bool:
 
 
 # 精排池容量：放宽截断让 rerank 看到 max_results 的 3 倍（下限 15 条），
-# 最终输出再截断到 max_results。去重提前停与放宽截断共用这一个口径——
+# 最终输出再截断到 max_results。去重提前停与放宽截断共用这一个计算方式——
 # 此前它是散在截断点上的字面量，而「去重该停在哪」需要知道同一个数。
 _RERANK_POOL_FACTOR = 3
 _RERANK_POOL_MIN = 15
 
 
 def _rerank_pool_limit(max_results: int) -> int:
-    """精排池容量（去重提前停与放宽截断的单一真源）。"""
+    """精排池容量（去重提前停与放宽截断的唯一来源）。"""
     return max(max_results * _RERANK_POOL_FACTOR, _RERANK_POOL_MIN)
 
 
@@ -778,10 +778,10 @@ def _lang_prefer_rerank(results: list[dict[str, Any]],
 # → 自动禁用后周期复探），这样就不必另造一套「端点退避」机制。
 _RERANK_BREAKER_KEY = "rerank:bocha"
 
-# 「bocha 没有产出排序」的单一真源：落到本地五维兜底的状态全集。
+# 「bocha 没有产出排序」的唯一来源：落到本地五维保底的状态全集。
 #
 # 此前是内联在调用点的四元素元组，新增状态极易漏改，而漏改的后果是静默的——
-# 既不精排也不兜底，最终顺序退化成 RRF 原始序，没有任何信号。`rerank.py`
+# 既不精排也不保底，最终顺序退化成 RRF 原始序，没有任何信号。`rerank.py`
 # 加一个状态就要回来补白名单，正是「同一事实两处定义」的典型形态。
 _RERANK_DEGRADED_STATUSES = frozenset({
     "skipped_no_key",      # 未配置密钥
@@ -838,7 +838,7 @@ def rerank_results(query: str, results: list[dict[str, Any]],
     # 档墙钟的 63%、占全部后处理耗时的 89%——而旧实现把 HTTPError 一律吞成
     # "fallback"，既不计数也不冷却，于是每次搜索都重犯同一笔开销。
     # 参数类失败（凭证/额度）不会因为再试一次自愈，只有周期性探测才有意义，
-    # 这正是熔断器「冷却 + 半开探测」的语义；状态落盘，所以后续 CLI 单发进程
+    # 这正是熔断器「冷却 + 半开探测」的语义；状态写入文件，所以后续 CLI 单发进程
     # 也直接跳过（进程内记忆对一次性 CLI 没有意义）。
     breaker = _rerank_breaker()
     if breaker is not None:
@@ -905,7 +905,7 @@ def rerank_results(query: str, results: list[dict[str, Any]],
     return results, "fallback"
 
 
-# ── P0-003：本地五维 Rerank 兜底 ──────────────────────────────────────────────
+# ── P0-003：本地五维 Rerank 保底 ──────────────────────────────────────────────
 
 _CJK_OR_WORD = None  # 延迟编译
 
@@ -952,7 +952,7 @@ def _score_completeness(title: str, snippet: str) -> float:
 
 
 def _consensus_prior(results: list[dict[str, Any]]) -> list[float]:
-    """融合先验：把 RRF 分与跨引擎共识数归一化成 [0,1]（逐条对齐 results）。
+    """融合先验：把 RRF 分与跨引擎共识数归一化成 [0,1]（逐条保持一致 results）。
 
     为什么需要它（这是本函数存在的唯一理由）：
     `local_five_dim_rerank` 用 relevance(token 覆盖率)/completeness(文本长度)
@@ -964,7 +964,7 @@ def _consensus_prior(results: list[dict[str, Any]]) -> list[float]:
     这里**不改五维公式**，只把融合信号作为一个独立先验维度加进来，避免与
     `score` 字段竞争（`score` 已被本函数覆写，拿它当输入是循环依赖）。
 
-    归一化口径：RRF 分取最大值归一到 1（保序，不放大）；共识数按
+    归一化计算方式：RRF 分取最大值归一到 1（保序，不放大）；共识数按
     `min(n-1, 3)/3` 计（封顶 3，避免 5 源共识把量纲压过其他维度）。
     共识在排序路径**只有这一个入口**：旧版此处之外还有一次乘法共识
     boost（×(1+0.05·min(n-1,3))，2026-09-13 移除）——同一信号被重复
@@ -1022,7 +1022,7 @@ def _domain_score_floors() -> dict[str, dict[str, dict[str, float]]]:
 def local_five_dim_rerank(query: str, results: list[dict[str, Any]],
                           domain: str = "general", top_n: int = 10
                           ) -> list[dict[str, Any]]:
-    """本地五维精排（无 Bocha Key / fallback 时兜底）。
+    """本地五维精排（无 Bocha Key / fallback 时保底）。
 
     维度权重（通用，前五维和为 0.88，余下 0.12 给融合先验）：
       相关性 0.26 + 权威性 0.26 + 时效性 0.18 + 完整性 0.13 + 新颖性 0.05
@@ -1323,7 +1323,7 @@ def _classify_engine_outcome(eng: str, res: list[dict[str, Any]],
 
 
 # fast 单发总墙钟预算（秒）。引擎级超时收紧（≥8s 源 cap 6s、half_open 2s）之外
-# 的整条路径兜底：实测引擎 P95 跨度 1.5-8.5s，6s 预算覆盖绝大多数快引擎，
+# 的整条路径保底：实测引擎 P95 跨度 1.5-8.5s，6s 预算覆盖绝大多数快引擎，
 # 只砍 github 类拖尾——「等待剩余时间」与「是否再起新引擎」都受它约束。
 _FAST_TOTAL_BUDGET_S = 6.0
 
@@ -1344,7 +1344,7 @@ _AUTO_TOTAL_BUDGET_S = 10.0
 _PRIMARY_GRACE_S = 2.0
 
 # 单引擎墙钟硬预算（秒）：含该引擎的**全部**重试尝试，超预算即停、不再发起
-# 新尝试，由编排层切备选源。
+# 新尝试，由调度层切备选源。
 #
 # 为什么要这个上界（2026-09-10 实测）：重试会叠乘。anysearch 曾同时具备
 #   引擎级 retry_count=1（2 次）× HTTP 级 max_retries=1（2 次）× 8s
@@ -1363,13 +1363,14 @@ _PER_ENGINE_BUDGET_S = 10.0
 class StageTiming:
     """搜索各阶段墙钟耗时（毫秒）。
 
-    为什么要有它：本仓此前的性能结论只能靠**外挂**打点得出——importtime 看冷
+    为什么要有它：本仓此前的性能结论只能靠**外挂**计时得出——importtime 看冷
     启动、cProfile 看 CPU、临时包装模块级函数看阶段——「最大瓶颈在哪」不是一个
-    工具能自答的问题，换个人、换台机器就得重做一遍。有了它，一次
-    `--explain-timing` 就能看到钱花在哪：网络等待 vs 本地 CPU vs 固定开销。
+    工具能自答的问题，换个人、换台机器就得重做一遍。有了它，看一眼输出就知道
+    钱花在哪：网络等待、本地计算、还是程序启动本身。
 
-    刻意不默认开启、不进默认输出：计时本身要读 `perf_counter`（每阶段一次，
-    微秒级），而输出体积是受 `test_context_budget` 门禁约束的。
+    **默认开启**（`--no-timing` 可关）。默认关的话，想知道瓶颈就得会外部计时
+    和临时代码，等于把「自己动手优化」的门槛抬到只有维护者过得去。代价是每次
+    多几百字节输出——相对它省下的排查成本可以忽略。
     """
 
     __slots__ = ("marks",)
@@ -1386,7 +1387,7 @@ class StageTiming:
         """按耗时降序返回，并附占比。
 
         占比才是行动依据：「rerank 213 ms」本身说明不了什么，「占 59%」才说明
-        该不该动它。默认以**各阶段之和**为分母（自洽，纯 CPU 口径，不含进程
+        该不该动它。默认以**各阶段之和**为分母（自洽，纯 CPU 计算方式，不含进程
         启动）；调用方给出 total_ms 时以它为准。
         """
         # 不取整：热进程里各阶段合计常不足 1 ms，`int()` 会把 0.9 截成 0，
@@ -1420,7 +1421,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     engine_label = decision.get("engine", "auto")
     engines_combo = decision.get("engines_combo", decision.get("engines", [engine_label]))
     # 防御：过滤空引擎名（空串会在 registry 查无 → 空结果 → 熔断空键 ''）。
-    # 全空时兜底 anysearch，防止下方 engines[0] IndexError（route 层已保证
+    # 全空时保底 anysearch，防止下方 engines[0] IndexError（route 层已保证
     # combo 非空，此处仅防畸形 decision 直接调用 execute_search）。
     engines = [e for e in engines_combo if e] or ["anysearch"]
     parallel = decision.get("parallel", False) and len(engines) > 1
@@ -1686,7 +1687,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         # FRED/Eurostat 这类 timeout=10s 的源一旦挂掉就阻塞整条串行路径，
         # 而快源（worldbank 等 ~150ms）已能交付答案。慢源 5s 内没回就让位。
         # 非答案域（fast/auto/budget 且非 deep）：timeout≥10s 的引擎同样收紧
-        # 到 6s——多数正常引擎 <2s，10-15s 的超时只为极端慢源兜底，
+        # 到 6s——多数正常引擎 <2s，10-15s 的超时只为极端慢源保底，
         # 串行/并行组合里一个慢源就会拖垮整个响应尾部。
         eff_to: float | None = None
         _tighten = (early_min is not None) or (
@@ -2038,7 +2039,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         if clean:
             clean_lists.append(clean)
 
-    # 查询主语言：噪声门与语言能力加权共用同一个判定（单一真源，
+    # 查询主语言：噪声门与语言能力加权共用同一个判定（唯一来源，
     # 避免两处各自算导致行为漂移）。
     _q_lang_for_fusion = (
         ((decision or {}).get("features") or {}).get("primary_lang") or None
@@ -2092,7 +2093,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         merged = []
 
     # ── D6：macro_data 域证据下限（事实核查防单源）─────────────────────
-    # deep 研究场景下结果 <2 条说明结构化源未覆盖该查询：追加通用兜底引擎
+    # deep 研究场景下结果 <2 条说明结构化源未覆盖该查询：追加通用保底引擎
     # 补证据，避免「单引擎单结果」被事实核查 / 融合阶段当作答案；补搜结果
     # 一并进 RRF，consensus 维度天然加权。
     if (domain == "macro_data" and merged and len(merged) < 2
@@ -2114,7 +2115,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         if _extra_lists:
             merged = rrf_merge([merged] + _extra_lists)
 
-    # 配额记账：整批一次落盘（同一次搜索的 N 个引擎合并为一次写）。
+    # 配额记账：整批一次写入文件（同一次搜索的 N 个引擎合并为一次写）。
     # 必须放在 D6 补搜之后：那是最后一个 _ingest 调用点，flush 提前会让
     # 补搜引擎的记账永远落不了盘（2026-09-13 审查实锤）。
     quota_batch.flush()
@@ -2168,7 +2169,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             kept.append(r)
         merged = kept
 
-    # ── 时间窗结果后过滤兜底 ──
+    # ── 时间窗结果后过滤保底 ──
     # 仅当组合内含带时间能力引擎时执行：无时间字段引擎的结果没有可滤对象，
     # 跳过遍历省开销；语义上与缓存键隔离保持一致（7d/30d 共享同一缓存内容）。
     time_filtered = 0
@@ -2211,7 +2212,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             # 域路由零结果：恢复链放行 L3 换引擎。复杂度门此前把简单查询
             # 压到 L2——L3 被禁 + 全域零结果 = 域命中查询无解（实测
             # macro_data「中国GDP」零结果、恢复链空转）。engines_fallback
-            # 里是路由的定向兜底声明（域未试成员优先），代价可控。
+            # 里是路由的定向保底声明（域未试成员优先），代价可控。
             rec_level = _max_rec_level
             if fallback_engines and decision.get("domain") not in (
                     None, "", "general", "general_search") \
@@ -2283,7 +2284,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             logging.getLogger("unified_search").debug(
                 f"错误恢复跳过: {type(e).__name__}")
 
-    # Reranker：ARGO_LOCAL_RERANK 开关（0 关闭本地五维兜底；默认 1 开启）
+    # Reranker：ARGO_LOCAL_RERANK 开关（0 关闭本地五维保底；默认 1 开启）
     local_rerank_on = env_flag("ARGO_LOCAL_RERANK")
     reranker_status = "skipped_short"
     rank_method = "none"
@@ -2295,9 +2296,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         if reranker_status == "ok":
             rank_method = "bocha"
 
-    # 本地五维 rerank 兜底：受 ARGO_LOCAL_RERANK 开关控制（可观测 rank_method）。
-    # 触发口径走 _RERANK_DEGRADED_STATUSES 单一真源：新增「bocha 未出排序」的
-    # 状态时只改那一处，不会漏掉这里的兜底（漏了就是既不精排也不兜底）。
+    # 本地五维 rerank 保底：受 ARGO_LOCAL_RERANK 开关控制（可观测 rank_method）。
+    # 触发计算方式走 _RERANK_DEGRADED_STATUSES 唯一来源：新增「bocha 未出排序」的
+    # 状态时只改那一处，不会漏掉这里的保底（漏了就是既不精排也不保底）。
     if local_rerank_on and merged and len(merged) > 1 and \
             reranker_status in _RERANK_DEGRADED_STATUSES:
         try:
@@ -2364,7 +2365,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             # 配额/鉴权类是配置态故障，不是引擎质量信号：计入会把恢复后的
             # 引擎分数毒化在历史失败里（byted 配额期 38 连败 → 分数 0.072，
             # 配额自愈后无流量刷正分，死锁）。此类错误不计入，保持中性。
-            # 配额关键词走 _QUOTA_ERROR_KEYWORDS 单一真源；鉴权类仅此处有。
+            # 配额关键词走 _QUOTA_ERROR_KEYWORDS 唯一来源；鉴权类仅此处有。
             if errors and all(
                 any(k in msg.lower() for k in
                     (*_QUOTA_ERROR_KEYWORDS, "unauthorized", "api key",
@@ -2747,7 +2748,7 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
     except Exception:
         pass
 
-    # 结果局限声明：**质量信号，与归档开关无关**，两条路径共用同一口径。
+    # 结果局限声明：**质量信号，与归档开关无关**，两条路径共用同一计算方式。
     # 此前只在 envelope 分支内计算，于是 --no-envelope（文档推荐给 agent 的
     # 档位）整块拿不到它——agent 无从知晓拿到的是「相关发现而非正文」
     # 「降级路由结果」「未预确认的 daily 档」（2026-09-15 输出契约审查）。
@@ -2786,14 +2787,14 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
             result.setdefault("limitations", [])
     else:
         # 精简档：attach_envelope 不跑，局限声明仍须上报（同一个 build_limitations
-        # 实现，避免两处各写一份导致口径漂移）
+        # 实现，避免两处各写一份导致计算方式漂移）
         try:
             from candidate_envelope import build_limitations
             result["limitations"] = build_limitations(result, extra_lim)
         except Exception:
             result.setdefault("limitations", list(extra_lim))
 
-    # 证据闭环 P0：回填已核验证据分 + 高后果门控（finance/health/legal）
+    # 证据完整链路 P0：回填已核验证据分 + 高后果门控（finance/health/legal）
     # 输出 fetch_required / evidence_loop 汇总，每条结果带 fetch_suggested
     # 与 has_fetched_evidence / post_fetch_absorption（若此前 fetch 过）。
     try:
@@ -2876,8 +2877,8 @@ def _strip_for_agent(payload: dict[str, Any]) -> dict[str, Any]:
         # limitations/recovery/time_filter_warning 一并剥掉，agent 无从判断
         # 「这批结果能用到什么程度」（2026-09-15 输出契约审查）。
         "limitations", "recovery", "time_filter_warning",
-        # 阶段耗时：**显式要求才有**（--explain-timing），剥掉会让这个开关在
-        # agent 档下恒为空——请求了却拿不到，比不提供更糟。
+        # 阶段耗时：默认就带（--no-timing 才没有）。剥掉会让使用者看不到
+        # 「这次慢在哪」，也拿不到自己动手优化所需的依据。
         "timing",
     )
     out: dict[str, Any] = {k: payload[k] for k in keep_top
@@ -2990,7 +2991,7 @@ def format_text_output(results: dict[str, Any]) -> str:
     if not isinstance(sources, list) or not sources:
         sources = build_sources(results.get("results") or [])
 
-    # 用 URL 对齐 ref
+    # 用 URL 保持一致 ref
     url_to_ref = {s.get("url"): s.get("ref") for s in sources if isinstance(s, dict)}
     body_items = [r for r in (results.get("results") or []) if isinstance(r, dict)]
     for r in body_items:
@@ -3047,7 +3048,7 @@ def _run_local_seek(query: str, max_n: int = 5) -> list[dict[str, Any]]:
     """
     import subprocess as _sp
 
-    # 安装感知 + 单一真源：委托 seek_locator 统一发现 local-seek/scripts/seek.py
+    # 安装感知 + 唯一来源：委托 seek_locator 统一发现 local-seek/scripts/seek.py
     # （打包子技能优先，ARGO_LOCAL_SEEK_PATH / ARGO_LOCAL_SEEK_ROOTS 承载自定义/遗留）。
     # 不硬编码 ~/.agents/skills|~/.claude/skills 主机路径（SKILL.md 明令禁止）。
     from seek_locator import resolve_seek_py
@@ -3146,10 +3147,17 @@ def main():
                         help="known-url 也强制多引擎搜索（不推荐）")
     parser.add_argument("--no-envelope", action="store_true",
                         help="不附加 candidates/coverage/limitations")
-    parser.add_argument(
-        "--explain-timing", action="store_true",
-        help="附加各阶段墙钟耗时（stages/dispatch 并发效率）；用于回答"
-             "「这次搜索的瓶颈在哪」，默认关（不进默认输出，省上下文）",
+    _tg = parser.add_mutually_exclusive_group()
+    _tg.add_argument(
+        "--timing", "--explain-timing", dest="timing",
+        action="store_true", default=True,
+        help="附加各阶段墙钟耗时（默认为开）：stages 按耗时降序带占比、"
+             "dispatch 给出引擎并发效率，另附固定开销与进程总计。"
+             "想知道「这次搜索慢在哪」直接看它",
+    )
+    _tg.add_argument(
+        "--no-timing", dest="timing", action="store_false",
+        help="不附加阶段耗时（省几百字节上下文）",
     )
     parser.add_argument(
         "--fields", choices=("full", "agent"), default="full",
@@ -3223,8 +3231,9 @@ def main():
 
     # 归档需要 envelope；--archive 时强制保留
     use_envelope = (not args.no_envelope) or args.archive
-    # 阶段耗时：只在显式要求时收集（默认零开销、不进默认输出）
-    _timing = StageTiming() if args.explain_timing else None
+    # 阶段耗时：**默认开**。它是「这次慢在哪」的自解释入口——不开的话，
+    # 想知道瓶颈只能外部计时 + 临时代码，等于把优化门槛抬到只有维护者能过。
+    _timing = StageTiming() if args.timing else None
     _tk_total = _tick(_timing)
 
     results = super_search(
@@ -3294,7 +3303,7 @@ def main():
         except Exception as e:
             print(f"  [archive error] {type(e).__name__}: {e}", file=sys.stderr)
 
-    # 证据闭环 P0：--verify 显式核验 top-k 未核验结果（fetch + 回填 + revision 分布）
+    # 证据完整链路 P0：--verify 显式核验 top-k 未核验结果（fetch + 回填 + revision 分布）
     if args.verify:
         try:
             from evidence_loop import verify_results

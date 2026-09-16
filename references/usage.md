@@ -17,18 +17,19 @@ python3 scripts/search.py "查询词" \
   [--domain DOMAIN] [--sub_domain SUB_DOMAIN]  # 垂直域限定\
   [--input-kind auto|keyword|url-seed|known-url]\
   [--plan-only] [--force-search] [--no-envelope]\
+  [--timing|--no-timing]       # 输出里的阶段耗时，默认开\
   [--archive] [--archive-dir DIR] [--archive-tag TAG] [--archive-note NOTE]\
   [--verify [TOP_K]]          # 核验 top-K 未核验结果并回填证据分
 ```
 
-**时间窗**：`--since`/`--until` 支持相对值（`7d`）或绝对日期（`2026-08-01`，含当天）；下推到支持时间窗的引擎，任意引擎组合融合后按 `published_at` 兜底过滤（`time_filtered: N`）；`--sort newest` 找最新动态、`oldest` 找最早出处。`wayback_cdx` 输出标准 `published_at`（CDX 最早快照）。
+**时间窗**：`--since`/`--until` 支持相对值（`7d`）或绝对日期（`2026-08-01`，含当天）；下推到支持时间窗的引擎，任意引擎组合融合后按 `published_at` 保底过滤（`time_filtered: N`）；`--sort newest` 找最新动态、`oldest` 找最早出处。`wayback_cdx` 输出标准 `published_at`（CDX 最早快照）。
 
-**Python 解释器**：脚本用 3.10+ 语法。`bin/argo` 自动探测 `ARGO_PYTHON` → python3.14/3.13/3.12/3.11/3.10 → 兜底。强制：`ARGO_PYTHON=/opt/homebrew/bin/python3.14 argo ...`。
+**Python 解释器**：脚本最低支持 3.9（与 `bin/argo` 的 `MIN_PYTHON` 一致）。`bin/argo` 自动探测 `ARGO_PYTHON` → python3.14/3.13/3.12/3.11/3.10 → 保底。强制：`ARGO_PYTHON=/opt/homebrew/bin/python3.14 argo ...`。
 
 ## search 输出字段与体积纪律
 
 一次 `search --json` 会给出**三个视图**，它们不是重复而是各有用途；选错视图会
-白付上下文（实测 5 条结果：默认 14.9 KB ≈ 5.0k token，`--no-envelope` 后 6.8 KB
+白等上下文（实测 5 条结果：默认 14.9 KB ≈ 5.0k token，`--no-envelope` 后 6.8 KB
 ≈ 2.3k，再叠 `-n 3` 降到 4.5 KB ≈ 1.5k）：
 
 | 视图 | 用途 | 体积（5 条） |
@@ -44,6 +45,39 @@ python3 scripts/search.py "查询词" \
 - 结果级字段：`fetch_suggested`（是否建议核验）、`has_fetched_evidence`（已核验）、
   `post_fetch_absorption`（正文级吸收分，核验后回填）；`full_text_url` 是源给出的
   **可确定性取正文**端点（如 e-Gov `lawdata`、Gutenberg 纯文本），有时代替 `url` 去 fetch。
+
+### 阶段耗时（`timing`，默认开）
+
+每次搜索的输出里都带一块 `timing`，约 170 字节。它回答的是「这次搜索的时间
+花到哪儿去了」，不用再去外面计时。不想要就加 `--no-timing`。
+
+```json
+"timing": {
+  "stages_ms": 448.9,
+  "stages": [                       // 按耗时降序，pct 是占各阶段之和的比例
+    {"stage": "dispatch", "ms": 394.5, "pct": 84.2},
+    {"stage": "route",    "ms": 46.6,  "pct": 9.9}
+  ],
+  "elapsed_ms": 449,
+  "dispatch": {                     // 引擎调度这一段单独展开
+    "wall_ms": 394, "engines_run": 1, "engine_sum_ms": 365,
+    "parallel_efficiency": 0.93,    // 引擎各自耗时之和 ÷ 墙钟。多数值大 = 并行有效
+    "wasted_ms": 0, "early_stopped": true
+  },
+  "import_ms": 49.4,                // 加载模块占的时间
+  "overhead_ms": 61.5,              // 除各阶段外的开销（import + 解析参数 + 收尾）
+  "process_ms": 100.4               // 整个进程
+}
+```
+
+常见阶段名：`route`（选引擎）、`cache_lookup` / `cache_write`（读写缓存）、
+`dispatch`（等各引擎返回）、`fusion`（合并）、`dedupe`（去重）、`rerank`
+（重排）、`signals`（算各项质量分）。
+
+两个最常看的数：
+- **`stages` 第一行**——慢在等网络（`dispatch`）还是慢在本地算（`fusion`/`rerank`）。
+- **`overhead_ms`**——程序启动本身的开销。缓存命中的搜索里它常占六成，
+  所以「同一条查询第二次跑」未必快在搜索上。
 
 ### `--list-engines` 的体积陷阱
 
@@ -135,7 +169,7 @@ argo pdf "https://example.com/paper.pdf" [--pages "1-5"] [--password "secret"]  
 ### local-search（本地零成本聚合）
 
 - 33 本地引擎、29 默认启用，覆盖 web_general/chinese/academic/news/code/reference/vertical 七大类
-- 注册表：`sub-skills/local-search/engine_registry.py`（唯一真源，加载 config.yaml + parse_maps.yaml）
+- 注册表：`sub-skills/local-search/engine_registry.py`（唯一来源，加载 config.yaml + parse_maps.yaml）
 - 健康探针：canary 查询 + 反爬检测，状态缓存 5 分钟；连续 2 次失败或单次 >8s 标记 unavailable
 - 智能路由：`sub-skills/local-search/smart_router.py` 按查询特征选引擎组合
 - 输出与 argo 同 schema，直接参与 RRF 融合
@@ -148,7 +182,7 @@ python3 sub-skills/local-seek/scripts/seek.py "查询词" --path ~/notes --conte
 python3 sub-skills/local-seek/scripts/seek.py "查询词" --path ~/notes --lines  # L3 精读
 ```
 
-- 路由：rg（正文）→ fd（文件名）→ mdfind（Spotlight 全盘兜底）；中文「精确优先、2-gram 扩展兜底」
+- 路由：rg（正文）→ fd（文件名）→ mdfind（Spotlight 全盘保底）；中文「精确优先、2-gram 扩展保底」
 - 扩展：`--structural`（裸 except/空 catch/装饰函数）、`--git-log`/`--git-blame`、`--outline`、`--domains`
 - MCP：`argo_local_search` subprocess 调用 seek.py，包装为 `file://` URL + `source=local_files`
 
