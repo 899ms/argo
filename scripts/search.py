@@ -14,35 +14,46 @@ search.py — Unified Search v2 CLI 主入口 & 执行编排
 
 from __future__ import annotations
 
-import argparse
-
-from engine_env import env_flag, get_env
-import json
-import os
-import re
-import sys
-import threading
 import time
-from datetime import datetime, timedelta, timezone
-from enum import Enum
-from typing import Any, Callable, Optional
+
+# 尽早取时点：**放在重导入之前**，整条 import 链才算得进「固定开销」。
+# （放在导入之后测出来的是 0——模块体跑完时导入早已结束。）
+# 解释器自身的启动（本机 ~15 ms）到这里仍然测不到；那部分只能由外部
+# `time` 命令给，所以不在这儿谎报成已测。
+_MODULE_T0 = time.perf_counter()
+
+import argparse  # noqa: E402
+
+from engine_env import env_flag, get_env  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import sys  # noqa: E402
+import threading  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+from enum import Enum  # noqa: E402
+from typing import Any, Callable, Optional  # noqa: E402
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-from cache import SearchCache
+from cache import SearchCache  # noqa: E402
 try:
     from cache import query_similarity as _query_similarity
 except ImportError:
     _query_similarity = None  # type: ignore
-from route import route_query
-from engines import search as engine_search, available_engines
-from config import get_execution_config, get_cost_factor, get_engines
-from cli_io import dumps
+from route import route_query  # noqa: E402
+from engines import search as engine_search, available_engines  # noqa: E402
+from config import get_execution_config, get_cost_factor, get_engines  # noqa: E402
+from cli_io import dumps  # noqa: E402
 try:
     from telemetry import emit as _emit_telemetry
 except ImportError:
     _emit_telemetry = None  # type: ignore
+
+# import 链结束的时点。固定开销 = 导入 + argparse + 收尾；这里把导入那段
+# 单独报出来，因为它的可控性最好（延迟导入 / 拆模块就是冲它去的）。
+_IMPORTS_DONE = time.perf_counter()
 
 
 # ── 时间辅助（时间窗归一化 / published_at 解析 / 后过滤 / 排序）──────────────
@@ -1347,12 +1358,63 @@ _PRIMARY_GRACE_S = 2.0
 _PER_ENGINE_BUDGET_S = 10.0
 
 
+# ── 阶段耗时（--explain-timing）─────────────────────────────────────────────
+
+class StageTiming:
+    """搜索各阶段墙钟耗时（毫秒）。
+
+    为什么要有它：本仓此前的性能结论只能靠**外挂**打点得出——importtime 看冷
+    启动、cProfile 看 CPU、临时包装模块级函数看阶段——「最大瓶颈在哪」不是一个
+    工具能自答的问题，换个人、换台机器就得重做一遍。有了它，一次
+    `--explain-timing` 就能看到钱花在哪：网络等待 vs 本地 CPU vs 固定开销。
+
+    刻意不默认开启、不进默认输出：计时本身要读 `perf_counter`（每阶段一次，
+    微秒级），而输出体积是受 `test_context_budget` 门禁约束的。
+    """
+
+    __slots__ = ("marks",)
+
+    def __init__(self) -> None:
+        self.marks: dict[str, float] = {}
+
+    def add(self, stage: str, ms: float) -> None:
+        # 保留到微秒：1 位小数会把亚毫秒阶段（本地融合/去重在热进程里常 <0.1ms）
+        # 全压成 0.0，看起来像「没测到」。多出的两位数字对输出体积可忽略。
+        self.marks[stage] = round(self.marks.get(stage, 0.0) + ms, 3)
+
+    def summary(self, total_ms: int | None = None) -> dict[str, Any]:
+        """按耗时降序返回，并附占比。
+
+        占比才是行动依据：「rerank 213 ms」本身说明不了什么，「占 59%」才说明
+        该不该动它。默认以**各阶段之和**为分母（自洽，纯 CPU 口径，不含进程
+        启动）；调用方给出 total_ms 时以它为准。
+        """
+        # 不取整：热进程里各阶段合计常不足 1 ms，`int()` 会把 0.9 截成 0，
+        # 占比随即全部变成 0%——看着像「没测到」，实际是被自己的取整吃掉了。
+        total = float(total_ms) if total_ms else sum(self.marks.values())
+        rows = [{"stage": k, "ms": v,
+                 "pct": (round(v * 100.0 / total, 1) if total else 0.0)}
+                for k, v in sorted(self.marks.items(), key=lambda kv: -kv[1])]
+        return {"stages_ms": round(total, 3), "stages": rows}
+
+
+def _tick(timing: StageTiming | None) -> float | None:
+    """取时点；未开计时返回 None——关闭时连 perf_counter 都不调。"""
+    return time.perf_counter() if timing is not None else None
+
+
+def _tock(timing: StageTiming | None, stage: str, t0: float | None) -> None:
+    if timing is not None and t0 is not None:
+        timing.add(stage, (time.perf_counter() - t0) * 1000.0)
+
+
 def execute_search(query: str, decision: dict[str, Any], max_results: int,
                    timeout: int, depth: str, cache: SearchCache, skip_cache: bool,
                    mode: str = "auto",
                    since: str | None = None, until: str | None = None,
                    sort: str = "relevance",
-                   on_progress: Optional[Callable[[Stage, dict[str, Any]], None]] = None) -> dict[str, Any]:
+                   on_progress: Optional[Callable[[Stage, dict[str, Any]], None]] = None,
+                   timing: StageTiming | None = None) -> dict[str, Any]:
     """执行搜索：缓存 → 熔断/负缓存 → 引擎 → 融合 → 精排 → 过滤 → 写缓存。"""
     domain = decision.get("domain") or "general"
     engine_label = decision.get("engine", "auto")
@@ -1425,8 +1487,10 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     # combo 缓存命中（含 depth + 柔性命中）
     if not skip_cache:
         t_cache_start = time.time()
+        _tk_cache = _tick(timing)
         hit = cache.get(query, cache_engine_key, max_results, domain=domain,
                         mode=mode, depth=depth)
+        _tock(timing, "cache_lookup", _tk_cache)
         if hit:
             cache_elapsed = int((time.time() - t_cache_start) * 1000)
             if on_progress:
@@ -1436,7 +1500,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 tfidf_scores = []
             # 排序在缓存读出后、返回前：缓存内容保持 score 序，sort 只改展示顺序
             hit_results = _sort_results(hit.get("results", []), sort)
-            return {
+            _hit = {
                 "query": query, "engine": engine_label, "engines": engines,
                 "engines_combo": engines_combo, "cached": True,
                 "cache_level": hit.get("_cache_level", "L?"),
@@ -1452,6 +1516,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 "engine_outcomes": hit.get("engine_outcomes") or [],
                 "time_filtered": 0,
             }
+            if timing is not None:
+                _hit["timing"] = timing.summary()
+            return _hit
 
     if on_progress:
         on_progress(Stage.SEARCHING, {"engines": engines})
@@ -1463,6 +1530,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         breaker = None
 
     t0 = time.time()
+    _tk_dispatch = _tick(timing)
     raw_results: dict[str, list[dict[str, Any]]] = {}
     engine_outcomes: list[dict[str, Any]] = []
     engine_latency: dict[str, int] = {}
@@ -1954,6 +2022,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
 
     wasted_ms = nonlocal_wasted[0]
     elapsed = int((time.time() - t0) * 1000)
+    _dispatch_ms = elapsed
+    _tock(timing, "dispatch", _tk_dispatch)
+    _tk_fusion = _tick(timing)
 
     # 融合
     valid_lists = [
@@ -2047,6 +2118,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     # 必须放在 D6 补搜之后：那是最后一个 _ingest 调用点，flush 提前会让
     # 补搜引擎的记账永远落不了盘（2026-09-13 审查实锤）。
     quota_batch.flush()
+    _tock(timing, "fusion", _tk_fusion)
+    _tk_dedupe = _tick(timing)
 
     # ── P0：过滤 SERP/跳转 URL（搜索结果页、baidu.com/link 等不可当信源正文）──
     if merged:
@@ -2068,6 +2141,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         except Exception as _e:
             import logging
             logging.getLogger("unified_search").debug(f"minhash 去重跳过: {type(_e).__name__}")
+    _tock(timing, "dedupe", _tk_dedupe)
+    _tk_rerank = _tick(timing)
 
     # ── P2：多语言语言偏好软排序（ja/ko 前置含目标语言字符结果，软排不删除）──
     try:
@@ -2236,6 +2311,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     elif not local_rerank_on and reranker_status in _RERANK_DEGRADED_STATUSES:
         rank_method = "none"
 
+    _tock(timing, "rerank", _tk_rerank)
+    _tk_signals = _tick(timing)
+
     if merged:
         merged = _apply_consensus_and_sort(merged, max_results)
 
@@ -2243,6 +2321,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
 
     # ── P0-004：关键事实交叉标记（仅 deep/auto 且结果 ≥3；fast 跳过）──
     fact_alignment: dict[str, Any] | None = _align_facts_safe(merged, mode, depth)
+
+    _tock(timing, "signals", _tk_signals)
+    _tk_cache_write = _tick(timing)
 
     if on_progress:
         on_progress(Stage.MERGING, {"count": len(merged)})
@@ -2272,6 +2353,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             query, cache_engine_key, max_results, result_payload,
             domain=domain, ttl=effective_ttl, mode=mode, depth=depth,
         )
+    _tock(timing, "cache_write", _tk_cache_write)
 
     # 自适应学习
     try:
@@ -2362,6 +2444,22 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     }
     if lang_pref_info is not None:
         out["lang_pref"] = lang_pref_info
+    if timing is not None:
+        # 并发效率：dispatch 是墙钟，engine_latency 之和是各引擎各自耗时。
+        # 比值远小于引擎数说明并发没排满（或某个慢源独占尾部），是判断
+        # 「该加并发还是该摘慢源」的直接依据。
+        eng_sum = sum(engine_latency.values())
+        out["timing"] = timing.summary()
+        out["timing"]["elapsed_ms"] = elapsed
+        out["timing"]["dispatch"] = {
+            "wall_ms": _dispatch_ms,
+            "engines_run": len(engine_latency),
+            "engine_sum_ms": eng_sum,
+            "parallel_efficiency": (round(eng_sum / _dispatch_ms, 2)
+                                    if _dispatch_ms else None),
+            "wasted_ms": wasted_ms,
+            "early_stopped": early_stopped,
+        }
     return out
 
 
@@ -2466,7 +2564,8 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
                  sort: str = "relevance",
                  include_local: bool = False,
                  include_domains: list[str] | None = None,
-                 exclude_domains: list[str] | None = None) -> dict[str, Any]:
+                 exclude_domains: list[str] | None = None,
+                 timing: StageTiming | None = None) -> dict[str, Any]:
     """统一搜索便捷入口。
 
     执行分层（不阻塞日常）：
@@ -2576,15 +2675,19 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
             search_query = rewritten
 
     if local_first:
+        _tk_route = _tick(timing)
         decision = route_query(
             original_query, engine_override="local_search", mode=mode,
             depth=depth, context=context, engines_boost=engines_boost,
         )
+        _tock(timing, "route", _tk_route)
     else:
+        _tk_route = _tick(timing)
         decision = route_query(
             original_query, engine_override=engine, mode=mode,
             depth=depth, context=context, engines_boost=engines_boost,
         )
+        _tock(timing, "route", _tk_route)
     if context == "research":
         # 研究子查询禁早停：第一个「有结果」的垂直目录（如 models_dev 的
         # 模型规格页）不等于研究证据齐了，跑满 combo 再 RRF 融合。
@@ -2604,7 +2707,7 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
         query=search_query, decision=decision, max_results=n,
         timeout=timeout, depth=depth, cache=cache,
         skip_cache=skip_cache, mode=mode, on_progress=on_progress,
-        since=since, until=until, sort=sort,
+        since=since, until=until, sort=sort, timing=timing,
     )
     # 对外仍报告用户原始 query
     result["query"] = original_query
@@ -2773,6 +2876,9 @@ def _strip_for_agent(payload: dict[str, Any]) -> dict[str, Any]:
         # limitations/recovery/time_filter_warning 一并剥掉，agent 无从判断
         # 「这批结果能用到什么程度」（2026-09-15 输出契约审查）。
         "limitations", "recovery", "time_filter_warning",
+        # 阶段耗时：**显式要求才有**（--explain-timing），剥掉会让这个开关在
+        # agent 档下恒为空——请求了却拿不到，比不提供更糟。
+        "timing",
     )
     out: dict[str, Any] = {k: payload[k] for k in keep_top
                            if payload.get(k) is not None}
@@ -2816,6 +2922,26 @@ def build_sources(results: list[Any] | None) -> list[dict[str, Any]]:
 
 
 # ── 输出格式化 ─────────────────────────────────────────────────────────────────
+
+def format_timing(t: dict[str, Any]) -> str:
+    """人读格式的阶段耗时表（`--explain-timing`，非 JSON 分支）。"""
+    lines = ["", "=== 阶段耗时 ==="]
+    for row in t.get("stages") or []:
+        lines.append(f"  {row['stage']:<14}{row['ms']:>9.1f} ms  {row['pct']:>5.1f}%")
+    d = t.get("dispatch") or {}
+    if d:
+        lines.append(
+            f"  引擎并发        墙钟 {d.get('wall_ms')} ms / 引擎合计 "
+            f"{d.get('engine_sum_ms')} ms → 并发效率 "
+            f"{d.get('parallel_efficiency')}（跑了 {d.get('engines_run')} 个，"
+            f"早停={d.get('early_stopped')}，浪费 {d.get('wasted_ms')} ms）")
+    if "overhead_ms" in t:
+        lines.append(
+            f"  固定开销        {t['overhead_ms']} ms"
+            f"（其中 import {t.get('import_ms')} ms；不含解释器自身启动）")
+        lines.append(f"  进程总计        {t.get('process_ms')} ms")
+    return "\n".join(lines)
+
 
 def format_text_output(results: dict[str, Any]) -> str:
     """日常搜索人读格式：条目正文 + 底部「相关信源」链接（类传统 SERP）。"""
@@ -3021,6 +3147,11 @@ def main():
     parser.add_argument("--no-envelope", action="store_true",
                         help="不附加 candidates/coverage/limitations")
     parser.add_argument(
+        "--explain-timing", action="store_true",
+        help="附加各阶段墙钟耗时（stages/dispatch 并发效率）；用于回答"
+             "「这次搜索的瓶颈在哪」，默认关（不进默认输出，省上下文）",
+    )
+    parser.add_argument(
         "--fields", choices=("full", "agent"), default="full",
         help="JSON 字段档位：full=全量（默认）；agent=只留答案内容（剥遥测标量"
              "与 null 键，每条 result 留 title/url/snippet/source/score 等；"
@@ -3092,6 +3223,10 @@ def main():
 
     # 归档需要 envelope；--archive 时强制保留
     use_envelope = (not args.no_envelope) or args.archive
+    # 阶段耗时：只在显式要求时收集（默认零开销、不进默认输出）
+    _timing = StageTiming() if args.explain_timing else None
+    _tk_total = _tick(_timing)
+
     results = super_search(
         query=args.query,
         engine=args.engine,
@@ -3111,8 +3246,20 @@ def main():
         sort=args.sort,
         include_domains=[d for d in args.include_domains.split(",") if d.strip()] or None,
         exclude_domains=[d for d in args.exclude_domains.split(",") if d.strip()] or None,
+        timing=_timing,
     )
     results["query"] = args.query
+
+    # 固定开销（import + argparse + 收尾）：缓存命中时它占墙钟大头，而它不出现
+    # 在任何阶段里——不显式报出来，看的人会把「启动 80 ms」当成「搜索 80 ms」，
+    # 优化方向就找错了。
+    if _timing is not None and "timing" in results:
+        _now_ms = (time.perf_counter() - _MODULE_T0) * 1000.0
+        _stages = results["timing"].get("stages_ms") or 0
+        results["timing"]["import_ms"] = round(
+            (_IMPORTS_DONE - _MODULE_T0) * 1000.0, 1)
+        results["timing"]["overhead_ms"] = round(max(0.0, _now_ms - _stages), 1)
+        results["timing"]["process_ms"] = round(_now_ms, 1)
 
     # 本地命中并入（默认关）：seek 结果尾部拼入，来源 local_files，不参与融合评分
     if args.include_local:
@@ -3184,6 +3331,8 @@ def main():
         print(dumps(public))
     else:
         print(format_text_output(results))
+        if results.get("timing"):
+            print(format_timing(results["timing"]))
         if results.get("archive"):
             ar = results["archive"]
             print(f"  archived → {ar.get('run_dir')}")
