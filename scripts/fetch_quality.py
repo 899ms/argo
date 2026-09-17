@@ -54,6 +54,7 @@ def _assess_quality(result: dict) -> dict:
             security = {}
 
     result.update({
+        "quality_breakdown": quality_breakdown(content, html),
         "content_ok": content_ok,
         "page_type": page_type,
         "source_type": source_type,
@@ -117,30 +118,70 @@ def _detect_page_type(html: str, content: str, url: str = "") -> str:
         return "unknown"
 
 
-def _compute_quality(content: str, html: str) -> float:
-    """计算质量评分（0-1）。
+# 评分口径版本：公式一改就要动它。
+#
+# 质量分随结果写进缓存（TTL 最长 86400s），公式变更后旧条目里的分数会**静默
+# 沿用**——调用方看到的是已经不再成立的口径，而且无从分辨。这与正文产出口径
+# 变化的情形同构（见 cache.FETCH_PIPELINE_VERSION）；区别是评分不需要重新联网，
+# 用条目里已有的 content 就地重算即可，所以版本记在条目里而不是并进缓存键。
+QUALITY_FORMULA_VERSION = 3
 
-    html 参数的用途（此前被忽略，本版修正）：区分「正文丰富的文章页」与
-    「正文够长但其实混入导航/列表噪声的页面」。仅凭 content 无法分辨两者——
-    列表页把侧栏链接抽出来也能拼出上万字符，word_count 与 text_density 都虚高。
-    用 html 里的结构信号（article/main 语义标签、段落数、链接密度）做修正。
 
-    计算方式保持兼容：修正项是**小幅加减分**（-0.1 ~ +0.15），不改变量纲，
-    只让「有真实文章结构」的页面上浮。html 为空时修正为 0，退化为原行为
-    （markdown-only 源没有原始 HTML）。
+# CJK 统一表意文字 + 日文假名 + 谚文：这些文字之间不靠空格分词，
+# `content.split()` 会把整段中文算成个位数个「词」。
+_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+                     r"\u3040-\u30ff\uac00-\ud7af]")
+# 折算比：中文约 1.6 字/词，取 0.5（即 2 字折 1 词）偏保守——宁可让中文
+# 晚一点饱和，也不系统性高估。
+_CJK_WORDS_PER_CHAR = 0.5
+
+
+def effective_words(content: str) -> int:
+    """有效词数：拉丁文按空白切词，CJK 按字折算。
+
+    为什么不能直接用 `content.split()`：它按空白切分，而中文没有词间空格——
+    实测同一体量的页面，英文得 1,220「词」，中文只有 85，导致四项加权里的
+    word_count 项（权重 0.4）对中文几乎是零分（0.07 vs 0.40），中文内容总分
+    被系统性压低约 0.3。后果不是显示难看，而是**中文信息源在筛选时被更激进地
+    判为低质**——而这项判断本该与语种无关。
     """
     if not content:
-        return 0.0
-    word_count = len(content.split())
+        return 0
+    cjk = len(_CJK_RE.findall(content))
+    latin = len(_CJK_RE.sub(" ", content).split())
+    return latin + int(cjk * _CJK_WORDS_PER_CHAR)
+
+
+def quality_breakdown(content: str, html: str = "") -> dict:
+    """质量分的**分项依据**：每个分量得了多少、为什么。
+
+    只给一个总分时，调用方无法分辨「分低是因为太短」还是「因为全是导航链接」，
+    而这两者的处置完全不同。四项加权分与结构修正项各自落出来，并指出拖累
+    总分的那一项，结论才可用。
+
+    已知残留偏差：density 项量的是「非空白字符占比」，而中文词间本就不写空格，
+    因此中文在这一项上天然接近满分，英文约 0.85，折算到总分实测 +0.04~0.06 的系统差（等有效词数下）。
+    量级比修复前的词数偏差（−0.29）小约六倍，且方向不再惩罚任一语种，
+    故不动它——真正的密度指标需要语种感知的分母，那是另一件事。
+    """
+    if not content:
+        return {"total": 0.0, "version": QUALITY_FORMULA_VERSION,
+                "terms": {}, "bonus": 0.0,
+                "inputs": {"chars": 0, "word_count": 0, "cjk_chars": 0, "text_density": 0.0,
+                           "has_structure": False, "html": bool(html)},
+                "drag": "empty"}
+    cjk_chars = len(_CJK_RE.findall(content))
+    word_count = effective_words(content)
     text_density = len(content.replace(" ", "").replace("\n", "")) / max(len(content), 1)
     has_structure = bool(re.search(r'[.!?。！？].{10,}[.!?。！？]', content))
 
-    score = min(1.0, (
-        0.4 * min(word_count / 500, 1.0) +
-        0.3 * text_density +
-        0.2 * (1.0 if has_structure else 0.0) +
-        0.1 * (1.0 if len(content) > 1000 else 0.0)
-    ))
+    terms = {
+        "word_count": 0.4 * min(word_count / 500, 1.0),
+        "density": 0.3 * text_density,
+        "structure": 0.2 * (1.0 if has_structure else 0.0),
+        "length": 0.1 * (1.0 if len(content) > 1000 else 0.0),
+    }
+    score = min(1.0, sum(terms.values()))
 
     bonus = 0.0
     if html:
@@ -157,6 +198,28 @@ def _compute_quality(content: str, html: str) -> float:
             bonus -= 0.05                      # 链接密度过高 → 更像列表页
         bonus = max(-0.1, min(0.15, bonus))
 
-    return round(min(1.0, max(0.0, score + bonus)), 2)
+    # 拖累项：离自己的满分最远的那个分量（bonus 为负时归因到 structure，因为
+    # 结构修正是唯一会因链接密度扣分的地方）
+    weights = {"word_count": 0.4, "density": 0.3, "structure": 0.2, "length": 0.1}
+    drag = max(weights, key=lambda k: weights[k] - terms[k])
+    if bonus < 0:
+        drag = "structure"
+
+    return {
+        "total": round(min(1.0, max(0.0, score + bonus)), 2),
+        "version": QUALITY_FORMULA_VERSION,
+        "terms": {k: round(v, 3) for k, v in terms.items()},
+        "bonus": round(bonus, 3),
+        "inputs": {"chars": len(content), "word_count": word_count,
+                   "cjk_chars": cjk_chars,
+                   "text_density": round(text_density, 3),
+                   "has_structure": has_structure, "html": bool(html)},
+        "drag": drag if score + bonus < 0.85 else None,
+    }
+
+
+def _compute_quality(content: str, html: str) -> float:
+    """质量评分（0-1）。分项依据见 quality_breakdown——公式只此一处，避免分叉。"""
+    return quality_breakdown(content, html)["total"]
 
 

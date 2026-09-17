@@ -1237,6 +1237,18 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                 if max_chars and len(content) > max_chars:
                     out["content"] = content[:max_chars]
                     out["length"] = len(out["content"])
+                # 评分口径变了 → 条目里的旧分不再成立，就地重算。
+                # 正文仍在条目里（它才是贵的那部分），为一个公式改动去重新
+                # 联网不值得。html 未被缓存，结构修正项拿不到，故标注口径来源，
+                # 让调用方知道这个分与新鲜抓取的分不是同一种计算。
+                try:
+                    _v = (_quality.QUALITY_FORMULA_VERSION
+                          if hasattr(_quality, "QUALITY_FORMULA_VERSION") else 0)
+                    if (out.get("quality_breakdown") or {}).get("version") != _v:
+                        out = _quality.assess(out)
+                        out["quality_basis"] = "rescored"
+                except Exception:
+                    pass
                 out["cached"] = True
                 out["cache_level"] = hit.get("_cache_level", "L?")
                 out["url"] = url
