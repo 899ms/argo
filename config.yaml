@@ -645,7 +645,7 @@ domains:
   parallel: false
   patterns:
   - (?i)(专利|patent|发明|实用新型|外观设计|权利要求|IPC分类|技术方案|优先权)
-  - (?i)\b(patents?|invention|prior\s*art|claims|specification|assignee|filed\s+by)\b
+  - (?i)\b(patents?|invention|prior\s*art|claims|assignee|filed\s+by|patents?\s+specification)\b
   - (?i)(特許|意匠|実用新案|출원|특허)
   primary: google_patents
 - desc: 加密货币/币种查询

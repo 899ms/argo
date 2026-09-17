@@ -671,7 +671,7 @@
     {
       "name": "route:R_en_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'itunes', 'douban_movie', 'tvmaze'] lang=en",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie', 'itunes', 'tvmaze'] lang=en",
       "meta": {
         "id": "R_en_film",
         "q": "Inception movie director",
@@ -681,8 +681,8 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "itunes",
           "douban_movie",
+          "itunes",
           "tvmaze"
         ],
         "primary_lang": "en"
@@ -691,7 +691,7 @@
     {
       "name": "route:R_zh_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'itunes', 'douban_movie', 'tvmaze'] lang=zh",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie', 'itunes', 'tvmaze'] lang=zh",
       "meta": {
         "id": "R_zh_film",
         "q": "肖申克的救赎 主演",
@@ -701,8 +701,8 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "itunes",
           "douban_movie",
+          "itunes",
           "tvmaze"
         ],
         "primary_lang": "zh"
@@ -711,7 +711,7 @@
     {
       "name": "route:R_en_film2",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'itunes', 'douban_movie', 'tvmaze'] lang=en",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'douban_movie', 'itunes', 'tvmaze'] lang=en",
       "meta": {
         "id": "R_en_film2",
         "q": "Interstellar film cast",
@@ -721,8 +721,8 @@
         "engine": "imdb",
         "combo": [
           "imdb",
-          "itunes",
           "douban_movie",
+          "itunes",
           "tvmaze"
         ],
         "primary_lang": "en"
@@ -731,7 +731,7 @@
     {
       "name": "route:R_ja_film_kana",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'itunes', 'douban_movie', 'local_bing'] lang=ja",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'douban_movie', 'itunes', 'local_bing'] lang=ja",
       "meta": {
         "id": "R_ja_film_kana",
         "q": "宮崎駿 アニメ 映画",
@@ -742,8 +742,8 @@
         "combo": [
           "imdb",
           "anysearch",
-          "itunes",
           "douban_movie",
+          "itunes",
           "local_bing"
         ],
         "primary_lang": "ja"
@@ -752,7 +752,7 @@
     {
       "name": "route:R_ko_film",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'itunes', 'douban_movie', 'local_bing'] lang=ko",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'douban_movie', 'itunes', 'local_bing'] lang=ko",
       "meta": {
         "id": "R_ko_film",
         "q": "기생충 영화 감독",
@@ -763,8 +763,8 @@
         "combo": [
           "imdb",
           "anysearch",
-          "itunes",
           "douban_movie",
+          "itunes",
           "local_bing"
         ],
         "primary_lang": "ko"
@@ -915,7 +915,7 @@
     {
       "name": "route:R_zh_geo",
       "status": "PASS",
-      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikidata'] lang=zh",
+      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikipedia'] lang=zh",
       "meta": {
         "id": "R_zh_geo",
         "q": "埃菲尔铁塔在哪",
@@ -925,7 +925,7 @@
         "engine": "local_openstreetmap",
         "combo": [
           "local_openstreetmap",
-          "wikidata"
+          "wikipedia"
         ],
         "primary_lang": "zh"
       }
@@ -933,7 +933,7 @@
     {
       "name": "route:R_en_geo",
       "status": "PASS",
-      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikidata'] lang=en",
+      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikipedia'] lang=en",
       "meta": {
         "id": "R_en_geo",
         "q": "where is Eiffel Tower",
@@ -943,7 +943,7 @@
         "engine": "local_openstreetmap",
         "combo": [
           "local_openstreetmap",
-          "wikidata"
+          "wikipedia"
         ],
         "primary_lang": "en"
       }
@@ -951,7 +951,7 @@
     {
       "name": "route:R_zh_geo2",
       "status": "PASS",
-      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikidata'] lang=zh",
+      "detail": "domain=geo_places eng=local_openstreetmap combo=['local_openstreetmap', 'wikipedia'] lang=zh",
       "meta": {
         "id": "R_zh_geo2",
         "q": "黄河 流经省份",
@@ -961,7 +961,7 @@
         "engine": "local_openstreetmap",
         "combo": [
           "local_openstreetmap",
-          "wikidata"
+          "wikipedia"
         ],
         "primary_lang": "zh"
       }
@@ -988,7 +988,7 @@
     {
       "name": "route:R_zh_org",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'baidu_baike', 'zh_wikipedia', 'ror'] lang=zh",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia', 'baidu_baike', 'zh_wikipedia'] lang=zh",
       "meta": {
         "id": "R_zh_org",
         "q": "国务院职能",
@@ -998,9 +998,9 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
+          "wikipedia",
           "baidu_baike",
-          "zh_wikipedia",
-          "ror"
+          "zh_wikipedia"
         ],
         "primary_lang": "zh"
       }
@@ -1008,7 +1008,7 @@
     {
       "name": "route:R_en_org",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'zh_wikipedia', 'ror', 'wikipedia'] lang=en",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia', 'zh_wikipedia', 'ror'] lang=en",
       "meta": {
         "id": "R_en_org",
         "q": "NASA founding year",
@@ -1018,9 +1018,9 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
+          "wikipedia",
           "zh_wikipedia",
-          "ror",
-          "wikipedia"
+          "ror"
         ],
         "primary_lang": "en"
       }
@@ -1028,7 +1028,7 @@
     {
       "name": "route:R_en_org2",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'zh_wikipedia', 'ror', 'wikipedia'] lang=en",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia', 'zh_wikipedia', 'ror'] lang=en",
       "meta": {
         "id": "R_en_org2",
         "q": "Apple Inc headquarters",
@@ -1038,9 +1038,9 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
+          "wikipedia",
           "zh_wikipedia",
-          "ror",
-          "wikipedia"
+          "ror"
         ],
         "primary_lang": "en"
       }
@@ -1048,7 +1048,7 @@
     {
       "name": "route:R_zh_org2",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'baidu_baike', 'zh_wikipedia', 'ror'] lang=zh",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia', 'baidu_baike', 'zh_wikipedia'] lang=zh",
       "meta": {
         "id": "R_zh_org2",
         "q": "清华大学 创办年份",
@@ -1058,9 +1058,9 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
+          "wikipedia",
           "baidu_baike",
-          "zh_wikipedia",
-          "ror"
+          "zh_wikipedia"
         ],
         "primary_lang": "zh"
       }
@@ -1108,7 +1108,7 @@
     {
       "name": "route:R_zh_weather",
       "status": "PASS",
-      "detail": "domain=weather_query eng=open_meteo combo=['open_meteo', 'weather', 'weather_cn', 'local_bing', 'local_openstreetmap'] lang=zh",
+      "detail": "domain=weather_query eng=open_meteo combo=['open_meteo', 'byted', 'weather', 'weather_cn', 'local_openstreetmap'] lang=zh",
       "meta": {
         "id": "R_zh_weather",
         "q": "北京 天气",
@@ -1118,9 +1118,9 @@
         "engine": "open_meteo",
         "combo": [
           "open_meteo",
+          "byted",
           "weather",
           "weather_cn",
-          "local_bing",
           "local_openstreetmap"
         ],
         "primary_lang": "zh"
@@ -1129,15 +1129,16 @@
     {
       "name": "route:R_en_weather",
       "status": "PASS",
-      "detail": "domain=weather_query eng=weather combo=['weather', 'weather_cn'] lang=en",
+      "detail": "domain=weather_query eng=byted combo=['byted', 'weather', 'weather_cn'] lang=en",
       "meta": {
         "id": "R_en_weather",
         "q": "weather Tokyo",
         "scenario": "weather",
         "lang": "en",
         "domain": "weather_query",
-        "engine": "weather",
+        "engine": "byted",
         "combo": [
+          "byted",
           "weather",
           "weather_cn"
         ],
@@ -1314,7 +1315,7 @@
     {
       "name": "route:R_ko_gen",
       "status": "PASS",
-      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'itunes', 'douban_movie', 'local_bing'] lang=ko",
+      "detail": "domain=film_search eng=imdb combo=['imdb', 'anysearch', 'douban_movie', 'itunes', 'local_bing'] lang=ko",
       "meta": {
         "id": "R_ko_gen",
         "q": "한국 영화 추천",
@@ -1325,8 +1326,8 @@
         "combo": [
           "imdb",
           "anysearch",
-          "itunes",
           "douban_movie",
+          "itunes",
           "local_bing"
         ],
         "primary_lang": "ko"
@@ -1407,17 +1408,17 @@
     {
       "name": "route:R_zh_gen",
       "status": "PASS",
-      "detail": "domain=chinese_tech_deep eng=octen combo=['octen', 'parallel'] lang=zh",
+      "detail": "domain=chinese_tech_deep eng=byted combo=['byted', 'octen'] lang=zh",
       "meta": {
         "id": "R_zh_gen",
         "q": "如何学习机器学习",
         "scenario": "general",
         "lang": "zh",
         "domain": "chinese_tech_deep",
-        "engine": "octen",
+        "engine": "byted",
         "combo": [
-          "octen",
-          "parallel"
+          "byted",
+          "octen"
         ],
         "primary_lang": "zh"
       }
@@ -1515,7 +1516,7 @@
     {
       "name": "route:N_en_history",
       "status": "PASS",
-      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'zh_wikipedia', 'ror', 'wikipedia'] lang=en",
+      "detail": "domain=org_entity eng=wikidata combo=['wikidata', 'wikipedia', 'zh_wikipedia', 'ror'] lang=en",
       "meta": {
         "id": "N_en_history",
         "q": "who invented the printing press",
@@ -1525,9 +1526,9 @@
         "engine": "wikidata",
         "combo": [
           "wikidata",
+          "wikipedia",
           "zh_wikipedia",
-          "ror",
-          "wikipedia"
+          "ror"
         ],
         "primary_lang": "en"
       }
