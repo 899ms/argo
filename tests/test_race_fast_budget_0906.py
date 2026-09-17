@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -93,6 +94,8 @@ class TestWave1Hedged(unittest.TestCase):
                   if patch_grace is not None else []),
                 *([patch.object(search, "_FAST_TOTAL_BUDGET_S", patch_budget)]
                   if patch_budget is not None else []),
+                *([patch.object(search, "_STRAGGLER_GRACE_S", patch_grace)]
+                  if patch_grace is not None else []),
             ):
                 stack.enter_context(p)
             out = execute_search(
@@ -345,6 +348,90 @@ class TestFastTotalBudget(unittest.TestCase):
              "parallel": False, "domain": "general_search", "engine": "g1"},
             fake, mode="auto")
         self.assertGreaterEqual(len(calls), 2, "auto 模式不应受 fast 预算影响")
+
+
+class TestStragglerGraceAfterReject(unittest.TestCase):
+    """质量守卫拒绝早停后的有界宽限窗（2026-09-17）。
+
+    场景（实测「上海 地铁 线路图」）：对冲的备份引擎先回来，但结果与查询
+    零词面交集，覆盖守卫正确地拒绝早停；主引擎仍在跑，而它对本类查询本就
+    答不了（Nominatim 一律 1-3s 后返回 0 条）。原实现在这种情况下会一直等
+    到竞速窗口耗尽，把墙钟拖到 4.4s。
+
+    守卫本身没错，错的是拒绝之后的等待没有上限——本组门锁的就是这个上限。
+    """
+
+    def setUp(self):
+        os.environ.pop("ARGO_STRAGGLER_GRACE_S", None)   # 用 patch 控制，避开环境串扰
+
+    def _exec(self, fake, grace: float, mode: str = "fast"):
+        calls: list[str] = []
+
+        def _spy(q, eng, **kw):
+            calls.append(eng)
+            return fake(q, eng)
+
+        cache = SearchCache(db_path=":memory:")
+        t0 = time.perf_counter()
+        with ExitStack() as stack:
+            for p in (
+                patch("search.engine_search", side_effect=_spy),
+                patch("circuit_breaker.get_breaker", return_value=_AllowAllBreaker()),
+                patch("quota.get_quota_manager", return_value=MagicMock()),
+                patch.object(search, "_PRIMARY_GRACE_S", 0.2),
+                patch.object(search, "_STRAGGLER_GRACE_S", grace),
+            ):
+                stack.enter_context(p)
+            out = execute_search(
+                QUERY,
+                {"engines_combo": ["slow_primary", "fast_garbage"],
+                 "engines": ["slow_primary", "fast_garbage"],
+                 "parallel": True, "domain": "general_search",
+                 "engine": "slow_primary"},
+                max_results=5, timeout=10, depth="fast", cache=cache,
+                skip_cache=True, mode=mode)
+        return out, calls, time.perf_counter() - t0
+
+    def _fake(self):
+        def fake(_q, eng):
+            if eng == "slow_primary":
+                time.sleep(2.5)      # 远超宽限窗；且最后什么也不给
+                return []
+            if eng == "fast_garbage":
+                time.sleep(0.05)
+                return _GARBAGE       # 零词面交集 → 守卫拒绝早停
+            return []
+        return fake
+
+    def test_grace_bounds_wait_after_reject(self):
+        """守卫拒绝后，等待被宽限窗截断——不再等满慢主引擎。"""
+        _out, calls, wall = self._exec(self._fake(), grace=0.4)
+        self.assertLess(wall, 2.0,
+                        f"宽限窗未生效：墙钟 {wall:.2f}s（慢主引擎 2.5s 仍被等满）")
+
+    def test_zero_grace_restores_unbounded_wait(self):
+        """消融对照：宽限窗置 0 回到旧行为（等满慢主引擎）。
+
+        这条同时证明上面的收益确实来自宽限窗，而不是别的巧合。
+        """
+        _out, _calls, wall = self._exec(self._fake(), grace=0.0)
+        self.assertGreater(wall, 2.3,
+                           f"宽限窗置 0 却仍未等慢主引擎：墙钟 {wall:.2f}s")
+
+    def test_no_reject_keeps_waiting(self):
+        """没有结果可判不充分时（备份空手而归）不该提前放弃再看主引擎一眼。
+
+        与上面两条构成对照：宽限窗只由「有结果但被判不充分」触发。
+        """
+        def fake(_q, eng):
+            if eng == "slow_primary":
+                time.sleep(0.4)
+                return _good("p")
+            return []           # 备份空手 → 不触发宽限窗
+
+        _out, calls, wall = self._exec(fake, grace=0.05)
+        self.assertIn("slow_primary", calls)
+        self.assertGreaterEqual(wall, 0.35, "主引擎结果不该被白白放弃")
 
 
 if __name__ == "__main__":

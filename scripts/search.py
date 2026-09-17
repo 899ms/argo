@@ -1023,6 +1023,25 @@ _AUTO_TOTAL_BUDGET_S = 10.0
 # 在窗口后补发 backup，避免拖尾。可调：偏快取小值（省墙钟）、偏省取大值（省成本）。
 _PRIMARY_GRACE_S = 2.0
 
+# 质量守卫拒绝早停后的有界宽限窗（秒）。对冲的备份引擎先回来、但结果被判不充分
+# （计数不足，或与查询零词面交集）时，主引擎还能再跑这么久，之后不再等它。
+# 实测「上海 地铁 线路图」：备份给出 10 条纽约共享单车结果（零词面交集，守卫
+# 正确地拒绝早停），主引擎 Nominatim 对这类查询本就答不了、1-3s 后返回 0 条，
+# 却把墙钟拖到 4.4s。只影响「还等多久」，不改变任何结果的取舍。
+# 0 关闭（回到「等到 race 窗口耗尽」的旧行为，供消融对照）。
+_STRAGGLER_GRACE_S = 1.5
+
+
+def _straggler_grace() -> float:
+    """宽限窗取值（ARGO_STRAGGLER_GRACE_S 覆盖，供消融对照）。"""
+    try:
+        raw = os.environ.get("ARGO_STRAGGLER_GRACE_S")
+        if raw is not None and raw.strip() != "":
+            return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        pass
+    return _STRAGGLER_GRACE_S
+
 # 单引擎墙钟硬预算（秒）：含该引擎的**全部**重试尝试，超预算即停、不再发起
 # 新尝试，由调度层切备选源。
 #
@@ -1200,6 +1219,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         fast_budget_s=_FAST_TOTAL_BUDGET_S,
         auto_budget_s=_AUTO_TOTAL_BUDGET_S,
         primary_grace_s=_PRIMARY_GRACE_S,
+        straggler_grace_s=_straggler_grace(),
     )
     raw_results = _dispatch.raw_results
     engine_outcomes = _dispatch.engine_outcomes
@@ -2002,6 +2022,30 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
         except Exception:
             result.setdefault("limitations", list(extra_lim))
 
+    # 本地正文索引：给每条结果标出「这篇的正文我已经取回过」，并给出全文位置。
+    # 结果原本只有 300 字摘要与核验分，调用方看不出本地已有正文——想核对原文
+    # 只能重新 fetch，或者压根不知道能回看。这里是纯本地查询（冷 L1 下 20 条
+    # 约 1.7 ms），不联网、不额外请求，故无条件附加。
+    try:
+        _urls = [r.get("url") for r in (result.get("results") or [])
+                 if isinstance(r, dict) and r.get("url")]
+        _local = cache.local_status(_urls) if _urls else {}
+        for _r in (result.get("results") or []):
+            if not isinstance(_r, dict):
+                continue
+            _st = _local.get(_r.get("url") or "")
+            if not _st:
+                continue
+            if _st.get("body"):
+                _r["local_body"] = _st["body"]
+            if _st.get("retrieval"):
+                # 取数可用性：把「取不到」（系统类）与「取到了但没用」（内容类）
+                # 分开报，两者都不等于「还没试过」。搜索阶段就能判定的事，不该
+                # 留给调用方抓一次才知道。
+                _r["retrieval"] = _st["retrieval"]
+    except Exception as _e:
+        logging.getLogger("unified_search").debug(f"本地正文索引跳过: {type(_e).__name__}")
+
     # 证据完整链路 P0：回填已核验证据分 + 高后果门控（finance/health/legal）
     # 输出 fetch_required / evidence_loop 汇总，每条结果带 fetch_suggested
     # 与 has_fetched_evidence / post_fetch_absorption（若此前 fetch 过）。
@@ -2015,6 +2059,33 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
             "verified_count": gate["verified_count"],
             "pending_count": gate["pending_count"],
         }
+        # 已知取不到的源不再「建议核验」——建议了也只会白跑一趟。
+        # 必须放在 gate_results 之后：它才是 fetch_suggested 的产出方。
+        # 不改「该不该核验」的判断，只去掉注定徒劳的那部分，并把原因写清楚，
+        # 否则调用方会把「未建议」误读成「不必核验」。
+        try:
+            _blocked = []
+            _keep = []
+            for _u in (result["evidence_loop"].get("suggested") or []):
+                _hit = _local.get(_u) or {}
+                if (_hit.get("retrieval") or {}).get("status") == "blocked":
+                    _blocked.append(_u)
+                else:
+                    _keep.append(_u)
+            if _blocked:
+                result["evidence_loop"]["suggested"] = _keep
+                result["evidence_loop"]["unretrievable"] = _blocked
+                result["evidence_loop"]["pending_count"] = max(
+                    0, int(result["evidence_loop"].get("pending_count") or 0)
+                    - len(_blocked))
+                for _r in (result.get("results") or []):
+                    if isinstance(_r, dict) and _r.get("url") in _blocked:
+                        _r["fetch_suggested"] = False
+                        _r["fetch_blocked"] = (_local[_r["url"]]
+                                               .get("retrieval") or {}).get("reason")
+        except Exception as e:
+            import logging
+            logging.getLogger("unified_search").debug(f"不可取源筛选跳过: {type(e).__name__}")
     except Exception as e:
         import logging
         logging.getLogger("unified_search").debug(f"证据门控跳过: {type(e).__name__}")
@@ -2067,6 +2138,14 @@ _AGENT_RESULT_FIELDS = (
     "published_at", "fetch_suggested", "full_text_url",
     "image_url", "image_license",
     "episode_count", "duration_minutes",
+    # 本地已有正文：是可操作提示而非遥测——告诉 Agent 这条不必重新联网，
+    # 以及全文在哪（被截断时还给出 full_text_path）。剥掉它等于把「随时
+    # 核对原文」这条路径从 Agent 视野里藏起来，而它正是 Agent 最需要的。
+    # 只在确有本地正文时出现，单条约 60 字节。
+    "local_body",
+    # 取数可用性：取不到（系统类）/ 取到了但没用（内容类）。与 local_body 同源，
+    # 都是可操作提示。剥掉等于让调用方抓一次才知道结果，正是它要避免的事。
+    "retrieval", "fetch_blocked",
 )
 
 

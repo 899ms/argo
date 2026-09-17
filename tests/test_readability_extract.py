@@ -17,7 +17,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from readability_extract import extract_readability, score_blocks  # noqa: E402
+from readability_extract import (  # noqa: E402
+    ReadabilityExtractor,
+    extract_readability,
+    score_blocks,
+)
 
 
 def _article_html() -> str:
@@ -130,6 +134,76 @@ class TestReadabilityExtract(unittest.TestCase):
         content, _ = extract_readability(html)
         self.assertIn("真正的正文段落", content)
         self.assertNotIn("甲项", content)
+
+    def test_inline_link_text_preserved(self):
+        """段落内行内链接的文字必须保留。
+
+        历史 bug：锚文本只写进 _current_link（仅用于算链接密度惩罚），拼正文时
+        被丢弃，导致 `See the <a>docs</a> here` 输出成 `See the  here`。
+        链接密集页（Wikipedia）实测召回仅为对照实现的 21.7%。
+        """
+        html = """<html><body><div>
+        <h1>DNS 解析</h1>
+        <p>The <a href="/a">DNS protocol</a> is specified in
+        <a href="/b">RFC 1035</a> and the resolver uses <a href="/c">port 53</a>
+        by default for every lookup request.</p>
+        </div></body></html>"""
+        content, _ = extract_readability(html)
+        self.assertIn("DNS protocol", content)
+        self.assertIn("RFC 1035", content)
+        self.assertIn("port 53", content)
+
+    def test_pure_link_block_discarded(self):
+        """整块文字都来自链接的块（导航项）整体丢弃。
+
+        与行内链接是两回事：段落里的链接要留（否则句子断裂），纯链接块要丢
+        （否则变成负分块，经 _group_score 拖垮同深度正文分组，实测会让
+        MDN / Astro 文档页的正文输出缩水三分之一）。
+        """
+        html = """<html><body>
+        <ul><li><a href="/1">Documentation Overview Guide Page</a></li>
+        <li><a href="/2">API Reference Section Index</a></li></ul>
+        <div><p>这是真正的正文段落，长度足够长，用来验证纯链接块被整体丢弃后
+        不会残留、也不会拖累正文分组的得分。</p></div>
+        </body></html>"""
+        content, _ = extract_readability(html)
+        self.assertNotIn("Documentation Overview Guide Page", content)
+        self.assertIn("这是真正的正文段落", content)
+
+    def test_pure_link_block_dropped_at_flush(self):
+        """契约锁定：整块文字全来自链接的块不得进入候选集。
+
+        这条与「行内链接保留」是一对：段落里的链接要留（丢了句子就断），
+        纯链接块要丢——它们的分数是负的，留在与正文同深度的大分组里会把
+        整个分组拖下去。实测真实页面（MDN）去掉这条后正文输出从 1,136 字
+        掉到 500 字，Astro / docs.python.org 同样缩水约三成。
+
+        这里直接断言块的产出契约，是因为该退步只在「存在竞争分组」时才显形，
+        合成夹具很难稳定复现；退步的真实量级记录在上方。
+        """
+        # 导航项必须长过短块阈值（30 字），否则会被长度规则先丢掉，
+        # 这条规则就永远测不到——这正是先前那版门失效的原因。
+        html = """<html><body><article>
+        <ul><li><a href="/a">Syntax 语法参考与全部请求方法的完整索引条目以及补充说明</a></li>
+        <li><a href="/b">Methods 请求方法一览表与语义说明汇总索引以及注意事项</a></li></ul>
+        <p>这是正文段落，内容足够长，用于触发块产出并验证行内链接不受影响。</p>
+        </article></body></html>"""
+        ext = ReadabilityExtractor()
+        ext.feed(html)
+        offenders = [b.text for b in ext._blocks
+                     if b.link_chars and b.link_chars >= len(b.text)]
+        self.assertEqual(offenders, [], f"纯链接块混入候选集: {offenders}")
+        # 反向保护：段落里的行内链接不能因此被一起丢掉
+        self.assertTrue(any("这是正文段落" in b.text for b in ext._blocks))
+
+    def test_link_only_short_block_still_dropped(self):
+        """短纯链接块（面包屑）不因锚文本入正文而复活。"""
+        html = """<html><body>
+        <div class="crumbs"><a href="/">首页</a><a href="/a">栏目</a></div>
+        <div><p>正文段落内容足够长，用于验证面包屑不会因为锚文本保留而重新出现在输出里。</p></div>
+        </body></html>"""
+        content, _ = extract_readability(html)
+        self.assertNotIn("首页", content)
 
     def test_score_blocks_placeholder_keeps_order(self):
         """P1 占位：无 query 精排时保持原顺序。"""

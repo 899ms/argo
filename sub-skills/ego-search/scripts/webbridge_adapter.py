@@ -20,6 +20,10 @@ from typing import Any
 
 # 同目录 safety
 _SCRIPT_DIR = Path(__file__).resolve().parent
+# argo 核心 scripts（全文存档等公共能力）；与本目录其他模块同一解析方式
+_CORE_SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
+if str(_CORE_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_CORE_SCRIPTS))
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 import safety as safety  # noqa: E402
@@ -202,6 +206,35 @@ def navigate(url: str, session: str, *, new_tab: bool = True, group_title: str =
     )
 
 
+# 登录态正文单独分区存档。本目录既有纪律：登录态载荷不得进公共 SearchCache
+# （会污染 ~/.cache/unified-search/cache.db）。全文存档同样按分区隔离——
+# 键 = sha1(kind|url)，公共读取一律走 kind="text"，取不到这里的条目，
+# 因此不会出现「公开抓取读到了登录态正文」。
+_LOGIN_ARCHIVE_KIND = "text_login"
+_BODY_LIMIT = 8000
+
+
+def _deliver_body(url: str, full: str, limit: int = _BODY_LIMIT) -> tuple[str, dict]:
+    """裁出交付视图；被裁时把完整正文存进登录态分区并标注。
+
+    原先这里直接 `body[:8000]`：静默截断、无标记、无副本。浏览器抓回的长文
+    于是只剩前 8,000 字，事后无法复核被丢掉的部分——与本目录 API 那条
+    （API_DATA_LIMIT 处带了 truncated 标记）应有的做法不一致。
+    """
+    full = full or ""
+    if len(full) <= limit:
+        return full, {"truncated": False, "full_length": len(full)}
+    out: dict = {"truncated": True, "full_length": len(full)}
+    try:
+        from fulltext_store import save as _save_fulltext
+        path = _save_fulltext(url, full, _LOGIN_ARCHIVE_KIND)
+        if path:
+            out["full_text_path"] = path
+    except Exception:
+        pass
+    return full[:limit], out
+
+
 def evaluate(code: str, session: str) -> dict:
     r = _command("evaluate", {"code": code}, session)
     if not r.get("ok"):
@@ -281,19 +314,26 @@ def fetch(
     if not isinstance(data, dict):
         data = {"title": "", "content": str(data or ""), "url": url}
     body = (data.get("content") or "").replace("\n\n\n", "\n\n").strip()
+    extra: dict = {}
     if focus:
         kw = focus.lower()
         paras = body.split("\n\n")
         hit = [p for p in paras if kw in p.lower()]
-        body = "\n\n".join(hit) if hit else body[:8000]
+        if hit:
+            body = "\n\n".join(hit)
+        else:
+            body, extra = _deliver_body(url, body)
         if len(body) < 200:
-            body = (data.get("content") or "")[:8000]
+            body, extra = _deliver_body(url, (data.get("content") or ""))
+    else:
+        body, extra = _deliver_body(url, body)
     return {
         "ok": True,
         "payload": {
             "url": data.get("url") or url,
             "title": data.get("title") or "",
             "content": body,
+            **extra,
             "word_count": len(body.split()),
             "fetch_method": "browser",
             "source": "webbridge",

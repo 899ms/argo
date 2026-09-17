@@ -162,7 +162,7 @@ def no_robots(monkeypatch):
                         lambda url, timeout=5.0: False)
 
 
-def _fail_http(url, max_chars=8000, timeout=8.0):
+def _fail_http(url, max_chars=8000, timeout=8.0, **kwargs):
     return {"url": url, "content": "", "html": "", "title": "",
             "length": 0, "success": False, "error": "HTTP 403",
             "fetch_method": "http"}
@@ -175,16 +175,49 @@ def _ok_result(method, extra=None):
     return r
 
 
-def test_fetch_v3_md_hit_skips_chain(monkeypatch, no_robots):
+def test_fetch_v3_md_variant_adopted_after_http(monkeypatch, no_robots):
+    """变体命中仍被采纳，且不因此升级 TLS/wayback/browser。
+
+    排序契约在 2026-09 改过：探测原本排在主请求**之前**（「命中即省下整条
+    反爬链」）；接上内容协商后这个理由不再成立——协商折在主请求里、不额外
+    花往返，而探测无论命中与否都要先付一次串行请求（实测未命中的站点白等
+    571–1,246 ms）。现在探测降级为**回退**：主请求先走，没拿到 Markdown 才探。
+    本测试锁「仍被采纳 + 不升级」这两点。
+    """
+    monkeypatch.delenv("ARGO_FETCH_MD_VARIANT", raising=False)
+
+    def _plain_http(*a, **k):
+        return _ok_result("http")
+
+    monkeypatch.setattr(fetch_v3, "_http_fetch", _plain_http)
     monkeypatch.setattr(fetch_v3, "_md_variant_fetch",
-                        lambda url, mc, to: _ok_result("md_variant"))
+                        lambda *a, **k: _ok_result("md_variant"))
+
     def _no_chain(*a, **k):
-        raise AssertionError("md 命中后不应再走 HTTP/TLS/wayback/browser 链")
-    monkeypatch.setattr(fetch_v3, "_http_fetch", _no_chain)
+        raise AssertionError("变体命中后不应继续升级 TLS/wayback/browser")
+
     monkeypatch.setattr(fetch_v3, "_tls_spoof_fetch", _no_chain)
-    monkeypatch.setattr(fetch_v3, "_mobile_http_fetch", _no_chain)
+    monkeypatch.setattr(fetch_v3, "_wayback_fetch", _no_chain)
+    monkeypatch.setattr(fetch_v3, "_browser_fetch", _no_chain)
     out = fetch_v3.fetch_v3(_URL, skip_cache=True)
     assert out["fetch_method"] == "md_variant" and out.get("md_variant")
+
+
+def test_fetch_v3_md_probe_skipped_when_negotiation_hit(monkeypatch, no_robots):
+    """协商已拿到 Markdown 时不再回探变体。
+
+    两者产物同类，已命中还回探只是白多一次请求——这正是排序改动要省掉的那次。
+    """
+    monkeypatch.delenv("ARGO_FETCH_MD_VARIANT", raising=False)
+    monkeypatch.setattr(fetch_v3, "_http_fetch",
+                        lambda *a, **k: _ok_result("http_md"))
+
+    def _boom(*a, **k):
+        raise AssertionError("协商已命中，不应再探 AI 友好变体")
+
+    monkeypatch.setattr(fetch_v3, "_md_variant_fetch", _boom)
+    out = fetch_v3.fetch_v3(_URL, skip_cache=True)
+    assert out["fetch_method"] == "http_md"
 
 
 def test_fetch_v3_mobile_adopted_before_tls(monkeypatch, no_robots):
@@ -255,7 +288,7 @@ def test_fetch_v3_douyin_mobile_first(monkeypatch, no_robots):
     """分流型已知站点：移动 UA 首发，桌面请求不得先发（防风控连坐）。"""
     monkeypatch.setenv("ARGO_FETCH_MD_VARIANT", "0")
 
-    def _no_desktop(url, max_chars=8000, timeout=8.0):
+    def _no_desktop(url, max_chars=8000, timeout=8.0, **kwargs):
         raise AssertionError("分流型站点不应先发桌面请求")
 
     monkeypatch.setattr(fetch_v3, "_http_fetch", _no_desktop)
@@ -316,7 +349,7 @@ def test_identity_memory_routes_mobile_first(monkeypatch, no_robots):
     monkeypatch.setattr(fetch_v3, "_identity_mem",
                         {"learned.example.com": time.time() + 3600})
 
-    def _no_desktop(url, max_chars=8000, timeout=8.0):
+    def _no_desktop(url, max_chars=8000, timeout=8.0, **kwargs):
         raise AssertionError("身份记忆命中应移动首发，不发桌面请求")
 
     monkeypatch.setattr(fetch_v3, "_http_fetch", _no_desktop)

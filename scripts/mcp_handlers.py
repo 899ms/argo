@@ -839,21 +839,25 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 output["url"] = fetch_result["url"]
                 return _ok(_cap_extract_output(output), pretty=pretty)
 
+            focus_query = arguments.get("focus")
             fetch_v3_mod = _lazy_cached("fetch_v3")
+            # 聚焦时按放大额度抓取，否则 focus 只能在文档头部选段；
+            # 额度契约与 CLI 同源（focus_extract.focus_fetch_chars）。
             result = fetch_v3_mod.fetch_v3(
                 url=arguments["url"],
-                max_chars=arguments.get("max_chars", 8000),
+                max_chars=fetch_v3_mod._focus_fetch_chars(
+                    arguments.get("max_chars", 8000), focus_query),
                 timeout=_env_int("ARGO_MCP_TIMEOUT_FETCH", int(arguments.get("timeout", 15))),
                 use_browser_fallback=True,
                 force_browser=arguments.get("use_browser", False),
             )
-            focus_query = arguments.get("focus")
             if focus_query and result.get("success"):
                 # 裁剪契约唯一来源在 focus_extract.apply_focus（CLI 的
                 # `argo fetch --focus` 走同一函数），此处不再自写一套：
                 # 两处各写一份的代价是语义静默分叉（CLI 侧曾整个漏掉该参数）。
                 focus_mod = _lazy_cached("focus_extract")
-                focus_mod.apply_focus(result, focus_query)
+                focus_mod.apply_focus(result, focus_query,
+                                      max_chars=arguments.get("max_chars", 8000))
                 if not result.get("focus_applied"):
                     # 正文过短、BM25 无从裁剪：如实标注，不谎报已省 token
                     result["focus_note"] = "内容未达聚焦阈值，返回全文"

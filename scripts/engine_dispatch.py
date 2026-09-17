@@ -155,7 +155,8 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                  per_engine_budget_s: float,
                  fast_budget_s: float,
                  auto_budget_s: float,
-                 primary_grace_s: float) -> DispatchResult:
+                 primary_grace_s: float,
+                 straggler_grace_s: float = 1.5) -> DispatchResult:
     """把 engines 跑完并收账：并发/串行调度 → 结局分类 → 熔断与配额记账。
 
     依赖全部显式注入（原因见模块头）。返回编排产出与两个补搜钩子。
@@ -590,6 +591,17 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                 _race_wait = min(net_timeout + 2,
                                  max(0.1, _deadline - _now()))
                 _race_deadline = _now() + _race_wait
+                # 质量守卫拒绝早停后的**有界**宽限窗。
+                #
+                # 场景（实测「上海 地铁 线路图」）：对冲的备份引擎先回来，但结果与
+                # 查询零词面交集（纽约共享单车站点答上海地铁），覆盖守卫正确地
+                # 拒绝早停；此时主引擎仍在跑，循环会一直等它到 _race_deadline
+                # （net_timeout+2 量级），而它往往本就答不了这个问题
+                # （Nominatim 对「附近 咖啡店」「上海地铁」一律 1-3s 后返回 0 条）。
+                # 守卫没错——它防的是「单引擎垃圾成最终答案」；错的是拒绝之后
+                # 的等待没有上限。这里给它一个宽限窗：拿不到更好的就认了。
+                # 只影响「还等多久」，不改变任何结果的取舍。
+                reject_deadline = None
                 while pending and _now() < _race_deadline:
                     progressed = False
                     for (holder, th, eng) in list(pending):
@@ -601,9 +613,17 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                                 goods, mode=mode, min_results=early_min,
                                 query=query):
                             early_stopped = True
+                        elif goods and straggler_grace_s > 0:
+                            # 有结果但被判不充分（计数或词面覆盖）→ 起宽限窗。
+                            # 只有 >0 才起：`now + 0` 会让下面的判据立刻成立，
+                            # 等于「一有结果被拒就马上放弃主引擎」——那与「关闭
+                            # 宽限窗（回旧行为）」恰好相反。0/负数一律视为关闭。
+                            reject_deadline = _now() + straggler_grace_s
                         pending.remove((holder, th, eng))
                         progressed = True
                     if early_stopped or not pending:
+                        break
+                    if reject_deadline is not None and _now() >= reject_deadline:
                         break
                     if not progressed:
                         # 自适应轮询间隔（同 _run_engines_bounded）

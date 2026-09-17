@@ -143,7 +143,14 @@ argo fetch "https://example.com/long-article" --focus "关键词"   # BM25 聚�
 argo fetch "https://cloudflare-protected.com" --use-browser     # 强制反检测浏览器
 ```
 
-- **降级链顺序**：`{url}.md` 直出探测 → HTTP（桌面/移动 UA，抖音等分流站移动优先）→ TLS 指纹 → jina/Parallel 免费云渲染 → Wayback/浏览器 自动降级 + BM25 聚焦提取 + 质量信号 + 内容安全引擎
+- **降级链顺序**：HTTP（带内容协商；桌面/移动 UA，抖音等分流站移动优先）→ `{url}.md` 直出探测（主请求没拿到 Markdown 才回探）→ TLS 指纹 → jina/Parallel 免费云渲染 → Wayback/浏览器 自动降级 + BM25 聚焦提取 + 质量信号 + 内容安全引擎
+- **内容协商**：HTTP 那一级带 `Accept: text/markdown`，站点愿意给 Markdown 就直接拿走（`fetch_method=http_md`），既省下整条反爬降级链，也保住了站点自己的标题/表格/代码块结构。文档站实测约四成支持；不支持的站点原样返回 HTML，行为不变，故默认常开（`ARGO_FETCH_MD_NEGOTIATE=0` 关闭）。声称 `text/markdown` 却是占位页/错误页/404 的响应一律按 HTML 处理——实测这类假货约占五分之一
+- **截断可见 + 全文可回读**：正文仍按 `--max-chars` 裁剪（token 预算不变），但被裁掉的部分不再丢弃——结果里给 `truncated` / `full_length` / `full_text_path`，完整正文另存一份到状态目录的 `fulltext/`。想复核被裁的那段不必重新联网：
+  ```bash
+  argo fetch "https://example.com/long" --full              # 读全文（优先用存档）
+  argo fetch "https://example.com/long" --offset 20000 --limit 5000   # 翻页读指定区间
+  ```
+  存档只在**确实发生截断**时写入，超上限（单档 8MB / 共 300 份）自动淘汰最旧的；`ARGO_FULLTEXT=0` 关闭
 - **降级触发**：HTTP 失败 / 内容 < 50 字符 / 检测到 CF 挑战 / 检测到 JS shell
 - **Wayback 回退**：失败或空内容自动查最新快照（`fetch_method=wayback` + `snapshot_url`/`snapshot_ts`）
 - **内容安全引擎**：抓取内容先过注入检测再交给 Agent——70+ 中英日韩俄阿希泰模式（指令覆盖/角色操纵/系统提示泄露/越狱/数据外泄/身份冒充/XSS）+ 编码归一化（零宽字符/RTL/Unicode 同形字/base64/URL 编码）+ 语义意图分析 + 风险评分 + 目标脱敏。输出 `content_security.content_clean / risk_score / threat_count / threat_types / redactions / content_lang`

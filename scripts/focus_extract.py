@@ -36,6 +36,53 @@ def _is_heading(block: str) -> bool:
     return False
 
 
+# 目录块识别。目录把一个文档里所有章节标题聚在一个块里，查询命中章节标题时
+# 它的词密度天然碾压正文段落——实测对 RFC 3986 查「6.2.2 Syntax-Based
+# Normalization」，返回的是整篇目录，目标小节一个字没有。
+#
+# 两种 TOC 方言各给一个信号：
+#   纯文本（RFC/论文/书籍）：引导点，如 "6.2.2.  Syntax-Based Normalization . . . 40"
+#   Markdown：整行是一条指向本文锚点的列表链接，如 "- [Getting Started](#getting-started)"
+_TOC_LEADER = re.compile(r"\.\s*\.\s*\.")          # ". . ." / "..." 引导点
+_TOC_MD_LINK = re.compile(r"^\s*[-*+]\s*\[[^\]]+\]\(#")  # "- [标题](#锚)"
+_TOC_MIN_LINES = 4      # 少于 4 行不成目录
+_TOC_LINE_RATIO = 0.6   # 索引行占比达到此值即判为目录
+
+
+def _is_toc_block(block: str) -> bool:
+    """块是否为目录/索引（导航性质，不参与 focus 选块）。"""
+    lines = [ln for ln in block.splitlines() if ln.strip()]
+    if len(lines) < _TOC_MIN_LINES:
+        return False
+    hits = sum(1 for ln in lines
+               if _TOC_LEADER.search(ln) or _TOC_MD_LINK.match(ln))
+    return hits / len(lines) >= _TOC_LINE_RATIO
+
+
+# 重复块识别——页面样板（运行页眉/页脚/页码栏）。
+#
+# 这类块文本几乎逐字重复，且往往很短；BM25 的长度归一化偏爱短块，于是
+# 「RFC 3986  URI Generic Syntax  January 2005」这种每页顶头的运行页眉，
+# 会因为含有查询词 "syntax" 而集体胜出，把真正的正文段落挤出去——实测对
+# RFC 3986 查「6.2.2 Syntax-Based Normalization」，输出几乎全是页眉副本。
+# 一个文本重复出现这么多次，它承载的信息量必然接近于零。
+_DUP_MIN_REPEAT = 3      # 同一文本出现次数达到此值即判为样板
+_DUP_MAX_CHARS = 300     # 只对短文本判重（长段落重复更可能是合法引用）
+
+
+def _boilerplate_blocks(blocks: list[str]) -> set[int]:
+    """返回样板块索引集合（文本重复出现、且长度较短的块）。"""
+    norm: dict[str, list[int]] = {}
+    for i, b in enumerate(blocks):
+        if len(b) > _DUP_MAX_CHARS:
+            continue
+        key = " ".join(b.split()).lower()
+        if key:
+            norm.setdefault(key, []).append(i)
+    return {i for idxs in norm.values() if len(idxs) >= _DUP_MIN_REPEAT
+            for i in idxs}
+
+
 def _split_blocks(text: str) -> list[str]:
     """按空行切分文本为段落块（标题、段落、表格、列表）。"""
     blocks: list[str] = []
@@ -52,8 +99,46 @@ def _split_blocks(text: str) -> list[str]:
     return blocks
 
 
-def focus_extract(content: str, query: str, top_k: int = 5) -> str:
-    """BM25 聚焦提取：从长文本提取与查询最相关的段落。纯 Python，无依赖。"""
+def _fit_to_budget(keep: list[int], blocks: list[str],
+                   scores: list[float], budget: int) -> list[int]:
+    """按相关度优先裁剪保留集，直到正文总长落入预算。
+
+    为什么需要：结果最终按**文档顺序**输出、再由调用方按 max_chars 截断。
+    只按阈值选块时，靠后的高相关块会被整段截掉——实测对 RFC 3986 查
+    「6.2.2 Syntax-Based Normalization」，选中的目标小节排在文档十万字符处，
+    截断后用户手上只剩题头与目录，看上去像 BM25 偏袒目录。
+
+    按分数降序装填（装不下的跳过而不是中断，好让短块也能补上），
+    输出顺序仍由调用方还原为文档序。
+    """
+    if budget <= 0:
+        return keep
+    total = sum(len(blocks[i]) for i in keep) + 2 * max(len(keep) - 1, 0)
+    if total <= budget:
+        return keep
+    kept: list[int] = []
+    acc = 0
+    for i in sorted(keep, key=lambda i: scores[i], reverse=True):
+        seg = len(blocks[i]) + 2
+        if acc + seg > budget:
+            continue
+        kept.append(i)
+        acc += seg
+    if not kept:
+        # 一个完整块都装不下时，至少留下最高分的那个（交由调用方截断）。
+        # 否则输出只剩头部提示行，而调用方还会以为「聚焦成功」——
+        # 交出空正文比不聚焦更糟：实测长小节 + 默认 max_chars=8000 正是这条路径。
+        kept = [max(keep, key=lambda i: scores[i])]
+    return kept
+
+
+def focus_extract(content: str, query: str, top_k: int = 5,
+                  budget: int = 0) -> str:
+    """BM25 聚焦提取：从长文本提取与查询最相关的段落。纯 Python，无依赖。
+
+    budget > 0 时在选块阶段即按相关度装入预算，避免高相关块在后续按
+    max_chars 截断时被砍掉（见 _fit_to_budget）。
+    """
     # 空查询或短文本直接返回原文
     if not query or not content or not content.strip():
         return content
@@ -100,17 +185,37 @@ def focus_extract(content: str, query: str, top_k: int = 5) -> str:
         return s
 
     scores = [score(i) for i in range(n)]
-    keep = [i for i in range(n) if scores[i] >= _THRESHOLD]
+    # 目录与样板块不参与选块——阈值档与兜底档都要排除，否则兜底会把它们
+    # 重新捞回来（这两类都不是「内容」，而是导航与重复装饰）
+    excluded = _boilerplate_blocks(blocks)
+    candidates = [i for i in range(n)
+                  if i not in excluded and not _is_toc_block(blocks[i])]
+    keep = [i for i in candidates if scores[i] >= _THRESHOLD]
 
     # 如果没有段落超过阈值，回靠取得分最高的 top_k 个
     if not keep:
-        keep = sorted(range(n), key=lambda i: scores[i], reverse=True)[:top_k]
+        keep = sorted(candidates, key=lambda i: scores[i], reverse=True)[:top_k]
+
+    # 预算内按相关度择优（不改变输出顺序，见 _fit_to_budget）
+    if budget:
+        keep = _fit_to_budget(keep, blocks, scores, budget)
 
     keep_set = set(keep)
     # 保留被保留段落前的标题（提供上下文）
     for i in keep:
         if i > 0 and _is_heading(blocks[i - 1]) and not _is_heading(blocks[i]):
             keep_set.add(i - 1)
+
+    # 标题回填可能把总量顶回预算之上，再按分数裁一次（标题不参与裁剪，
+    # 它是幸存块的语义锚点）
+    if budget:
+        total = sum(len(blocks[i]) for i in keep_set) + 2 * max(len(keep_set) - 1, 0)
+        if total > budget:
+            headings = {i for i in keep_set if _is_heading(blocks[i])}
+            body = [i for i in keep_set if i not in headings]
+            room = budget - sum(len(blocks[i]) + 2 for i in headings)
+            keep_set = headings | set(
+                _fit_to_budget(body, blocks, scores, max(room, 0)))
 
     # 按原始顺序输出
     kept = "\n\n".join(blocks[i] for i in range(n) if i in keep_set)
@@ -121,7 +226,33 @@ def focus_extract(content: str, query: str, top_k: int = 5) -> str:
     return header + "\n\n" + kept
 
 
-def apply_focus(result: dict, query: str, top_k: int = 5) -> dict:
+# 聚焦场景的抓取额度放大系数——聚焦必须能看到整篇。
+#
+# 若 max_chars 在聚焦前生效，BM25 就只能在文档开头那一段里挑段落。实测对
+# RFC 3986 查「6.2.2 Syntax-Based Normalization」：目标小节在十万字符处，
+# 抓取时早被截掉，聚焦结果退化成题头与目录，看起来像「BM25 偏袒目录」，
+# 真正的原因是截断早于选块。
+#
+# 所以聚焦时先按放大额度取回全文，选块后再裁回用户额度：
+# 内存与缓存条目的代价只在显式使用 --focus 时付出，而它换来的是「能选中」。
+FOCUS_FETCH_MULTIPLIER = 8
+FOCUS_MIN_FETCH_CHARS = 100_000
+# 上限：额度会随抓取结果一起进正文缓存（键含 _max_chars），无上限时
+# 调用方传 max_chars=50000 就能把 400KB 正文写进共享缓存，内存与磁盘都失控。
+# 20 万字符已覆盖绝大多数长文档（RFC 全文约 14 万）。
+FOCUS_MAX_FETCH_CHARS = 200_000
+
+
+def focus_fetch_chars(max_chars: int, query: str | None) -> int:
+    """聚焦场景实际使用的抓取额度；无 query 时原样返回 max_chars。"""
+    if not query:
+        return max_chars
+    return min(max(max_chars * FOCUS_FETCH_MULTIPLIER, FOCUS_MIN_FETCH_CHARS),
+               FOCUS_MAX_FETCH_CHARS)
+
+
+def apply_focus(result: dict, query: str, top_k: int = 5,
+                max_chars: int | None = None) -> dict:
     """把 BM25 聚焦提取应用到抓取结果——CLI 与 MCP 共用的单一入口。
 
     背景：`--focus` / `focus` 这个能力同时暴露在 CLI（`argo fetch URL --focus`）
@@ -138,14 +269,30 @@ def apply_focus(result: dict, query: str, top_k: int = 5) -> dict:
     if not query or not (result.get("content") or "").strip():
         return result
     original = result["content"]
-    focused = focus_extract(original, query, top_k=top_k)
+    # 告知选块阶段的可用额度：留出头部提示行的位置，其余全部给正文，
+    # 这样选出并输出的块恰好落在 max_chars 内，不会在最后一步被截掉。
+    budget = 0
+    if max_chars:
+        header_len = len(
+            f"[Focus: {query!r}; showing 000 of 000 blocks by BM25 relevance. "
+            f"Pass focus='' for the full page.]"
+        ) + 2
+        budget = max(max_chars - header_len, 0)
+    focused = focus_extract(original, query, top_k=top_k, budget=budget)
     result["focus_query"] = query
-    if focused == original:
+    # 正文为空（只剩头部提示行）时退回全文并如实标注未生效——交出空正文
+    # 比不聚焦更糟，且不能让调用方以为省到了 token。
+    body = focused.split("\n\n", 1)[1] if "\n\n" in focused else ""
+    if focused == original or not body.strip():
         result["focus_applied"] = False
         return result
     result["content"] = focused
     result["length"] = len(focused)
     result["focus_applied"] = True
+    # 聚焦前用的是放大额度，此处裁回用户额度（见 focus_fetch_chars）
+    if max_chars and len(result["content"]) > max_chars:
+        result["content"] = result["content"][:max_chars]
+        result["length"] = len(result["content"])
     return result
 
 

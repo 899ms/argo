@@ -38,7 +38,7 @@ def chain_env(monkeypatch):
 
 
 def _fail(method, secs=0.0):
-    def fn(url, max_chars=8000, timeout=8.0):
+    def fn(url, max_chars=8000, timeout=8.0, **kwargs):
         if secs:
             time.sleep(secs)
         return {"url": url, "content": "", "html": "", "title": "", "length": 0,
@@ -46,7 +46,7 @@ def _fail(method, secs=0.0):
     return fn
 
 
-def _shell(url, max_chars=8000, timeout=8.0):
+def _shell(url, max_chars=8000, timeout=8.0, **kwargs):
     return {"url": url, "content": "", "html": "<html><body>x</body></html>",
             "title": "", "length": 0, "success": False, "error": None,
             "fetch_method": "http"}

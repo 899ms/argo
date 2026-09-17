@@ -596,6 +596,22 @@ EMPTY_RESULT_TTL = 45
 # fetch URL 默认 TTL
 FETCH_DEFAULT_TTL = 3600
 
+# 证据分在 fetch 条目里的子键名。做成模块级常量而不是类属性：类会被测试
+# 用工厂函数替换（monkeypatch SearchCache），此时 `SearchCache.KEY` 取不到，
+# 写入路径会静默失败——静默正是这类改动最难发现的地方。
+FETCH_EVIDENCE_KEY = "evidence"
+
+# 取数内容管线版本——它是 fetch 缓存键的一部分，不是元数据。
+#
+# 为什么必须进键：正文缓存按 URL 复用，但「同一个 URL 抓出来的正文长什么样」
+# 取决于产出方式（提取算法、是否走内容协商、降级链顺序）。这些一改，旧条目
+# 就不再是同一份内容。不进键的后果是——改进上线后，先前缓存过的 URL 继续返回
+# 旧的低质正文，新旧并存且无法从外部诊断（用户只会觉得「时好时坏」）。
+#
+# 因此：凡改动正文产出方式，把这个数字 +1。旧条目自然失联、TTL 到期回收，
+# 无需手工清库，也不会把「缓存没刷新」误判成「优化没生效」。
+FETCH_PIPELINE_VERSION = 2
+
 
 class LoginCacheRejected(ValueError):
     """登录态 / 不可缓存载荷禁止写入公共 SearchCache。"""
@@ -901,29 +917,159 @@ class SearchCache:
     # ── fetch URL 缓存 ───────────────────────────────────────────────────────
 
     def get_fetch(self, url: str) -> Optional[dict]:
-        key = self._key(url, "fetch", 0, "fetch", "auto", "any", kind="fetch")
-        return self._read(key)
+        return self._read(self._fetch_key(url))
 
     def set_fetch(self, url: str, payload: dict, ttl: int = FETCH_DEFAULT_TTL):
         """写入 fetch 缓存。登录态正文硬拒绝，防止同 URL 登录页污染公共库。"""
         assert_cacheable(payload, context="SearchCache.set_fetch")
-        key = self._key(url, "fetch", 0, "fetch", "auto", "any", kind="fetch")
-        self._write(key, url, "fetch", 0, payload, "fetch", ttl)
+        self._write(self._fetch_key(url), url, "fetch", 0, payload, "fetch", ttl)
 
-    # ── URL 证据分缓存（证据完整链路 P0）──────────────────────────────────────
-    # 与 fetch 正文缓存隔离（kind 不同），只存轻量证据分，不存正文/HTML。
-    # 生命周期：由 fetch_v3 写入（随正文抓取），TTL 与正文缓存策略保持一致。
+    # 取数可用性：把「取不到」与「取到了但没用」分开。
+    #
+    # 依据是同一批本地记录——正文字段来自 fetch 条目，反面字段同样来自它。
+    # 分流的理由：调用方对这两种失败要做的事完全不同。
+    #   blocked（系统类：robots / 明确拒绝）→ 换源，别在它身上耗
+    #   poor   （内容类：登录墙 / 付费墙 / JS 壳 / 极短）→ 换源或降置信
+    # 两者都不该与「还没试过」混为一谈——实测 14% 的抓取建议指向 robots
+    # 明令禁止的地址，搜索阶段就能判定，却仍然被当作「值得一抓」。
+    _POOR_PAGE_TYPES = ("auth_wall", "paywall", "js_shell")
+    _POOR_MIN_CHARS = 200
+
+    def local_status(self, urls: list[str]) -> dict[str, dict]:
+        """一次遍历给出每个 URL 的本地正文与取数可用性。零联网。
+
+        返回 {url: {"body": {...}|None, "retrieval": {...}}}，只含本地有记录的 URL。
+        """
+        out: dict[str, dict] = {}
+        if not urls:
+            return out
+        try:
+            from fulltext_store import path_for as _ft_path
+        except Exception:
+            _ft_path = None
+        try:
+            from robots_guard import known_blocked as _known_blocked
+        except Exception:
+            _known_blocked = None
+
+        for url in urls:
+            if not url:
+                continue
+            try:
+                hit = self._read(self._fetch_key(url))
+            except Exception:
+                hit = None
+            entry: dict = {}
+
+            # ① 反面记录：以前抓过、结果不可用
+            if hit and not hit.get("success"):
+                err = str(hit.get("error") or "")
+                ret = {"status": "blocked" if hit.get("fetch_method") == "robots_blocked"
+                       else "poor",
+                       "reason": "robots" if hit.get("fetch_method") == "robots_blocked"
+                       else (hit.get("fetch_method") or "fetch_failed")}
+                if err:
+                    ret["detail"] = err[:120]
+                entry["retrieval"] = ret
+            elif hit and hit.get("success"):
+                pt = str(hit.get("page_type") or "")
+                ln = int(hit.get("length") or 0)
+                if pt in self._POOR_PAGE_TYPES:
+                    entry["retrieval"] = {"status": "poor", "reason": pt,
+                                          "detail": f"length={ln}"}
+                elif ln < self._POOR_MIN_CHARS:
+                    entry["retrieval"] = {"status": "poor", "reason": "too_short",
+                                          "detail": f"length={ln}"}
+
+            # ② 正面记录：本地已有正文
+            cached = bool(hit and hit.get("success"))
+            body: dict = {}
+            if cached:
+                body = {
+                    "length": hit.get("length", 0),
+                    "truncated": bool(hit.get("truncated")),
+                    "full_length": hit.get("full_length", hit.get("length", 0)),
+                }
+                if hit.get("full_text_path"):
+                    body["full_text_path"] = hit["full_text_path"]
+            if _ft_path is not None and not body.get("full_text_path"):
+                try:
+                    fp = _ft_path(url, "text")
+                    if fp.is_file():
+                        body["full_text_path"] = str(fp)
+                        if not cached:
+                            body["truncated"] = False
+                            body["full_length"] = fp.stat().st_size
+                except Exception:
+                    pass
+            if body:
+                body["source"] = ("cache+archive" if cached
+                                  and "full_text_path" in body
+                                  else "archive" if not cached else "cache")
+                entry["body"] = body
+
+            # ③ 只有「取不到」的判定才需要 robots 兜底：正文都不在，谈何可用
+            if "retrieval" not in entry and _known_blocked is not None:
+                try:
+                    if _known_blocked(url) is True:
+                        entry["retrieval"] = {"status": "blocked", "reason": "robots"}
+                except Exception:
+                    pass
+
+            if entry:
+                out[url] = entry
+        return out
+
+    def _fetch_key(cls, url: str) -> str:
+        """正文缓存键。读写必须共用此函数——分头拼 key 会静默读写失联。
+
+        管线版本经 mode 位并入（见 FETCH_PIPELINE_VERSION 的说明）。
+        """
+        return cls._key(url, "fetch", 0, "fetch", "auto",
+                        f"pv{FETCH_PIPELINE_VERSION}", kind="fetch")
+
+    # ── URL 证据分：作为 fetch 条目的一个子键存放（2026-09-17 消融）
+    #
+    # 原本是独立的 kind（evidence），实测与 fetch 条目 **6/10 字段重复**、
+    # 同一个 result 字典、同一时刻、同一套 TTL 映射各写一次。拆开的代价：
+    #   - 两个存储 + 两条写路径 + 两条读路径 + 两份 TTL 映射
+    #   - **可能失配**：fetch 缓存拒绝登录态内容时（assert_cacheable 抛错），
+    #     evidence 仍在另一个 try 块里写成功 → 「证据在、正文不在」，
+    #     于是 verify 永久跳过这个 URL，把没核验过的当成已核验过的。
+    # 合并后 1:1 由构造保证。代价实测：冷 L1 下多读 20 条含正文的行
+    # 约 +0.19 ms（1.52 → 1.71 ms），可忽略。
+    EVIDENCE_KEY = FETCH_EVIDENCE_KEY
 
     def get_evidence(self, url: str) -> Optional[dict]:
-        """读 URL → 正文级证据分缓存。未命中返回 None。"""
-        key = self._key(url, "evidence", 0, "evidence", "auto", "any", kind="evidence")
-        return self._read(key)
+        """读 URL 的正文级证据分（从 fetch 条目投影）。未命中返回 None。"""
+        hit = self._read(self._fetch_key(url))
+        ev = (hit or {}).get(self.EVIDENCE_KEY)
+        if not ev:
+            return None
+        # 兼容旧形状：读侧统一带上 url，调用方无需知道存储位置
+        return {**ev, "url": (hit or {}).get("url") or url}
 
-    def set_evidence(self, url: str, evidence: dict, ttl: int = 3600):
-        """写 URL → 正文级证据分缓存。只接受轻量可序列化 dict。"""
-        assert_cacheable(evidence, context="SearchCache.set_evidence")
-        key = self._key(url, "evidence", 0, "evidence", "auto", "any", kind="evidence")
-        self._write(key, url, "evidence", 0, evidence, "evidence", ttl)
+    def set_evidence(self, url: str, evidence: dict, ttl: int | None = None):
+        """把证据分并入该 URL 的 fetch 条目。
+
+        没有 fetch 条目时**不写**——证据分描述的是「这份正文有多可信」，
+        正文都不在，单独留一个分数只会让调用方误判「这条已核验过」。
+        这正是合并要消除的那个失配。
+        """
+        if not evidence:
+            return
+        hit = self._read(self._fetch_key(url))
+        if not hit:
+            return
+        merged = {k: v for k, v in hit.items() if not str(k).startswith("_")}
+        merged[self.EVIDENCE_KEY] = {k: v for k, v in evidence.items()
+                                     if k not in ("url",) and not str(k).startswith("_")}
+        merged["_max_chars"] = hit.get("_max_chars", 0)
+        try:
+            self._write(self._fetch_key(url), url, "fetch", 0, merged, "fetch",
+                        ttl if ttl is not None else FETCH_DEFAULT_TTL)
+        except Exception:
+            pass
 
     def clear(self, older_than_hours: int = 24):
         self._l2.clear(older_than_hours=older_than_hours)

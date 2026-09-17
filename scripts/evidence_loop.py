@@ -315,8 +315,9 @@ def verify_results(results: list[dict[str, Any]],
                 if ev is None:
                     pending.append(r.get("url") or "")
                     continue
-                store_fetch_evidence(r.get("url") or "", ev, cache,
-                                     ttl=ttl_for_fetch_result({"success": True}))
+                # 不再在这里重复写证据：fetch_fn（fetch_v3）成功时已把证据分
+                # 并入该 URL 的正文条目。此处再写一遍是同源同刻的双写，
+                # 合并存储后还会因为「没有正文条目」而变成静默空操作。
                 _record_verify(r, ev, verified, revisions)
     else:
         for r in targets:
@@ -324,8 +325,6 @@ def verify_results(results: list[dict[str, Any]],
             if ev is None:
                 pending.append(r2.get("url") or "")
                 continue
-            store_fetch_evidence(r2.get("url") or "", ev, cache,
-                                 ttl=ttl_for_fetch_result({"success": True}))
             _record_verify(r2, ev, verified, revisions)
 
     summary: dict[str, Any] = {"n": len(revisions)}

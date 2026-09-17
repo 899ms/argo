@@ -9,8 +9,16 @@ from fetch_v3 import fetch_v3 as _fetch3
 
 
 def _extract_fetch(url: str, max_chars: int, timeout: int, raw: bool = True) -> dict:
-    """兼容旧 fetch_page 签名：返回 {success, html, content, url, error}。"""
-    r = _fetch3(url, max_chars=max_chars, timeout=float(timeout))
+    """兼容旧 fetch_page 签名：返回 {success, html, content, url, error}。
+
+    need_html=raw：结构化提取（表格 / Meta / JSON-LD）全部依赖原始 HTML，
+    而 fetch_v3 默认会把 html 字段剥掉。此前这里没传，于是 `argo extract`
+    恒拿不到 HTML、tables/metadata/jsonld 永远是空的——参数叫 raw 却只影响
+    出参、不影响取数，正是「开关看着接上了、其实没接」的形态。
+    另：need_html=True 时内容协商自动停用，该路径不会拿到 Markdown。
+    """
+    r = _fetch3(url, max_chars=max_chars, timeout=float(timeout),
+                need_html=raw)
     out = {"url": r["url"], "content": r.get("content", ""),
            "success": r["success"], "error": r.get("error", "")}
     if raw:

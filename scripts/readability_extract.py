@@ -145,10 +145,13 @@ class ReadabilityExtractor(HTMLParser):
             return
         if self._in_skip or not data.strip():
             return
+        # 锚文本必须同时进正文：链接文字是句子的一部分，丢了就成了
+        # 「See the  for the full harness」。_current_link 保留同样的文本
+        # 只为算 link_chars（链接密度惩罚），两个用途互不替代——惩罚靠
+        # 计分（见 TextBlock.score），不是靠删除。
+        self._current.append(data)
         if self._link_depth > 0:
             self._current_link.append(data)
-        else:
-            self._current.append(data)
 
     # ── 内部 ─────────────────────────────────────────────────────────
 
@@ -157,6 +160,13 @@ class ReadabilityExtractor(HTMLParser):
         link_chars = len("".join(self._current_link).strip())
         self._current = []
         self._current_link = []
+        # 纯链接块（整块文字都来自 <a>，如导航项/面包屑/页脚链接）整体丢弃。
+        # 与「行内链接」必须区分开：段落里的链接是句子的一部分，丢了句子就断了
+        # （见 handle_data）；而整块只有链接的块是导航噪声，留着会变成负分块，
+        # 经 _group_score 拖垮同深度的正文分组——实测会让 MDN / Astro 文档页
+        # 的正文输出反而缩水三分之一。
+        if link_chars and link_chars >= len(text):
+            return
         # 标题类标签（h1-h6）放宽短块阈值：文章标题/小节标题信息密度高，
         # 30 字符下限会把「第一段正文标题内容」这类短标题丢掉。
         # td 单元格同理：表格是原子数据单元（「型号」「15999 元」），
@@ -207,7 +217,8 @@ class ReadabilityExtractor(HTMLParser):
             text = "\n".join(b.text for b in group)
             if not text.strip():
                 continue
-            if total + len(text) > max_chars:
+            # max_chars <= 0 表示不限量（取全文，供全文存档用）
+            if max_chars > 0 and total + len(text) > max_chars:
                 remaining = max_chars - total
                 if remaining > 200:
                     parts.append(text[:remaining].rstrip())
@@ -228,7 +239,11 @@ class ReadabilityExtractor(HTMLParser):
 
 
 def extract_readability(html: str, max_chars: int = 8000) -> tuple[str, str]:
-    """提取正文（readability 密度法）与标题。"""
+    """提取正文（readability 密度法）与标题。
+
+    max_chars <= 0 取全文不截断——抓取链靠它拿到完整正文再决定交付多少，
+    被截掉的部分进全文存档（见 fulltext_store）。
+    """
     ext = ReadabilityExtractor()
     try:
         ext.feed(html)

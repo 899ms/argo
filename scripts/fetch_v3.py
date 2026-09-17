@@ -104,6 +104,13 @@ class ContentExtractor(HTMLParser):
             self._current.append(data)
 
 
+def _cut(text: str, limit: int) -> str:
+    """按上限裁剪；limit <= 0 表示不限量（取全文）。"""
+    if not text:
+        return text
+    return text[:limit] if limit and limit > 0 else text
+
+
 def extract_content(html: str, max_chars: int = 8000) -> tuple[str, str]:
     """从 HTML 提取正文和标题。
 
@@ -115,7 +122,7 @@ def extract_content(html: str, max_chars: int = 8000) -> tuple[str, str]:
         from readability_extract import extract_readability
         content, title = extract_readability(html, max_chars=max_chars)
         if content.strip():
-            return content[:max_chars], title.strip()
+            return _cut(content, max_chars), title.strip()
     except Exception:
         pass
     ext = ContentExtractor()
@@ -125,11 +132,29 @@ def extract_content(html: str, max_chars: int = 8000) -> tuple[str, str]:
         pass
     ext._blocks.sort(key=lambda x: x[0], reverse=True)
     content = "\n\n".join(text for _, text in ext._blocks[:10])
-    return content[:max_chars], ext.title.strip()
+    return _cut(content, max_chars), ext.title.strip()
 
 
 # ─── 降级检测 ────────────────────────────────────────────────────────────────
 
+# 强特征：与格式无关，任何来源（含 Markdown 正文）出现都说明这是反爬挑战页
+_CF_STRONG = re.compile(
+    r"checking your browser|cf-browser-verification|cf_chl_opt|ray id|"
+    r"challenge-platform|please verify you are a human",
+    re.IGNORECASE,
+)
+# 弱特征：裸词 cloudflare。只在 HTML 里有判别力——Markdown 正文里正常
+# 提到 Cloudflare 是家常便饭（blog.cloudflare.com 通篇都是），不能据此判壳
+_CF_WEAK = re.compile(r"cloudflare", re.IGNORECASE)
+# 壳特征的扫描窗口：只在开头这段里找。
+# 挑战页一定在顶部自报家门，而大页面中途总会出现裸词——实测 Wikipedia 的
+# HTML 首个命中在第 241,552 字符、Astro 在第 78,009 字符，都在脚本与脚注里。
+# 扫全文的后果是「页面越长越像反爬壳」：同一站点把 --max-chars 调大就会
+# 悄悄换掉抓取方式（Wikipedia 因此从 http 升级到 Chrome CDP，正文也从
+# 32,789 字变成另一份 68,143 字的 CDP 产物），预算改变了内容来源，
+# 这正是「预算引发的错误」最难察觉的一种。
+_CF_SCAN_CHARS = 32_768
+# HTML 路径的壳判据＝强特征 ∪ 弱特征
 _CF_MARKERS = re.compile(
     r"checking your browser|cf-browser-verification|cf_chl_opt|ray id|"
     r"challenge-platform|please verify you are a human|cloudflare",
@@ -148,20 +173,42 @@ _EMPTY_SHELL = re.compile(
 )
 
 
+# 已产出 Markdown 的抓取方式：内容已由站点或阅读器转好，没有 HTML 壳可言。
+_MARKDOWN_METHODS = frozenset({"http_md", "md_variant", "llms_txt",
+                               "jina", "jina_reader", "parallel",
+                               "parallel_mcp", "tinyfish"})
+
+
 def _needs_browser(result: dict) -> bool:
-    """判断是否需要升级到浏览器抓取。"""
+    """判断是否需要升级到浏览器抓取。
+
+    长度判据排在 Markdown 豁免之前：「内容过短」是内容量判据，与格式无关，
+    安全网必须留着。
+
+    Markdown 豁免只放行**弱**特征（裸词 cloudflare），不放行**强**特征。
+    两边的代价不对称：
+      - 豁免过宽：读者代理返回的挑战页会被当成正文收下，且不再升级浏览器
+        （实测夹具：本应调 browser 拿到真正文，豁免后直接返回「Just a
+        moment... Checking your browser」并标 content_ok=True）
+      - 豁免过窄：正文里提到 Cloudflare 就被判壳，白跑整条升级链
+    强特征（checking your browser / ray id / challenge-platform …）在任何
+    来源里都只可能是挑战页，不该被格式豁免掉；弱特征才会误伤正文。
+    """
     if not result.get("success"):
         return True
     content = result.get("content", "")
-    html = result.get("html", "")
-    # 内容过少
     if not content or len(content.strip()) < 100:
         return True
+    if result.get("fetch_method") in _MARKDOWN_METHODS:
+        return bool(_CF_STRONG.search(content))
+    html = result.get("html", "")
     # 空壳 HTML
     if html and _EMPTY_SHELL.search(html):
         return True
-    # CF 挑战
-    if _CF_MARKERS.search(html) or _CF_MARKERS.search(content):
+    # CF 挑战：弱特征只看开头窗口，强特征扫全文（强特征在任何位置都只可能是
+    # 挑战页，且长度有限，不会因页面变长而误中）
+    window = (html or content)[:_CF_SCAN_CHARS]
+    if _CF_MARKERS.search(window) or _CF_STRONG.search(content):
         return True
     # JS 要求
     if len(content) < 300 and _JS_MARKERS.search(html):
@@ -180,13 +227,82 @@ _MD_SKIP_EXTS = {".html", ".htm", ".php", ".jsp", ".asp", ".aspx", ".shtml",
                  ".pdf", ".xml", ".json", ".png", ".jpg", ".jpeg", ".gif",
                  ".webp", ".svg", ".css", ".js", ".zip", ".gz", ".mp4", ".mp3"}
 
-_MD_SNIFF_HTML = re.compile(r"<\s*(!doctype|html|head|body|div|script)\b",
-                            re.IGNORECASE)
+# ─── Markdown 响应校验（协商与 .md 变体共用同一组判据）────────────────────
+#
+# 2026-09 实测：声称 text/markdown 的响应里每 5 个就有 1 个是假货——
+#   docs.docker.com   200 + text/markdown + 16 字节占位页（正文只有一行标题）
+#   docs.gitbook.com  200 + text/markdown + 完整 HTML 错误页（302 Found）
+#   supabase / prisma 404 + text/markdown + 错误提示
+#   nextjs.org        308 + text/markdown + "Redirecting..."，正文来自别的 URL
+# 单看 Content-Type 会把噪声灌进语料，故统一在此收口。
+
+_MD_MIN_CHARS = 200  # 长度地板：低于此视为占位页/跳转页
+# 内容协商 Accept：markdown 优先、html 次之、其余兜底。实测 37 个站点，
+# 不支持者一律原样返回 HTML，无 406 风险，故可作为主路径的默认请求头。
+_ACCEPT_NEGOTIATE = "text/markdown, text/html;q=0.8, */*;q=0.5"
+# 「这是一份 HTML 文档」的判据：只看文档级标记。不能用任意标签——
+# react.dev 返回的真 Markdown 内嵌 <Intro>/JSX 代码示例，拿 <div 当判据
+# 会把真 Markdown 误判成 HTML（实测假阴性）。
+_MD_DOC_MARKERS = re.compile(r"<\s*(!doctype|html[\s>]|head[\s>]|body[\s>])",
+                             re.IGNORECASE)
+# 错误页/占位页正文特征（不区分大小写，允许前置 # 标题号）
+_MD_ERROR_PAGE = re.compile(
+    r"^\s*(?:#+\s*)?(?:404|403|500|502|not\s+found|redirecting|access\s+denied|"
+    r"just\s+a\s+moment|please\s+verify\s+you\s+are\s+a\s+human)\b",
+    re.IGNORECASE)
 
 
 def _md_variant_enabled() -> bool:
     """.md 变体探测开关：ARGO_FETCH_MD_VARIANT=0 关闭，默认开启。"""
     return env_flag("ARGO_FETCH_MD_VARIANT")
+
+
+def _negotiate_enabled() -> bool:
+    """内容协商开关：ARGO_FETCH_MD_NEGOTIATE=0 关闭，默认开启。
+
+    协商不是额外探测——它复用主路径那一次 GET 的请求头，故零额外请求、
+    零额外延迟。实测 37 个站点支持者得干净 Markdown、不支持者原样返回
+    HTML，无一例失败（不存在 406 风险），因此默认常开。
+    """
+    return env_flag("ARGO_FETCH_MD_NEGOTIATE")
+
+
+def _is_markdown_ctype(ctype: str) -> bool:
+    """Content-Type 是否可能承载 Markdown。
+
+    text/plain 一并纳入：react.dev/learn 实测返回 text/plain 而正文是真
+    Markdown（带 frontmatter），只认 text/markdown 会漏掉它。
+    """
+    ctype = (ctype or "").lower()
+    return "markdown" in ctype or ctype.startswith("text/plain")
+
+
+def _looks_like_html_document(text: str) -> bool:
+    """判断正文是否是一份 HTML 文档（而非内嵌片段的正经 Markdown）。
+
+    只用一条判据：开头窗口里出现文档级标记（`<!doctype`/`<html`/`<head`/`<body>`）。
+    真实网页响应一定在开头自报家门，因此这条足够拦住实测到的全部假货
+    （gitbook 的 HTML 错误页、Cloudflare 的 HTML 外壳、404 页）。
+
+    先后试过两条更"聪明"的二级判据，都被真实站点证伪，记在这里免得重蹈：
+      - 数标签个数：合法 Markdown 内嵌少量 HTML 就会被顶穿（8 行表格＝33 个闭标签）
+      - 数标签字符占比：Markdown 里的 JSX 代码示例属性极长，实测 mintlify 的
+        单页占比达 51.9%，而它返回的是百分之百的真 Markdown；
+        blog.cloudflare.com 同样因此被误拒，从一次 GET 掉到外部阅读器。
+    结论：想从「Markdown 里混着 HTML」中分辨「这是一份 HTML 文档」，
+    结构统计不可靠；以开头自报家门为准，宁可漏判（退回常规 HTML 路径，只是
+    少省一点）也不误收（把 HTML 当正文交出去，结构尽失且不再升级）。
+    """
+    return bool(_MD_DOC_MARKERS.search(text[:4096]))
+
+
+def _looks_like_markdown(text: str) -> bool:
+    """嗅探响应体是否为可用 Markdown 正文（排除伪装成 .md 的 HTML 壳）。"""
+    if not text or len(text.strip()) < 120:
+        return False
+    if _looks_like_html_document(text):
+        return False
+    return True
 
 
 def _tinyfish_enabled() -> bool:
@@ -251,13 +367,86 @@ def _ai_variant_candidates(url: str) -> list[tuple[str, str]]:
     return out
 
 
-def _looks_like_markdown(text: str) -> bool:
-    """嗅探响应体是否为可用 Markdown 正文（排除伪装成 .md 的 HTML 壳）。"""
-    if not text or len(text.strip()) < 120:
-        return False
-    if _MD_SNIFF_HTML.search(text[:2048]):
-        return False
-    return True
+def _negotiated_markdown(resp: dict) -> str | None:
+    """从一次普通 GET 的响应里取出经校验的 Markdown 正文；不适用返回 None。
+
+    四道门，逐条对应实测到的四类污染源：状态码 200 → 长度地板 → 非 HTML
+    文档 → 非错误页特征。任一不过即视为普通 HTML 响应、走原有链路，因此
+    不支持的站点行为完全不变。
+    """
+    if resp.get("status") != 200 or not resp.get("text"):
+        return None
+    ctype = ""
+    for k, v in (resp.get("headers") or {}).items():
+        if str(k).lower() == "content-type":
+            ctype = str(v)
+            break
+    if not _is_markdown_ctype(ctype):
+        return None
+    text = resp["text"]
+    if len(text.strip()) < _MD_MIN_CHARS:
+        return None
+    if _looks_like_html_document(text):
+        return None
+    if _MD_ERROR_PAGE.match(text.lstrip()):
+        return None
+    return text
+
+
+def _markdown_title(content: str) -> str:
+    """从 Markdown 正文取标题：先认 frontmatter 的 title，再认首行 H1。
+
+    顺序不能反、范围不能放：全文 search `^#` 会把代码块里的 `# 注释` 当成
+    标题——实测一篇 frontmatter 写明 `title: Install Guide` 的文章，标题被
+    代码注释覆盖成 `install dependencies`。H1 只认「跳过 frontmatter 后的
+    首个非空行」，正是 Markdown 的 H1 语义位置。
+    """
+    m = re.search(r"^title:\s*(.+)$", content[:2000], re.MULTILINE)
+    if m:
+        return m.group(1).strip().strip("\"'")[:200]
+    body = re.sub(r"\A---\n.*?\n---\n", "", content, count=1, flags=re.DOTALL)
+    m = re.match(r"\s*#\s+(.+?)\s*$", body, re.MULTILINE)
+    return m.group(1)[:200] if m else ""
+
+
+def _markdown_result(url: str, text: str, max_chars: int, method: str,
+                     final_url: str = "") -> dict:
+    """用已就绪的 Markdown 直接构建结果。
+
+    关键：不走 extract_content——Markdown 喂进 HTML 提取器会被当纯文本
+    重新切块，结构（标题/表格/围栏）全丢。协商命中的价值正在于保留站点
+    自己那份结构，故此处原样透传。
+    """
+    content = _cut(text, max_chars)
+    # 标题从完整正文里取：裁剪窗口小于标题搜索窗（2,000 字）时，
+    # 用交付视图取标题会因窗口不足而取不到。
+    title = _markdown_title(text)
+    result = {
+        "url": url,
+        "content": content,
+        "html": "",
+        "title": title,
+        "length": len(content),
+        "success": True,
+        "error": None,
+        "fetch_method": method,
+    }
+    _archive_truncated(url, text, content, "text", result, primary=True)
+    if final_url and final_url.rstrip("/") != url.rstrip("/"):
+        # 内容来自重定向后的地址：如实标注，避免「URL 是 A、正文是 B」而无声
+        result["final_url"] = final_url
+    return result
+
+
+def _md_variant_wanted(result: dict) -> bool:
+    """主请求结果是否还值得回探 AI 友好变体。
+
+    已经拿到 Markdown（协商命中）就没有再探的必要——两者的产物同类，
+    再探只是白多一次请求。
+    """
+    if not result.get("success"):
+        return True
+    return result.get("fetch_method") not in _MARKDOWN_METHODS
 
 
 def _md_variant_fetch(url: str, max_chars: int = 8000,
@@ -296,14 +485,7 @@ def _md_variant_fetch(url: str, max_chars: int = 8000,
         text = resp["text"]
         if not _looks_like_markdown(text):
             continue
-        result = _make_result(url, "", max_chars, kind)
-        result["content"] = text[:max_chars]
-        result["length"] = len(result["content"])
-        result["title"] = ""
-        m = re.match(r"^#\s+(.+)$", result["content"].lstrip(), re.MULTILINE)
-        if m:
-            result["title"] = m.group(1).strip()[:200]
-        return result
+        return _markdown_result(url, text, max_chars, kind)
     return None
 
 
@@ -453,8 +635,18 @@ def _mark_stop_signal(result: dict, resp: dict) -> dict:
 
 # ─── 第一级：增强 HTTP ───────────────────────────────────────────────────────
 
-def _http_fetch(url: str, max_chars: int = 8000, timeout: float = 8.0) -> dict:
-    """使用 http_client（UA 轮换 + Cookie 积累）抓取。"""
+def _http_fetch(url: str, max_chars: int = 8000, timeout: float = 8.0,
+                allow_markdown: bool = True) -> dict:
+    """使用 http_client（UA 轮换 + Cookie 积累）抓取。
+
+    allow_markdown：是否在这次请求上带内容协商 Accept。协商复用本次 GET，
+    **不额外发请求**——命中则直接拿到站点自己的 Markdown（结构完整、跳过
+    整个反爬降级链），未命中则该响应就是原本要抓的 HTML，行为与从前一致。
+    需要 raw HTML 的调用方（crawl/extract 取链接）置 False。
+
+    Markdown 命中只认「校验通过」的结果（见 _negotiated_markdown 四道门），
+    声称 text/markdown 却是占位页/错误页/404 的响应一律按 HTML 处理。
+    """
     try:
         from url_safety import check_url
         ok, reason = check_url(url)
@@ -463,10 +655,12 @@ def _http_fetch(url: str, max_chars: int = 8000, timeout: float = 8.0) -> dict:
                                 error=f"URL 被 SSRF 防护拦截: {reason}")
     except ImportError:
         pass
+    negotiate = allow_markdown and _negotiate_enabled()
+    extra = {"Accept": _ACCEPT_NEGOTIATE} if negotiate else None
     try:
         from http_client import HttpClient
         client = HttpClient(timeout=timeout, max_retries=1, jitter=False)
-        resp = client.get(url)
+        resp = client.get(url, extra_headers=extra)
     except ImportError:
         # fallback 到 urllib
         import urllib.request
@@ -487,6 +681,12 @@ def _http_fetch(url: str, max_chars: int = 8000, timeout: float = 8.0) -> dict:
         return result
     if not resp.get("text"):
         return _make_result(url, "", 0, "http", ok=False, error="empty response")
+
+    if negotiate:
+        text = _negotiated_markdown(resp)
+        if text is not None:
+            return _markdown_result(url, text, max_chars, "http_md",
+                                    final_url=resp.get("url", ""))
 
     return _make_result(url, resp["text"], max_chars, "http")
 
@@ -568,23 +768,71 @@ def _wayback_fetch(url: str, max_chars: int = 8000, timeout: float = 12.0) -> di
                             error=f"wayback error: {str(e)[:100]}")
 
 
+def _archive_truncated(url: str, text: str, delivered: str, kind: str,
+                       extra: dict, primary: bool = False) -> None:
+    """内容被裁时把完整版存进全文存档，并就地补上可回读的字段。
+
+    只裁不存会让「截断」变成不可追溯的数据销毁：默认档 8,000 字抓一个
+    十一万字的页面，被裁掉的 93% 既无副本也无线索，事后无法复核结论是否
+    落在丢掉的那一段里。存档失败不影响本次交付（见 fulltext_store.save）。
+
+    primary 标识「这条就是交付视图」。`truncated` / `full_length` 只由它写：
+    同一次抓取里正文与 HTML 都会各自被裁，若都往同名键上写，后写的 HTML
+    会覆盖正文的数字——实测把 32,789 字的正文报成 533,612 字节的 HTML。
+    非主视图的截断另起 `_truncated` 后缀的键，不抢占语义。
+    """
+    cut = bool(text) and len(text) > len(delivered)
+    if primary:
+        extra["full_length"] = len(text)
+        extra["truncated"] = cut
+    else:
+        extra[f"{kind}_truncated"] = cut
+    if not cut:
+        return
+    try:
+        from fulltext_store import save as _save_fulltext
+        path = _save_fulltext(url, text, kind)
+        if path:
+            extra[f"full_{kind}_path"] = path
+            if primary:
+                extra["full_text_path"] = path
+    except Exception:
+        pass
+
+
 def _make_result(url: str, html: str, max_chars: int,
                  method: str, ok: bool = True, error: str | None = None,
                  title: str = "") -> dict:
-    """构建统一输出格式。"""
-    content, extracted_title = extract_content(html, max_chars) if ok and html else ("", "")
+    """构建统一输出格式。
+
+    取全文 → 裁交付视图 → 被裁部分归档。`content` 仍受 max_chars 约束
+    （token 预算不变），但完整正文不再当场销毁。
+    """
+    full_content, extracted_title = (
+        extract_content(html, 0) if ok and html else ("", ""))
     if not title:
         title = extracted_title
-    return {
+    content = _cut(full_content, max_chars)
+    extra: dict = {}
+    _archive_truncated(url, full_content, content, "text", extra, primary=True)
+    full_html = html or ""
+    delivered_html = _cut(full_html, max_chars * 2)
+    # HTML 同样会被预算裁掉，而结构性提取（表格 / Meta / JSON-LD）全靠它——
+    # 裁掉就等于那些表格从此再也取不到。与正文分开存，互不覆盖。
+    if full_html:
+        _archive_truncated(url, full_html, delivered_html, "html", extra)
+    result = {
         "url": url,
         "content": content,
-        "html": html[:max_chars * 2] if html else "",
+        "html": delivered_html,
         "title": title,
         "length": len(content),
         "success": ok,
         "error": error,
         "fetch_method": method,
     }
+    result.update(extra)
+    return result
 
 
 # ─── 第一级C：r.jina.ai 阅读器（keyless 免费层，远端 JS 渲染转 markdown）─────
@@ -871,8 +1119,13 @@ def _cache_content_too_short(hit: dict, max_chars: int) -> bool:
     老条目（修复前写入，无 _max_chars）长度不可信，退回按 content 实际
     长度判断；首轮回源后会写入带 _max_chars 的条目，之后即精确判定。
     """
-    if not max_chars:
+    if max_chars is None:
         return False
+    if max_chars <= 0:
+        # 0/负数表示「要全文」，而缓存从不存全文（只存裁剪后的副本）→ 必然不够。
+        # 早先这里写成 `if not max_chars: return False`，于是要全文的请求
+        # 会安安静静拿回一份 8,000 字的缓存副本，长度还显示成 8,000。
+        return True
     content = hit.get("content") or ""
     cached_max = hit.get("_max_chars")
     if cached_max is None:
@@ -904,7 +1157,9 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
 
     执行顺序：
       第零级：{url}.md 变体 + 站点根 /llms.txt 探测（AI 友好直出，命中即跳过整条反爬链）
-      第一级：增强 HTTP（UA 轮换 + Cookie 积累）；客户端形态分流型站点移动 UA 首发
+      第一级：增强 HTTP（UA 轮换 + Cookie 积累 + Accept: text/markdown 内容协商，
+              协商命中即得站点自己的 Markdown，fetch_method=http_md）；
+              客户端形态分流型站点移动 UA 首发
       第一级B：TLS 指纹伪造（curl_cffi impersonate，指纹检测型反爬）
       第一级C：r.jina.ai 阅读器（keyless 免费层，仅公网 URL，markdown-only）
       第一级D：Parallel 免费 MCP web_fetch（keyless 免费层，仅公网 URL，markdown-only）
@@ -921,8 +1176,11 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
     URL 级缓存：无 actions 的成功结果写入 SearchCache（L1+L2），正文按本次
     max_chars 裁剪并记录 _max_chars；后续请求更大 max_chars 时判为 miss 回源
     重抓，避免静默返回被截短的正文。
-    need_html：调用方需要原始 HTML（如爬取提取链接）时置 True，跳过 tinyfish
-    （仅产 markdown 无 raw html），避免降级链在爬取场景行为漂移。
+    need_html：调用方需要原始 HTML（如爬取提取链接）时置 True，会跳过 tinyfish/
+    jina/Parallel（仅产 markdown）、停用内容协商，并且**自动绕过 URL 缓存**——
+    缓存有意不存 html 大字段（省空间），命中只会拿到空 html，让结构化提取
+    静默全空。这条约束放在这里，是因为要求每个调用方自己记得配 skip_cache，
+    迟早有人漏；漏了的症状是「开关看着接上了，结果永远为空」。
     """
     try:
         from url_safety import check_url
@@ -957,7 +1215,16 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
         force_browser = True
         skip_cache = True
 
+    # 需原始 HTML → 不读缓存（缓存不存 html，命中必得空 html）。
+    # 与 actions 同理：这是取数的前提条件，不是调用方的可选项。
+    if need_html:
+        skip_cache = True
+
     # 读 URL 缓存
+    if max_chars is not None and max_chars <= 0:
+        # 要全文的请求：缓存只存裁剪副本，读写都不该经过它
+        skip_cache = True
+
     if not skip_cache and not force_browser:
         try:
             from cache import SearchCache
@@ -1003,14 +1270,15 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
         gated = (_mobile_branch_enabled()
                  and (_mobile_first_host(url) or _identity_is_mobile(host)))
         result = None
-        # 第零级：AI 友好变体探测（{url}.md 直出）——命中即跳过整个反爬降级链。
-        # 门控站跳过：少一次主机触碰，保住单次直连窗口（实测 .md 探测会触发
-        # 抖音连坐限速）。
-        if not gated and _md_variant_enabled():
-            md = _md_variant_fetch(url, max_chars, timeout)
-            if md is not None:
-                md["md_variant"] = True
-                result = md
+        # AI 友好变体探测（{url}.md 直出 / 站点根 llms.txt）**排在主请求之后**。
+        #
+        # 早先它排在最前面，理由是「命中即省下整条反爬链」；接上内容协商之后
+        # 这个理由不再成立：协商折在主请求里、不额外花一次往返，而探测无论
+        # 命中与否都要先付一次串行请求。实测未命中的站点因此白等 571–1,246 ms
+        # （MDN 1,246 / mintlify 719 / astro 571），而它们占多数。
+        # 现在改为：主请求先走，只在它没能拿到 Markdown 时才回探变体——
+        # 已知的 .md 专有站点（bun / nextjs / ai-sdk / nodejs 这类协商不覆盖的）
+        # 仍能拿到，其余站点少一次往返。
         if result is None:
             # 第一级：客户端形态分流型站点（如抖音）直接以移动端 UA 首发——
             # 桌面 UA 首发会触发风控并连坐后续移动请求，顺序不可颠倒。
@@ -1020,8 +1288,20 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                     result["ua_profile"] = "mobile"
                     _identity_remember_mobile(host)
             else:
-                # 第一级：HTTP
-                result = _http_fetch(url, max_chars, timeout)
+                # 第一级：HTTP（带内容协商；crawl/extract 要 raw HTML 时关闭）
+                result = _http_fetch(url, max_chars, timeout,
+                                     allow_markdown=not need_html)
+
+            # 主请求未得到 Markdown → 回探 AI 友好变体。
+            # 门控站（抖音一类）跳过：少一次主机触碰，保住单次直连窗口
+            # （实测 .md 探测会触发连坐限速）。
+            if (result is not None and not gated and _md_variant_enabled()
+                    and _md_variant_wanted(result)):
+                md = _md_variant_fetch(url, max_chars, timeout)
+                if md is not None:
+                    md["md_variant"] = True
+                    md["http_fallback"] = True
+                    result = md
 
             # 明确停止信号（429/503）→ 不再升级 TLS/wayback/CDP。
             # 限速/过载与请求方式无关，继续升级重链 = 无视服务器指示放大负载。
@@ -1125,7 +1405,7 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
     # 写 URL 缓存（不存大块 html，省空间）
     if not skip_cache and result.get("success"):
         try:
-            from cache import SearchCache, FETCH_DEFAULT_TTL
+            from cache import SearchCache, FETCH_DEFAULT_TTL, FETCH_EVIDENCE_KEY
             to_store = {
                 k: v for k, v in result.items()
                 if k not in ("html",) and not str(k).startswith("_")
@@ -1141,17 +1421,19 @@ def fetch_v3(url: str, max_chars: int = 8000, timeout: float = 8.0,
                 ttl = 600
             elif st in ("docs", "documentation", "reference"):
                 ttl = 86400
+            # 证据分与正文写进**同一个条目、同一个 try 块**。
+            # 分成两处写过（独立 kind、各自 try）会失配：登录态内容被
+            # assert_cacheable 拒绝时正文没落盘，证据却照样写成功，于是
+            # 「已核验」标记挂在一份不存在的正文上，verify 从此永久跳过它。
+            try:
+                from evidence_loop import extract_fetch_evidence
+                ev = extract_fetch_evidence(result)
+                if ev:
+                    to_store[FETCH_EVIDENCE_KEY] = {
+                        k: v for k, v in ev.items() if k != "url"}
+            except Exception:
+                pass
             SearchCache().set_fetch(url, to_store, ttl=ttl)
-        except Exception:
-            pass
-        # 证据完整链路 P0：同步写 URL → 正文级证据分缓存（独立 kind，轻量）
-        try:
-            from evidence_loop import (
-                extract_fetch_evidence, store_fetch_evidence, ttl_for_fetch_result,
-            )
-            ev = extract_fetch_evidence(result)
-            if ev:
-                store_fetch_evidence(url, ev, ttl=ttl_for_fetch_result(result))
         except Exception:
             pass
 
@@ -1188,8 +1470,17 @@ def fetch_page_v3(url: str, max_chars: int = 3000,
 # 调用方拿到的是 argparse 的 unrecognized arguments——文档承诺的能力只在
 # MCP 侧存在。加了参数还不够，两处必须走同一实现，否则迟早再次分叉。
 
-def _apply_focus_to_result(result: dict, query: str,
-                           top_k: int = 5) -> dict:
+def _focus_fetch_chars(max_chars: int, query: str) -> int:
+    """聚焦场景的抓取额度（契约在 focus_extract，此处只做容错接线）。"""
+    try:
+        from focus_extract import focus_fetch_chars
+    except ImportError:
+        return max_chars
+    return focus_fetch_chars(max_chars, query)
+
+
+def _apply_focus_to_result(result: dict, query: str, top_k: int = 5,
+                           max_chars: int | None = None) -> dict:
     """对成功结果做 BM25 聚焦裁剪（失败结果不动，语义与 MCP 侧一致）。"""
     if not query or not result.get("success"):
         return result
@@ -1197,7 +1488,50 @@ def _apply_focus_to_result(result: dict, query: str,
         from focus_extract import apply_focus
     except ImportError:
         return result
-    return apply_focus(result, query, top_k=top_k)
+    return apply_focus(result, query, top_k=top_k, max_chars=max_chars)
+
+
+# ─── 全文回读（--full / --offset / --limit）──────────────────────────────────
+
+def _read_archived(url: str) -> str | None:
+    """读本地全文存档，不联网。"""
+    try:
+        from fulltext_store import load as _load_fulltext
+        return _load_fulltext(url, "text")
+    except Exception:
+        return None
+
+
+def _full_view(url: str, args) -> dict:
+    """取全文视图：优先用存档（本地、零延迟），没有存档才按全量重新抓一次。
+
+    存在的意义：Agent 的上下文放不下整篇，但结论可能落在被裁掉的那一段。
+    有了这条通道，「先看 8,000 字摘要、需要时再翻全文」才成立——否则想复核
+    就只能重新联网抓一遍，而截断发生过的页面往往连抓法都不一样。
+    """
+    from_archive = True
+    text = _read_archived(url)
+    if text is None:
+        from_archive = False
+        r = fetch_v3(url, max_chars=0, timeout=args.timeout,
+                     force_browser=args.browser,
+                     use_browser_fallback=not args.no_fallback)
+        text = r.get("content", "") or ""
+    else:
+        r = {"success": True, "error": None, "title": ""}
+    start = max(args.offset or 0, 0)
+    end = start + args.limit if args.limit and args.limit > 0 else None
+    out = dict(r)
+    out.update({
+        "url": url,
+        "content": text[start:end],
+        "length": len(text[start:end]),
+        "total_length": len(text),
+        "offset": start,
+        "full_source": "archive" if from_archive else "refetch",
+        "fetch_method": "fulltext" if from_archive else r.get("fetch_method", "full"),
+    })
+    return out
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -1223,6 +1557,13 @@ def build_parser():
                    help="BM25 聚焦关键词：只返回相关段落，省 token")
     p.add_argument("--focus-top", type=int, default=5,
                    help="--focus 无段落超阈值时的回退保留段落数（默认 5）")
+    p.add_argument("--full", action="store_true",
+                   help="取全文：优先读本地全文存档，没有则按抓取全量取回，"
+                        "不受 --max-chars 限制（用于复核被截断的部分）")
+    p.add_argument("--offset", type=int, default=0,
+                   help="从正文第 N 个字符开始输出（配合 --limit 翻页读长文）")
+    p.add_argument("--limit", type=int, default=0,
+                   help="本次输出字符数上限；0 表示不额外限制")
     p.add_argument("--json", action="store_true",
                    help="只输出 JSON 摘要（缺省还会附人类可读的正文段；"
                         "Usage 一直把 --json 列为 Common flags，此前却报"
@@ -1237,19 +1578,32 @@ if __name__ == "__main__":
     if args.actions:
         actions = json.loads(args.actions)
 
-    r = fetch_v3(args.url, max_chars=args.max_chars, timeout=args.timeout,
-                 force_browser=args.browser,
-                 use_browser_fallback=not args.no_fallback,
-                 actions=actions)
+    # 聚焦时按放大额度抓取——否则 focus 只能在文档头部选段（见
+    # focus_extract.focus_fetch_chars），选完再裁回 args.max_chars。
+    if args.full or args.offset or args.limit:
+        r = _full_view(args.url, args)
+    else:
+        r = fetch_v3(args.url,
+                     max_chars=_focus_fetch_chars(args.max_chars, args.focus),
+                     timeout=args.timeout,
+                     force_browser=args.browser,
+                     use_browser_fallback=not args.no_fallback,
+                     actions=actions)
 
     focus_requested = bool(args.focus)
     pre_focus_len = r.get("length", 0)
-    r = _apply_focus_to_result(r, args.focus, top_k=args.focus_top)
+    r = _apply_focus_to_result(r, args.focus, top_k=args.focus_top,
+                               max_chars=args.max_chars)
 
     # 输出摘要
     summary = {k: r[k] for k in ("success", "fetch_method", "content_ok",
                                   "quality_score", "page_type", "source_type",
-                                  "is_official", "length", "url")}
+                                  "is_official", "length", "url") if k in r}
+    # 截断必须可见：只给 8,000 字却不说明「还有多少没给」，调用方会当全文用
+    for k in ("truncated", "full_length", "full_text_path", "total_length",
+              "offset", "full_source", "final_url"):
+        if k in r:
+            summary[k] = r[k]
     if focus_requested:
         # 显式回报聚焦是否真的生效：正文过短时 focus_applied=False，
         # 不谎报「已省 token」

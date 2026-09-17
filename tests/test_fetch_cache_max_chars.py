@@ -47,7 +47,7 @@ def clean_env(monkeypatch):
 
 def _install_http(monkeypatch, calls):
     """HTTP 级成功，且像真实实现那样按 max_chars 裁剪正文。"""
-    def fn(url, max_chars=8000, timeout=8.0):
+    def fn(url, max_chars=8000, timeout=8.0, **kwargs):
         calls.append(max_chars)
         content = _body(max_chars)
         return {"url": url, "content": content,

@@ -170,7 +170,7 @@ def _ok_result(method, extra=None):
 def test_tinyfish_adopted_and_short_circuits_browser(
         monkeypatch, no_robots, chain_env):
     monkeypatch.setattr(fetch_v3, "_http_fetch",
-                        lambda url, max_chars=8000, timeout=8.0:
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs:
                         _shell_result())
 
     def _no_browser(*a, **k):
@@ -178,7 +178,7 @@ def test_tinyfish_adopted_and_short_circuits_browser(
 
     monkeypatch.setattr(fetch_v3, "_browser_fetch", _no_browser)
     monkeypatch.setattr(fetch_v3, "_tinyfish_fetch",
-                        lambda url, max_chars=8000, timeout=8.0:
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs:
                         _ok_result("tinyfish"))
     out = fetch_v3.fetch_v3(_URL, skip_cache=True)
     assert out["fetch_method"] == "tinyfish"
@@ -187,7 +187,7 @@ def test_tinyfish_adopted_and_short_circuits_browser(
 def test_tinyfish_failure_falls_back_to_browser(
         monkeypatch, no_robots, chain_env):
     monkeypatch.setattr(fetch_v3, "_http_fetch",
-                        lambda url, max_chars=8000, timeout=8.0:
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs:
                         _shell_result())
     calls = {}
 
@@ -197,7 +197,7 @@ def test_tinyfish_failure_falls_back_to_browser(
 
     monkeypatch.setattr(fetch_v3, "_browser_fetch", fake_browser)
     monkeypatch.setattr(fetch_v3, "_tinyfish_fetch",
-                        lambda url, max_chars=8000, timeout=8.0:
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs:
                         {"url": url, "content": "", "html": "", "title": "",
                          "length": 0, "success": False,
                          "error": "tinyfish empty content",
@@ -212,7 +212,7 @@ def test_tinyfish_missing_key_real_fallback(monkeypatch, no_robots, chain_env):
     monkeypatch.delenv("TINYFISH_API_KEY", raising=False)
     _isolate_envfile(monkeypatch)
     monkeypatch.setattr(fetch_v3, "_http_fetch",
-                        lambda url, max_chars=8000, timeout=8.0:
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs:
                         _shell_result())
     calls = {"tinyfish": False, "browser": False}
     real_tf = fetch_v3._tinyfish_fetch
@@ -242,7 +242,7 @@ def test_tinyfish_stop_signal_halts_chain(monkeypatch, no_robots, chain_env):
     stopped["success"] = False
     stopped["stop_signal"] = "rate_limited"
     monkeypatch.setattr(fetch_v3, "_http_fetch",
-                        lambda url, max_chars=8000, timeout=8.0: stopped)
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs: stopped)
 
     def _no_tinyfish(*a, **k):
         raise AssertionError("stop_signal 已停链，不应再走 tinyfish")
@@ -257,7 +257,7 @@ def test_tinyfish_stop_signal_halts_chain(monkeypatch, no_robots, chain_env):
 
 def test_need_html_skips_tinyfish(monkeypatch, no_robots, chain_env):
     monkeypatch.setattr(fetch_v3, "_http_fetch",
-                        lambda url, max_chars=8000, timeout=8.0:
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs:
                         _shell_result())
 
     def _no_tinyfish(*a, **k):
@@ -274,7 +274,7 @@ def test_need_html_skips_tinyfish(monkeypatch, no_robots, chain_env):
 def test_tinyfish_disabled_skips_to_browser(monkeypatch, no_robots, chain_env):
     monkeypatch.setenv("ARGO_FETCH_TINYFISH", "0")
     monkeypatch.setattr(fetch_v3, "_http_fetch",
-                        lambda url, max_chars=8000, timeout=8.0:
+                        lambda url, max_chars=8000, timeout=8.0, **kwargs:
                         _shell_result())
 
     def _no_tinyfish(*a, **k):

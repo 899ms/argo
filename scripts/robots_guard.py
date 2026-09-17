@@ -94,7 +94,82 @@ def _get_parser(scheme: str, host: str, timeout: float) -> RobotFileParser | Non
 
     with _lock:
         _cache[key] = (now, rp)
+    if text is not None:
+        # 顺带落盘，供搜索路径只读复用（不影响本次判定）
+        _persist_write(host, text)
     return rp
+
+
+# ─── 跨进程 robots 判定（搜索侧只读）────────────────────────────────────────
+#
+# 进程内缓存对命令式 CLI 等于没有：每次调用都是新进程，每次都要重新抓
+# robots.txt。而搜索结果里「这条建议抓取」的 URL，有相当一部分早就被判过
+# 禁止抓取——实测 49 条建议里 7 条（14%）指向 robots 明令禁止的地址，
+# 调用方照着建议去抓只会白跑一趟。
+#
+# 这里把已抓到的 robots.txt 原文按主机落盘，让**搜索路径能只读地判一次**，
+# 全程不联网、不改抓取行为。存原文而不是存结论：robots 规则是按路径匹配的，
+# 主机级「禁止」会把同一主机下允许的路径一起误判，存原文才能按 URL 精确判。
+_PERSIST_TTL = 24 * 3600   # 只读判定用的有效期（仅作建议，抓取侧仍以实时为准）
+_PERSIST_MAX = 500         # 落盘主机数上限，超出按 mtime 淘汰
+
+
+def _persist_dir():
+    try:
+        import argo_paths
+        return argo_paths.ensure_state_dir("robots")
+    except Exception:
+        return None
+
+
+def _persist_write(host: str, text: str) -> None:
+    """把 robots.txt 原文落盘。失败静默——这只是加速层。"""
+    d = _persist_dir()
+    if d is None or not host:
+        return
+    try:
+        import argo_paths
+        argo_paths.atomic_write_text(d / f"{host}.txt", text)
+        _persist_evict(d)
+    except Exception:
+        pass
+
+
+def _persist_evict(d) -> None:
+    try:
+        files = sorted((f for f in d.iterdir() if f.suffix == ".txt"),
+                       key=lambda f: f.stat().st_mtime, reverse=True)
+        for f in files[_PERSIST_MAX:]:
+            f.unlink()
+    except Exception:
+        pass
+
+
+def known_blocked(url: str, max_age: float = _PERSIST_TTL) -> bool | None:
+    """只读判定：本地已存有该主机的 robots.txt 时返回其结论。
+
+    True=禁止抓取 / False=允许 / **None=本地没有存档，不做判断**。
+    None 是首要语义：搜索路径不该为了给一个答案去联网，也不该把「不知道」
+    说成「可以抓」。
+    """
+    scheme, host = _domain_key(url)
+    if not host:
+        return None
+    d = _persist_dir()
+    if d is None:
+        return None
+    try:
+        f = d / f"{host}.txt"
+        if not f.is_file():
+            return None
+        if max_age and (time.time() - f.stat().st_mtime) > max_age:
+            return None
+        text = f.read_text(encoding="utf-8", errors="replace")
+        rp = RobotFileParser()
+        rp.parse(text.splitlines())
+        return not rp.can_fetch("*", url)
+    except Exception:
+        return None
 
 
 def robots_blocked(url: str, timeout: float = 5.0) -> bool:

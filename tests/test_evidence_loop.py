@@ -77,6 +77,16 @@ def test_ttl_for_fetch_result():
 
 # ── B. URL 证据缓存 ────────────────────────────────────────────────────────────
 
+def _seed_fetch(cache, url: str, content: str = "正文内容。" * 60) -> None:
+    """先写一份正文条目——证据分并入其中存放（2026-09-17 消融后的存储契约）。
+
+    证据分描述「这份正文有多可信」，没有正文就不该单独存在：否则会出现
+    「缓存里有条目、正文却是空的」的假命中，把 fetch 缓存的读路径带偏。
+    """
+    cache.set_fetch(url, {"url": url, "content": content,
+                          "length": len(content), "success": True}, ttl=600)
+
+
 def test_evidence_cache_roundtrip(cache):
     """证据分写读命中。"""
     ev = {
@@ -89,6 +99,7 @@ def test_evidence_cache_roundtrip(cache):
         "page_type": "article",
         "fetch_method": "http",
     }
+    _seed_fetch(cache, "https://a.com/p")
     evidence_loop.store_fetch_evidence("https://a.com/p", ev, cache)
     hit = evidence_loop.lookup_fetch_evidence("https://a.com/p", cache)
     assert hit is not None
@@ -98,19 +109,33 @@ def test_evidence_cache_roundtrip(cache):
     assert evidence_loop.lookup_fetch_evidence("https://a.com/other", cache) is None
 
 
-def test_evidence_cache_isolated_from_fetch_cache(cache):
-    """证据分缓存与 fetch 正文缓存隔离：写 evidence 不影响 fetch 读取，反之亦然。"""
-    cache.set_evidence("https://a.com/p", {"absorption": 0.5, "url": "https://a.com/p"})
-    assert cache.get_fetch("https://a.com/p") is None  # evidence 不串进 fetch
+def test_evidence_requires_body(cache):
+    """证据分不得脱离正文单独存在。
 
-    cache.set_fetch("https://a.com/p", {"content": "x" * 100, "success": True}, ttl=600)
-    assert cache.get_evidence("https://a.com/p")["absorption"] == 0.5  # fetch 不覆盖 evidence
+    历史形状是两个独立 kind，证据可独自落盘。合并后证据并入正文条目：
+    没有正文就不写——否则会留下一个「正文为空却标记已核验」的 URL，
+    把 fetch 缓存的读路径和 verify 的跳过判据同时带偏。
+    """
+    cache.set_evidence("https://a.com/p", {"absorption": 0.5})
+    assert cache.get_fetch("https://a.com/p") is None, "证据不该凭空造出正文条目"
+    assert cache.get_evidence("https://a.com/p") is None
+
+
+def test_evidence_does_not_leak_into_content(cache):
+    """证据分与正文同条目存放，但不得混进 content。"""
+    _seed_fetch(cache, "https://a.com/p", content="正文" * 50)
+    cache.set_evidence("https://a.com/p", {"absorption": 0.5, "url": "https://a.com/p"})
+    hit = cache.get_fetch("https://a.com/p")
+    assert hit["content"] == "正文" * 50
+    assert "absorption" not in hit["content"]
+    assert cache.get_evidence("https://a.com/p")["absorption"] == 0.5
 
 
 # ── C. 回填 ────────────────────────────────────────────────────────────────────
 
 def test_backfill_results_with_and_without_cache(cache):
     """有证据缓存的结果回填；无缓存的不回填；不改排序。"""
+    _seed_fetch(cache, "https://v.com/known")
     cache.set_evidence("https://v.com/known", {
         "url": "https://v.com/known", "absorption": 0.72,
         "quality_score": 0.9, "word_count": 200, "content_ok": True,
@@ -159,6 +184,7 @@ def test_gate_results_high_consequence(cache):
 
 def test_gate_results_verified_skips_suggest(cache):
     """已核验结果不再建议核验，verified_count 计数。"""
+    _seed_fetch(cache, "https://v.com/known")
     cache.set_evidence("https://v.com/known", {
         "url": "https://v.com/known", "absorption": 0.7,
     })
@@ -191,8 +217,14 @@ def test_gate_results_serp_not_suggested(cache):
 
 # ── E. verify 核验模式 ─────────────────────────────────────────────────────────
 
-def _fake_fetch_factory(url, absorption=0.7, success=True, content_len=300):
-    """构造 mock fetch_fn：返回带正文的成功/失败结果。"""
+def _fake_fetch_factory(url, absorption=0.7, success=True, content_len=300,
+                        cache=None):
+    """构造 mock fetch_fn：返回带正文的成功/失败结果。
+
+    cache 非空时**忠实模拟 fetch_v3 的落盘契约**：抓取层负责写正文条目与
+    证据分（2026-09-17 消融后两者同条目）。不模拟它，verify 的第二次调用就
+    不会跳过——而真实路径下它一定会跳过，测试会与被测现实脱节。
+    """
     def _fetch(u, max_chars=8000, timeout=8.0):
         if not success:
             return {"url": u, "success": False, "error": "mock fail",
@@ -203,12 +235,19 @@ def _fake_fetch_factory(url, absorption=0.7, success=True, content_len=300):
             "Market analysts define this as a structural shift in demand."
             * max(1, content_len // 160)
         )
-        return {
+        out = {
             "url": u, "success": True, "title": "Test", "content": content,
+            "length": len(content),
             "quality_score": 0.7, "content_ok": True,
             "page_type": "article", "source_type": "news",
             "fetch_method": "mock", "cached": False,
         }
+        if cache is not None:
+            _seed_fetch(cache, u, content=content)
+            ev = evidence_loop.extract_fetch_evidence(out)
+            if ev:
+                cache.set_evidence(u, ev)
+        return out
     return _fetch
 
 
@@ -220,7 +259,7 @@ def test_verify_results_fetch_and_backfill(cache):
     ]
     v = evidence_loop.verify_results(
         results, "gold price", cache=cache,
-        fetch_fn=_fake_fetch_factory("https://v.com/gold"), top_k=2,
+        fetch_fn=_fake_fetch_factory("https://v.com/gold", cache=cache), top_k=2,
     )
     assert len(v["verified"]) == 2
     rs = v["revision_summary"]
@@ -236,7 +275,7 @@ def test_verify_results_fetch_and_backfill(cache):
     # 证据已入缓存 → 二次 verify 跳过
     v2 = evidence_loop.verify_results(
         results, "gold price", cache=cache,
-        fetch_fn=_fake_fetch_factory("https://v.com/gold"), top_k=2,
+        fetch_fn=_fake_fetch_factory("https://v.com/gold", cache=cache), top_k=2,
     )
     assert v2["skipped_cached"] == 2
     assert v2["revision_summary"]["n"] == 0
@@ -268,7 +307,7 @@ def test_verify_results_respects_top_k(cache):
                for i in range(5)]
     v = evidence_loop.verify_results(
         results, "q", cache=cache,
-        fetch_fn=_fake_fetch_factory("https://v.com/r0"), top_k=2,
+        fetch_fn=_fake_fetch_factory("https://v.com/r0", cache=cache), top_k=2,
     )
     assert len(v["verified"]) == 2
     assert v["revision_summary"]["n"] == 2
@@ -291,7 +330,7 @@ def test_fetch_v3_writes_evidence_cache(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cache_mod, "SearchCache", _factory)
 
-    def _fake_http(url, max_chars=8000, timeout=8.0):
+    def _fake_http(url, max_chars=8000, timeout=8.0, **kwargs):
         return {
             "url": url, "success": True, "title": "Fake",
             "content": (
@@ -352,6 +391,7 @@ def test_mcp_compact_preserves_evidence_fields(cache):
     """MCP 紧凑输出保留证据门控字段（集成边界：Agent 主入口必须能读到核验信号）。"""
     import mcp_handlers
 
+    _seed_fetch(cache, "https://v.com/verified")
     cache.set_evidence("https://v.com/verified", {
         "url": "https://v.com/verified", "absorption": 0.66,
         "quality_score": 0.8, "word_count": 150, "content_ok": True,
