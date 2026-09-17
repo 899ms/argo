@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.9-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-237-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -62,7 +62,7 @@ Agent 干活的量级变了，检索的玩法跟着变了四件事，每一件 A
 4. **免费开放生态够用了。** 政府、学术、标准、安全机构的开放 API + 免 key 引擎，已经能覆盖大多数领域（198 个免配置源）；稀缺免费额度（firecrawl 1000 credits/月、stackexchange 300 次/天）做了「日常补位、关键顶上」的分层，订阅墙不是唯一解。
 5. **检索质量从「感觉」到「度量」。** 排序有金标（MRR/nDCG 地板）、融合有增益消融检查、路由有负向控制矩阵——「这版比上版好吗」从此是数字问题，不是玄学。
 
-> v2.8.8 把以上全部落地：237 个源、92 个领域、198 个免配置开箱。逐项细节见 [docs/为什么选择argo.md](docs/为什么选择argo.md) 与 [发布说明](docs/RELEASE_NOTES_v2.8.8.md)。
+> v2.8.9 把以上全部落地：237 个源、92 个领域、198 个免配置开箱。逐项细节见 [docs/为什么选择argo.md](docs/为什么选择argo.md) 与 [发布说明](docs/RELEASE_NOTES_v2.8.9.md)。
 
 ---
 
@@ -155,7 +155,7 @@ freshness  ≈ 发布时间（会忽略「2015 年以来」这类历史对比年
 
 ## 快速开始
 
-任选一种即可。**以 GitHub 为唯一安装来源**（`npx github:taxueseek/argo` 或 `install.sh` / `install.ps1`），当前推荐 **v2.8.8**。**请勿用 `npm install argo-search`**——npm registry 上那份是**非官方陈旧版 v1.0.1**（非本仓库维护，功能残缺、不随本项目更新）。本包 `package.json` 已设 `private: true` 防止误发布到 npm registry。
+任选一种即可。**以 GitHub 为唯一安装来源**（`npx github:taxueseek/argo` 或 `install.sh` / `install.ps1`），当前推荐 **v2.8.9**。**请勿用 `npm install argo-search`**——npm registry 上那份是**非官方陈旧版 v1.0.1**（非本仓库维护，功能残缺、不随本项目更新）。本包 `package.json` 已设 `private: true` 防止误发布到 npm registry。
 
 **零配置就能跑**：不配 API Key 时走免费引擎 + 本地 `local_*` 引擎；配了 Key 的源质量通常更好，没配则自动跳过。
 
@@ -347,8 +347,9 @@ python3 scripts/search.py --list-engines
 | `deep` | 调研、综述 | 质量优先，可多用引擎 |
 | `budget` | 额度紧 | 配额控制，用完降级 |
 
-### 当前大致能力（v2.8.8）
+### 当前大致能力（v2.8.9）
 
+- **输出减重与漏斗归因（v2.8.9 新增）**：默认输出 −66%（同一段结果不再重复三遍，`--envelope` 开完整版）；六格漏斗（路由→调用→返回→去重→过滤→保留）让「搜到 0 条」能定位塌在哪一层；阶段耗时账拆出过滤与恢复，慢在哪不再被指错方向
 - **DSH 插件工具原生化（v2.8.5 新增）**：`argo_search` / `argo_fetch` 原生一等工具默认可用（CLI 单发，不依赖 MCP 连接）；schema 由 `gen_native_tools.py` 从 `mcp_tools.py` 唯一来源生成（漂移检查测试把关）；`nativeTools` 配置可按需启用全部 13 个工具（`argo_research` 除外）
 - **MCP 默认关闭（v2.8.5 变更）**：三形态接入——MCP 按需挂载（profile patch）/ 原生工具（默认入口）/ 原生 web_search seam；平时零常驻 token 开销
 - **Windows 全平台兼容（v2.8.5 增强，社区贡献）**：临时路径走 `tempfile.gettempdir()`；解析映射显式 UTF-8（根治 GBK 静默失效）；解释器运行时解析（python3 → python → sys.executable）；symlink 无权限退化 junction；PowerShell 一键安装 `install.ps1`；`--spotlight` 无 mdfind 自动退化 rg
@@ -609,6 +610,13 @@ argo/
 
 ## 最近更新
 
+### v2.8.9：输出减重 + 检索更全更快 + 外媒与核查源 5 个
+
+- **更省**：默认输出 −66%（同一段结果不再重复写三遍）；重复查询 −30%（路由决策缓存）；慢网轮等待 −36%（主源卡过 0.8 秒自动补发备选源）
+- **更全**：召回 +35%、抓取时延 −30%；正文结构保真 0/6 → 6/6（标题、列表、表格不再被压平）；中文内容不再被系统性判为低质
+- **新增**：搜索源 232 → 237（免配置开箱 194 → 198，全部免密钥——卫报、France 24、德国之声，声明核查 FactCheck.org / Full Fact 美英两口径）；死源 gdelt 下线
+- **更可信**：六处「数字互相矛盾」的记账缺陷修复；六格漏斗让「搜到 0 条」能定位塌在哪一层；离线重跑对比工具让改动效果当天可验证；详见 [发布说明](docs/RELEASE_NOTES_v2.8.9.md)
+
 ### v2.8.8：真实用户问题修复 + 全面提速 + 搜索源 232 个
 
 - **修复**：按推荐名配密钥后引擎静默失效（#12）；抓取链不走代理，GitHub 等站点必然失败（#13）——现在 `ARGO_PROXY`、config 按域规则、标准代理环境变量都生效，`NO_PROXY` 尊重
@@ -649,6 +657,7 @@ argo/
 
 | 版本 | 说明 |
 |------|------|
+| **v2.8.9** | **输出减重 + 检索更全更快 + 5 个外媒与核查源**：默认输出 15.5KB→5.2KB（−66%，同一份结果不再写三遍，`--envelope` 可开完整版）；路由决策缓存让重复查询 −30%；慢网轮 dispatch −36%（串行域主源超 0.8s 自动补发备选源）；取数链路五轮优化（召回 +35%、抓取时延 −30%、长尾 P90 −8%）+ 正文结构还原（标题/列表/表格保真 0/6→6/6）+ 中文质量分偏差修复；新增卫报 / France 24 / 德国之声 / FactCheck.org / Full Fact 五个免密钥源（232→237、开箱 194→198、域 90→92），gdelt 死源下线；六处「看起来对、量起来错」的自洽缺陷修复 + 六格漏斗归因 + 离线重跑对比工具（`scripts/replay_eval.py`）+ 部署形态门禁与场景阈值契约。详见 [发布说明](docs/RELEASE_NOTES_v2.8.9.md) |
 | **v2.8.8** | **真实用户报障修复（#12 密钥别名静默失效、#13 抓取链不走代理）+ 全面提速 + 搜索源 218 → 232**：统一出口调度（`ARGO_PROXY` / 按域规则 / 标准代理变量，全程尊重 `NO_PROXY`）；16 处密钥读取统一走别名链；命令冷启动 2.1s→0.55s、配置跨进程缓存 50–82ms→16–18ms、QPP 平坦分早停、`--list-engines --detail` 瘦身 152KB→51KB；新增直答 `argo answer` 与网页观察 `argo watch`，14 个免密钥源（国内热榜与生活 / 安全漏洞 / 学术开放获取 / 技能目录 / Agent 搜索），69 引擎补归类（`web_general` 兜底 41%→20%，新增 security 领域）；三平台惯例路径（`argo paths` 自省）+ Python 3.9 + 有界并发让超时真正生效；search.py 拆模块 3351→2526 行、相关性回归金标 22 引擎、静态缺陷与输出契约门禁。详见 [发布说明](docs/RELEASE_NOTES_v2.8.8.md) |
 | **v2.8.7** | **218 源 / 89 域 + 取信技巧三通道 + 路由触发纪律 + macro 零结果修复**：批次七/八/九累计 50 个新源（法条/标准/安全情报/学术/新闻/文娱/能源交通/法律政务），stackexchange 与 doi 引擎；抓取链第零级 llms.txt 与 `.md` 直出探测、新增 r.jina.ai 阅读器级；`--engine` 逗号多引擎修复、tfidf 计算方式与 route_reason、负向路由控制矩阵、排序金标与融合增益消融检查；中国宏观查询国家统计局前置、全域零结果恢复链放行 L3、救援引擎如实记账。详见 [发布说明](docs/RELEASE_NOTES_v2.8.7.md) |
 | **v2.8.6** | **hedged 竞速 + 知乎三源分工 + 声明式语言分发 + 可达性门 + 学术检索协议**：首引擎宽限窗竞速（快引擎只付 1 次调用）、zhihu 全网搜/个人数据接入与防饿死、子查询语言/学术分发（英文源与 17 学术源接入研究采集）、引擎语言元数据与可达性检查（死源显形）、geo 尾链 −56%、学术检索查询构造协议。详见 [发布说明](docs/RELEASE_NOTES_v2.8.6.md) |

@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.9-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-237-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -60,7 +60,7 @@
 4. **The free/open ecosystem is enough.** Government, academic, standards and security open APIs plus keyless engines cover most domains (198 keyless sources).
 5. **Quality is measurable.** Ranking golden floors, fusion-ablation gates and negative routing controls — "is this version better" is now a number, not a vibe.
 
-> v2.8.8 ships all of the above: 237 sources, 92 domains, 198 keyless. Details in [docs/为什么选择argo.md](docs/为什么选择argo.md).
+> v2.8.9 ships all of the above: 237 sources, 92 domains, 198 keyless. Details in [docs/为什么选择argo.md](docs/为什么选择argo.md).
 
 ---
 
@@ -153,7 +153,7 @@ Results include `selection`, `absorption`, `credibility_fast`, `evidence_flags`,
 
 ## Quick start
 
-Pick any path. **GitHub is the only install source of truth** (`npx github:taxueseek/argo` or `install.sh`); current recommendation **v2.8.8**. **Do not `npm install argo-search`** — the npm registry copy is an **unofficial stale v1.0.1** (not this repo, incomplete, not updated). This package sets `private: true` so it is not published to npm by mistake.
+Pick any path. **GitHub is the only install source of truth** (`npx github:taxueseek/argo` or `install.sh`); current recommendation **v2.8.9**. **Do not `npm install argo-search`** — the npm registry copy is an **unofficial stale v1.0.1** (not this repo, incomplete, not updated). This package sets `private: true` so it is not published to npm by mistake.
 
 **Zero-config works**: without API keys, free engines + local `local_*` engines run; keyed engines are skipped when missing (and usually better when present).
 
@@ -289,7 +289,7 @@ python3 scripts/search.py --list-engines
 | `deep` | research, surveys | quality first; more engines allowed |
 | `budget` | tight quota | quota control; degrade when exhausted |
 
-### Rough capability set (v2.8.8)
+### Rough capability set (v2.8.9)
 
 - **Local data fusion (new in v2.8.4)**: research work packages take `file_inputs` (first-hand local data; sha256/lineage registered) + `recompute` (sandboxed recalc); dossier emits `local_sources`
 - **One-command MCP inject (new in v2.8.4)**: `argo mcp inject` for Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (atomic write + backup + undo; source `mcp/clients.yaml`)
@@ -502,6 +502,13 @@ argo/
 
 ---
 
+### v2.8.9: output slimming + richer, faster retrieval + 5 international & fact-check sources
+
+- **Leaner**: default output −66% (the same results are no longer written three times); repeated queries −30% (routing decision cache); slow-network waits −36% (a fallback source fires automatically once the primary stalls past 0.8s)
+- **Richer**: recall +35%, fetch latency −30%; body-structure fidelity 0/6 → 6/6 (headings, lists and tables no longer flattened); Chinese content no longer systematically scored as low-quality
+- **New**: sources 232 → 237 (keyless 194 → 198, all free — The Guardian, France 24, DW, plus fact-checkers FactCheck.org / Full Fact covering US & UK claims); dead source gdelt retired
+- **More trustworthy**: six bookkeeping defects where the numbers contradicted each other are fixed; a six-stage funnel pinpoints where a zero-result search collapsed; an offline replay tool makes change effects verifiable the same day. See [release notes](docs/RELEASE_NOTES_v2.8.9.md)
+
 ### v2.8.8: real-user fixes + across-the-board speedups + 232 sources
 
 - **Fixes**: engines silently returning nothing when keys were set under the documented recommended names (#12); fetch chain ignoring proxies so proxy-required sites like GitHub always failed (#13) — now `ARGO_PROXY`, per-domain config rules and standard proxy env vars all work, with `NO_PROXY` respected
@@ -544,6 +551,7 @@ argo/
 
 | Version | Notes |
 |---------|-------|
+| **v2.8.9** | **Output slimming + richer, faster retrieval + 5 international & fact-check sources**: default output 15.5KB→5.2KB (−66%, `--envelope` restores the full envelope); routing decision cache cuts repeated queries −30%; slow-network dispatch −36% (serial domains auto-hedge past 0.8s); five-round fetch-chain overhaul (recall +35%, fetch latency −30%, long-tail P90 −8%) + body structure restoration (headings/lists/tables fidelity 0/6→6/6) + CJK quality-score fix; new keyless sources Guardian RSS / France 24 / DW / FactCheck.org / Full Fact (232→237, keyless 194→198, domains 90→92), dead gdelt retired; six self-consistency defects fixed + six-stage funnel attribution + offline replay tool (`scripts/replay_eval.py`) + post-policy deployment gates & scenario-threshold contracts. See [release notes](docs/RELEASE_NOTES_v2.8.9.md) |
 | **v2.8.8** | **Real-user fixes (#12 key-alias silence, #13 proxy-less fetch) + across-the-board speedups + sources 218 → 232**: unified egress dispatch (`ARGO_PROXY` / per-domain rules / standard proxy env, `NO_PROXY` respected); 16 key-read sites unified on the alias chain; command cold start 2.1s→0.55s, cross-process config cache 50–82ms→16–18ms, QPP flatness-gated early stop, `--list-engines --detail` slimmed 152KB→51KB; new `argo answer` (cited direct answers) and `argo watch` (webpage change watching), 14 keyless sources (CN trending & lifestyle / security advisories / open-access scholarship / skill directories / agent search), 69 engines re-classified (`web_general` fallback share 41%→20%, new security domain); platform-conventional paths (`argo paths`) + Python 3.9 + bounded concurrency making timeouts real; search.py split into modules 3351→2526 lines, relevance golden over 22 engines, static-defect & output-contract gates. See [release notes](docs/RELEASE_NOTES_v2.8.8.md) |
 | **v2.8.7** | **218 sources / 89 domains + three fetch direct-out channels + routing trigger discipline + macro zero-result fix**: 50 new sources across batches 7/8/9 (statutes, standards, security intel, academia, news, entertainment, energy/transport, legal), stackexchange & doi engines; fetch chain level-0 llms.txt and `.md` variant probing plus r.jina.ai reader level; `--engine` comma-list fix, tfidf scope & route_reason, negative routing-control matrix, ranking golden & fusion-ablation gates; China macro queries promote national statistics first, zero-result recovery unlocks L3, rescue engines recorded. See [release notes](docs/RELEASE_NOTES_v2.8.7.md) |
 | **v2.8.6** | **Hedged racing + Zhihu three-source split + declarative language dispatch + reachability gate + academic search protocol**: first-engine grace-window racing (fast engines pay 1 call), Zhihu global-search/personal-data onboarding with starvation fix, per-sub-query language/academic dispatch (English + 17 academic sources in research collection), engine language metadata & reachability gate (dead sources surface), geo tail −56%, academic query-construction protocol. See [release notes](docs/RELEASE_NOTES_v2.8.6.md) |

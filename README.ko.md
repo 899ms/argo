@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.9-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-237-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -60,7 +60,7 @@
 4. **무료 오픈 생태계로 충분.** 정부·학술·표준·보안 공개 API와 키리스 엔진이 대부분 도메인을 커버 (무설정 198개).
 5. **품질은 측정 가능.** 랭킹 골든 플로어, 융합 이득 어블레이션 게이트, 음의 라우팅 제어.
 
-> v2.8.8은 이 모두를 구현: 237 소스 / 92 도메인 / 198 무설정.
+> v2.8.9은 이 모두를 구현: 237 소스 / 92 도메인 / 198 무설정.
 
 ---
 
@@ -153,7 +153,7 @@ composite  ≈ 0.40·selection + 0.35·absorption + 0.15·freshness + 0.10·engi
 
 ## 빠른 시작
 
-경로를 고르면 됩니다. **설치 진원은 GitHub뿐입니다**(`npx github:taxueseek/argo` 또는 `install.sh`); 현재 권장 **v2.8.8**. **`npm install argo-search`는 쓰지 마세요** — npm 레지스트리 사본은 **비공식 낡은 v1.0.1**(이 저장소가 아님, 기능 부족, 갱신 안 됨). 이 패키지는 `private: true`로 npm 오배포를 막습니다.
+경로를 고르면 됩니다. **설치 진원은 GitHub뿐입니다**(`npx github:taxueseek/argo` 또는 `install.sh`); 현재 권장 **v2.8.9**. **`npm install argo-search`는 쓰지 마세요** — npm 레지스트리 사본은 **비공식 낡은 v1.0.1**(이 저장소가 아님, 기능 부족, 갱신 안 됨). 이 패키지는 `private: true`로 npm 오배포를 막습니다.
 
 **제로 설정으로 동작**: API 키 없이도 무료 엔진 + 로컬 `local_*` 엔진이 돌고, 키 없는 엔진은 스킵됩니다(키가 있으면 보통 더 좋습니다).
 
@@ -331,7 +331,7 @@ python3 scripts/search.py --list-engines
 | `deep` | 연구, 조사 | 품질 우선, 엔진 더 허용 |
 | `budget` | 할당량 타이트 | 쿼터 제어, 소진 시 저하 |
 
-### 대략적인 능력 세트 (v2.8.8)
+### 대략적인 능력 세트 (v2.8.9)
 
 - **로컬 데이터 융합 (v2.8.4 신규)**: 연구 작업 패키지에 `file_inputs`(로컬 1차 데이터, sha256/혈통 등기) + `recompute`(샌드박스 재계산); dossier가 `local_sources` 출력
 - **MCP 한 줄 주입 (v2.8.4 신규)**: `argo mcp inject`로 Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (원자 쓰기 + 백업 + 가역; 진원 `mcp/clients.yaml`)
@@ -546,6 +546,13 @@ argo/
 
 ## 최근 업데이트
 
+### v2.8.9: 출력 경량화 + 더 빠르고 풍부한 검색 + 해외 미디어 및 팩트체크 소스 5개
+
+- **경량화**: 기본 출력 −66%(같은 결과를 세 번 쓰지 않음); 반복 쿼리 −30%(라우팅 결정 캐시); 느린 네트워크 대기 −36%(주 소스가 0.8초를 넘기면 자동으로 백업 소스 추가 기동)
+- **충실화**: 리콜 +35%, 수집 지연 −30%; 본문 구조 보존 0/6 → 6/6(제목·목록·표가 눌리지 않음); 중국어 콘텐츠가 체계적으로 저품질 판정받지 않음
+- **추가**: 소스 232 → 237(키 불필요 194 → 198, 전부 무료 — The Guardian, France 24, DW, 팩트체크 FactCheck.org / Full Fact 미·영 양권); 죽은 소스 gdelt 폐지
+- **신뢰성**: 숫자가 서로 모순되던 여섯 장부 결함 수정; 6단 퍼널로 0건이 어느 층에서 무너졌는지 특정 가능; 오프라인 재생 도구로 변경 효과를 당일 검증. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.9.md)
+
 ### v2.8.8: 실사용자 버그 수정 + 전면 속도 개선 + 소스 232개
 
 - **수정**: 문서 추천 이름으로 키를 설정해도 엔진이 조용히 0건을 반환하던 문제(#12), 수집 체인이 프록시를 무시해 GitHub 같은 사이트가 항상 실패하던 문제(#13) — 이제 `ARGO_PROXY`, config 도메인별 규칙, 표준 프록시 환경변수가 모두 작동하고 `NO_PROXY` 존중
@@ -586,6 +593,7 @@ argo/
 
 | 버전 | 비고 |
 |---------|-------|
+| **v2.8.9** | **출력 경량화 + 더 빠르고 풍부한 검색 + 해외 미디어 및 팩트체크 소스 5개**: 기본 출력 15.5KB→5.2KB(−66%, `--envelope`로 전체 봉투 복원); 라우팅 결정 캐시로 반복 쿼리 −30%; 느린 네트워크 디스패치 −36%(직렬 도메인은 0.8초 초과 시 자동 헤지); 수집 체인 5차 개선(리콜 +35%, 지연 −30%, 롱테일 P90 −8%) + 본문 구조 복원(제목/목록/표 보존 0/6→6/6) + CJK 품질 점수 수정; 키 불필요 신규 소스 Guardian RSS / France 24 / DW / FactCheck.org / Full Fact(232→237, 키 불필요 194→198, 도메인 90→92), 죽은 gdelt 폐지; 자기일관성 결함 6곳 수정 + 6단 퍼널 귀속 + 오프라인 재생 도구(`scripts/replay_eval.py`) + 정책 후 배포 게이트 및 시나리오 임계값 계약. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.9.md) |
 | **v2.8.8** | **실사용자 신고 수정(#12 키 별칭 무음 실패, #13 프록시 미지원 수집) + 전면 속도 개선 + 소스 218 → 232**: 출구 디스패치 통일(`ARGO_PROXY` / 도메인별 규칙 / 표준 프록시 변수, `NO_PROXY` 존중); 키 읽기 16곳을 별칭 체인으로 통일; 명령어 콜드 스타트 2.1s→0.55s, 설정 캐시 50–82ms→16–18ms, QPP 평탄도 게이트 조기 중단, `--list-engines --detail` 152KB→51KB 축소; 직답 `argo answer`와 웹 관찰 `argo watch` 추가, 키 불필요 소스 14개(중국 트렌드·라이프스타일 / 보안 취약점 / 오픈 액세스 학술 / 스킬 디렉터리 / 에이전트 검색), 69개 엔진 재분류(`web_general` 폴백 비중 41%→20%, security 도메인 신설); 3개 OS 관례 경로(`argo paths`) + Python 3.9 + 유계 동시성으로 타임아웃 실효화; search.py 모듈 분할 3351→2526행, 22개 엔진 관련성 골든, 정적 결함·출력 계약 게이트. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.8.md) |
 | **v2.8.7** | **218 소스 / 89 도메인 + 본문 직출 3채널 + 라우팅 발화 규율 + macro 제로 결과 수정**: 배치 7/8/9 누적 50개 신규 소스(법령, 표준, 보안 인텔, 학술, 뉴스, 엔터, 에너지·교통, 법무·행정), stackexchange·doi 엔진; 수집 체인 0단계에 llms.txt와 `.md` 직출 프로브, r.jina.ai 리더 단계 추가; `--engine` 콤마 다중 지정 수정, tfidf 기준과 route_reason, 부정 라우팅 제어 매트릭스, 랭킹 골든과 융합 이득 소거 게이트; 중국 거시 조회는 국가통계국 우선, 전역 제로 결과 복구가 L3 개방, 구조 엔진 정직 집계. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.7.md) |
 | **v2.8.6** | **hedged 레이싱 + 지후 3소스 분담 + 선언적 언어 디스패치 + 도달성 게이트 + 학술 검색 프로토콜**: 선두 엔진 유예 창 레이싱(빠른 엔진은 호출 1회), zhihu 전체 검색/개인 데이터 연동과 아사 방지, 하위 쿼리 언어·학술 디스패치(영어 소스와 17개 학술 소스를 연구 수집에 연결), 엔진 언어 메타데이터와 도달성 게이트(죽은 소스 노출), geo 꼬리 −56%, 학술 검색 쿼리 구성 프로토콜. 자세히는 [릴리스 노트](docs/RELEASE_NOTES_v2.8.6.md) |

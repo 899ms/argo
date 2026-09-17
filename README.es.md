@@ -24,7 +24,7 @@
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.9+-green">
-  <img alt="version" src="https://img.shields.io/badge/version-2.8.8-informational">
+  <img alt="version" src="https://img.shields.io/badge/version-2.8.9-informational">
   <img alt="engines" src="https://img.shields.io/badge/engines-237-orange">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-14%20tools-purple">
 </p>
@@ -60,7 +60,7 @@
 4. **El ecosistema libre basta.** APIs abiertas de gobiernos/academia/estándares/seguridad + motores sin clave cubren la mayoría de dominios (198 sin configuración).
 5. **Calidad medible.** Pisos golden de ranking, gates de ablación de fusión y controles negativos de enrutamiento.
 
-> v2.8.8 lo implementa todo: 237 fuentes, 92 dominios, 198 sin clave.
+> v2.8.9 lo implementa todo: 237 fuentes, 92 dominios, 198 sin clave.
 
 ---
 
@@ -153,7 +153,7 @@ Los resultados incluyen `selection`, `absorption`, `credibility_fast`, `evidence
 
 ## Inicio rápido
 
-Elige cualquier camino. **GitHub es la única fuente de verdad de instalación** (`npx github:taxueseek/argo` o `install.sh`); recomendación actual **v2.8.8**. **No uses `npm install argo-search`** — la copia del registro npm es un **v1.0.1 no oficial y obsoleto** (no es este repo, incompleto, no se actualiza). Este paquete pone `private: true` para no publicarse en npm por error.
+Elige cualquier camino. **GitHub es la única fuente de verdad de instalación** (`npx github:taxueseek/argo` o `install.sh`); recomendación actual **v2.8.9**. **No uses `npm install argo-search`** — la copia del registro npm es un **v1.0.1 no oficial y obsoleto** (no es este repo, incompleto, no se actualiza). Este paquete pone `private: true` para no publicarse en npm por error.
 
 **Funciona sin configuración**: sin claves API corren motores gratis + `local_*` locales; los que requieren clave se omiten si faltan (y suelen mejorar cuando están).
 
@@ -331,7 +331,7 @@ python3 scripts/search.py --list-engines
 | `deep` | investigación, sondeos | calidad primero; más motores |
 | `budget` | cuota justa | control de cuota; degrada al agotarse |
 
-### Conjunto aproximado de capacidades (v2.8.8)
+### Conjunto aproximado de capacidades (v2.8.9)
 
 - **Fusión de datos locales (nuevo en v2.8.4)**: work packages de investigación con `file_inputs` (datos locales de primera mano; se registra sha256/linaje) + `recompute` (recálculo en sandbox); el dossier emite `local_sources`
 - **Inyección MCP de un comando (nuevo en v2.8.4)**: `argo mcp inject` para Claude Code / Cursor / Windsurf / Codex / OpenCode / Cline (escritura atómica + backup + deshacer; fuente `mcp/clients.yaml`)
@@ -546,6 +546,13 @@ argo/
 
 ## Actualizaciones recientes
 
+### v2.8.9: salida más ligera + recuperación más rica y rápida + 5 fuentes internacionales y de verificación
+
+- **Más ligero**: salida por defecto −66% (los mismos resultados ya no se escriben tres veces); consultas repetidas −30% (caché de decisiones de enrutado); esperas con red lenta −36% (una fuente de respaldo se dispara automáticamente si la principal supera 0.8s)
+- **Más rico**: recall +35%, latencia de fetch −30%; fidelidad estructural del cuerpo 0/6 → 6/6 (títulos, listas y tablas ya no se aplanan); el contenido en chino ya no se puntúa sistemáticamente como de baja calidad
+- **Nuevo**: fuentes 232 → 237 (sin clave 194 → 198, todas gratis — The Guardian, France 24, DW, más los verificadores FactCheck.org / Full Fact para afirmaciones de EE. UU. y Reino Unido); fuente muerta gdelt retirada
+- **Más fiable**: corregidos seis defectos de contabilidad donde los números se contradecían entre sí; un embudo de seis etapas localiza dónde colapsa una búsqueda sin resultados; una herramienta de repetición sin conexión permite verificar los cambios el mismo día. Ver [notas de la versión](docs/RELEASE_NOTES_v2.8.9.md)
+
 ### v2.8.8: correcciones reportadas por usuarios reales + aceleración general + 232 fuentes
 
 - **Correcciones**: motores que devolvían cero resultados en silencio al configurar claves con los nombres recomendados (#12); cadena de fetch que ignoraba el proxy y hacía fallar siempre sitios como GitHub (#13) — ahora funcionan `ARGO_PROXY`, las reglas por dominio del config y las variables de proxy estándar, respetando `NO_PROXY`
@@ -586,6 +593,7 @@ argo/
 
 | Versión | Notas |
 |---------|-------|
+| **v2.8.9** | **Salida más ligera + recuperación más rica y rápida + 5 fuentes internacionales y de verificación**: salida por defecto 15.5KB→5.2KB (−66%, `--envelope` restaura el sobre completo); la caché de decisiones de enrutado reduce las consultas repetidas −30%; despacho en red lenta −36% (dominios serie con respaldo automático tras 0.8s); revisión de la cadena de fetch en cinco rondas (recall +35%, latencia −30%, P90 de cola larga −8%) + restauración de estructura del cuerpo (títulos/listas/tablas 0/6→6/6) + corrección de la puntuación de calidad para CJK; nuevas fuentes sin clave Guardian RSS / France 24 / DW / FactCheck.org / Full Fact (232→237, sin clave 194→198, dominios 90→92), gdelt retirado; seis defectos de autoconsistencia corregidos + embudo de seis etapas + herramienta de repetición sin conexión (`scripts/replay_eval.py`) + puertas de despliegue post-política y contratos de umbral por escenario. Ver [notas de la versión](docs/RELEASE_NOTES_v2.8.9.md) |
 | **v2.8.8** | **Correcciones reportadas por usuarios reales (#12 silencio del alias de clave, #13 fetch sin proxy) + aceleración general + fuentes 218 → 232**: despacho de salida unificado (`ARGO_PROXY` / reglas por dominio / variables de proxy estándar, respetando `NO_PROXY`); 16 puntos de lectura de claves unificados en la cadena de alias; arranque en frío 2.1s→0.55s, caché de configuración 50–82ms→16–18ms, parada temprana con umbral de planitud QPP, `--list-engines --detail` reducido 152KB→51KB; nuevos `argo answer` (respuestas directas con citas) y `argo watch` (detección de cambios web), 14 fuentes sin clave (tendencias y vida diaria de China / avisos de seguridad / académico de acceso abierto / directorios de skills / búsqueda para agentes), 69 motores reclasificados (cuota del fallback `web_general` 41%→20%, nuevo dominio security); rutas convencionales por plataforma (`argo paths`) + Python 3.9 + concurrencia acotada que hace efectivos los timeouts; search.py dividido en módulos 3351→2526 líneas, golden de relevancia sobre 22 motores, puertas de defectos estáticos y de contrato de salida. Ver [notas de la versión](docs/RELEASE_NOTES_v2.8.8.md) |
 | **v2.8.7** | **218 fuentes / 89 dominios + tres canales de salida directa del cuerpo + disciplina de disparo de rutas + corrección de cero resultados en macro**: 50 fuentes nuevas acumuladas en los lotes 7/8/9 (leyes, estándares, inteligencia de seguridad, academia, noticias, entretenimiento, energía/transporte, legal/administrativo), motores stackexchange y doi; sondeo de nivel 0 llms.txt y variantes `.md` en la cadena de fetch, más nivel lector r.jina.ai; corrección de la lista de motores separada por comas en `--engine`, alcance de tfidf y route_reason, matriz de control de rutas negativas, golden de ranking y puertas de ablación de fusión; las consultas macro de China priorizan el buró nacional de estadística, la recuperación de cero resultados abre L3 y los motores de rescate se contabilizan con honestidad. Ver [notas de la versión](docs/RELEASE_NOTES_v2.8.7.md) |
 | **v2.8.6** | **Carrera hedged + reparto de tres fuentes de Zhihu + despacho declarativo por idioma + puerta de alcanzabilidad + protocolo de búsqueda académica**: carrera con ventana de gracia para el primer motor (los motores rápidos pagan 1 llamada), búsqueda global y datos personales de Zhihu con antiexterminio, despacho por idioma/académico de subconsultas (fuentes en inglés y 17 fuentes académicas en la recolección), metadatos de idioma por motor y puerta de alcanzabilidad (las fuentes muertas salen a la luz), cola geo −56%, protocolo de construcción de consultas académicas. Ver [notas de la versión](docs/RELEASE_NOTES_v2.8.6.md) |
