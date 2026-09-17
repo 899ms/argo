@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "recorded_baseline": "2026-09-17",
+    "usage": "场景阈值契约:每个场景声明「什么算不达预期」。重放数据真源是 pipeline_golden.json(本文件只引用查询文本,不复制数据);路由落点与引擎数为 2026-09-17 冷状态实测(隔离状态目录、修复 specification 劫持后),kept 下限为录制当日重放实测——定在实测值防跌破,不拍脑袋拔高。",
+    "caveat": "重放保证「处理逻辑没有退步」,不保证「网上现在长这样」;录制数据过期时按实测更新下限并在此记一笔。**重放的确定性边界**:local_* 前缀引擎不走 engine_search 替换点、重放时真跑(2026-09-17 实录:同一份录制数据,local_bing 真跑成败让天气场景 kept 在 1↔5 间跳,errors=2),故含本地引擎的场景不声明 min_replay_kept。"
+  },
+  "scenarios": [
+    {
+      "id": "S_py_asyncio",
+      "replay_case": "Python asyncio 事件循环 最佳实践",
+      "expect_domain": "english_tech",
+      "min_engines": 2,
+      "min_replay_kept": 5
+    },
+    {
+      "id": "S_gdp_macro",
+      "replay_case": "2026 中国 GDP 增速 目标",
+      "expect_domain": "macro_data",
+      "min_engines": 2,
+      "min_replay_kept": 1,
+      "note": "kept=1 是录制当日 nbs_stats 单源单条的实测;数据型查询本就窄,按实测锚定"
+    },
+    {
+      "id": "S_openai_mcp",
+      "replay_case": "OpenAI MCP specification",
+      "domain_not_in": ["patent_search", "academic"],
+      "min_engines": 2,
+      "min_replay_kept": 5,
+      "note": "一词多义劫持锚:specification 曾被专利域正则独占(修复前 google_patents 单引擎)。只锁负向不锁正向——修后落 general_search,兜底落点允许演进"
+    },
+    {
+      "id": "S_quantum_news",
+      "replay_case": "量子计算 最新进展",
+      "expect_domain": "news_realtime",
+      "min_engines": 2,
+      "min_replay_kept": 5
+    },
+    {
+      "id": "S_react_rsc",
+      "replay_case": "React Server Components production",
+      "expect_domain": "english_tech",
+      "min_engines": 2,
+      "min_replay_kept": 5
+    },
+    {
+      "id": "S_shanghai_weather",
+      "replay_case": "上海天气 未来一周",
+      "expect_domain": "weather_query",
+      "min_engines": 2,
+      "note": "不声明 min_replay_kept:combo 混有 local_bing/local_openstreetmap,重放时本地引擎真跑、结果不确定(见 _meta.caveat),kept 锁不住「处理逻辑」这一层"
+    }
+  ]
+}
