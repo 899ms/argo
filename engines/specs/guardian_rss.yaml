@@ -1,0 +1,59 @@
+# The Guardian RSS — 卫报世界版（免 key、免注册）
+#
+# 补的盲区：**国际主流媒体的一手通道**。接入前 argo 的新闻域（global_event /
+# news_realtime / financial_news 等）成员全是中文财经向（东财 / 财联社 / 金十 /
+# 人民网）+ 聚合器 google_news，摸到 NYT / BBC / 卫报的唯一路径是聚合器转发，
+# 拿到的是切片而不是原站。
+#
+# 为什么在候选池里选它（2026-09-17 实测 29 个源）：
+#   Guardian  45 条 / 摘要中位 **979 字** / 最长 2769
+#   France24  24 条 / 337 字      ← 第二名
+#   Bloomberg 20 条 / 215 字
+#   NYT       23 条 / 147 字
+#   BBC       32 条 / 106 字
+# 即它的摘要密度是同侪的 3–9 倍——卫报的 <description> 直接给导语加前几段，
+# 其余媒体只给一句话。这是选它而不是选 NYT/BBC 的唯一理由，也是实测值。
+#
+# 形态：**feed_mode=hot（热榜语义）**。种子是固定的最近 45 条，这是实时流
+# 不是检索索引，所以忽略 query、返回最新条目，归 hot_trending 族。
+# 不放进 global_event 之类的话题检索域——实时流混进查询检索会白占槽位
+# （话题词对固定窗口的部分命中本来就极低），仓内 _REFILL_EXCLUDED_FAMILIES
+# 对 hot_trending 的排除注释说的是同一件事。
+#
+# 关于全文：本 RSS 不给全文（无 <content:encoded>）。卫报另有 Open Platform
+# Content API 可给 bodyText 全文（免费 developer key、500 次/天、190 万篇），
+# 但需注册；本引擎走免密路线，先落地这条。
+#
+# 验证:
+#   python3 scripts/engine_validate.py --engine guardian_rss --stage all --admit
+#   python3 scripts/search.py "今日国际要闻" --engine guardian_rss --json
+
+engine_id: guardian_rss
+type: rss_feed
+enabled: true
+cost_tier: free
+label: 卫报 RSS
+family: hot_trending
+feed_mode: hot
+# 热榜语义按设计忽略查询词，相关性词面判据对它不适用（用错标准）。
+# 实测：英文查询「world news today」打最新条目，词面交集为 0 而被误判语料选错。
+relevance_check: false
+priority: 25
+qps: 1
+period: second
+cost_per_call: 0.0
+cost_unit: free
+timeout: 12
+feed_url: https://www.theguardian.com/world/rss
+langs:
+- en
+canary_query: "今日国际要闻"
+coverage:
+- news
+- world
+desc: "卫报世界版 RSS（一手国际新闻实时流；摘要密度最高的一档，免 key）"
+recommended: false
+
+quality_queries:
+  - query: "今日国际要闻"
+  - query: "world news today"

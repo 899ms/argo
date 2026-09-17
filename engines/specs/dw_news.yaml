@@ -1,0 +1,47 @@
+# DW News RSS — 德国之声英语版（免 key、免注册）
+#
+# 补的盲区：**德语区/欧洲公共广播的国际新闻**。与 france24 同批接入，
+# 都是「非英美视角的国际新闻」——这类视角在只用英美源的组合里是盲的。
+#
+# 实测（2026-09-17）：**139 条**，摘要中位 193 字、最长 220。条目数是候选池
+# 里最多的（卫报 45、NYT 23、BBC 32），代价是摘要密度中等（193 字，排中游）。
+# 条目多意味着实时流更长，这是它相对 france24（24 条）的取舍。
+#
+# 形态：feed_mode=hot（热榜语义，同 guardian_rss）。归 hot_trending 族。
+#
+# 可达性（实测 2026-09-17）：它是 intl_news_flash 域的第 3 位，fast 档的
+# combo 预算裁到 2 个引擎，所以 fast 下不出现；`--depth balanced` 起三个
+# 全部入选。也就是说它是「加宽档」的补充源，不是默认档成员——
+# 这不是缺陷，是预算位只有那么多时该有的排序结果。
+#
+# 验证:
+#   python3 scripts/engine_validate.py --engine dw_news --stage all --admit
+#   python3 scripts/search.py "今日国际要闻" --depth balanced --json
+
+engine_id: dw_news
+type: rss_feed
+enabled: true
+cost_tier: free
+label: DW 德国之声 RSS
+family: hot_trending
+feed_mode: hot
+relevance_check: false
+priority: 32
+qps: 1
+period: second
+cost_per_call: 0.0
+cost_unit: free
+timeout: 12
+feed_url: https://rss.dw.com/rdf/rss-en-all
+langs:
+- en
+canary_query: "今日国际要闻"
+coverage:
+- news
+- world
+desc: "德国之声英语版 RSS（德语区/欧洲公共广播视角，条目数最多的一档）"
+recommended: false
+
+quality_queries:
+  - query: "今日国际要闻"
+  - query: "world news today"

@@ -1,0 +1,44 @@
+# France 24 RSS — 法国 24 英语版（免 key、免注册）
+#
+# 补的盲区：**法语区视角的国际新闻**。接入前 argo 对法语世界没有直采通道，
+# 欧洲视角只能靠英文源转述。
+#
+# 实测（2026-09-17）：24 条，摘要中位 337 字、最长 610——在候选池里排第二，
+# 仅次于卫报（979 字），高于 NYT（147）/ BBC（106）。条目量偏少（24），
+# 所以它是互补位而不是主位。
+#
+# 形态：feed_mode=hot（热榜语义，同 guardian_rss）。归 hot_trending 族，
+# 不进话题检索域。注意同族在组合里有 max_per_family=2 上限，它与
+# guardian_rss 同族，两者在同一 combo 里至多同时出现两个。
+#
+# 验证:
+#   python3 scripts/engine_validate.py --engine france24 --stage all --admit
+#   python3 scripts/search.py "今日国际要闻" --engine france24 --json
+
+engine_id: france24
+type: rss_feed
+enabled: true
+cost_tier: free
+label: France 24 RSS
+family: hot_trending
+feed_mode: hot
+relevance_check: false
+priority: 30
+qps: 1
+period: second
+cost_per_call: 0.0
+cost_unit: free
+timeout: 12
+feed_url: https://www.france24.com/en/rss
+langs:
+- en
+canary_query: "今日国际要闻"
+coverage:
+- news
+- world
+desc: "France 24 英语版 RSS（法语区一手的国际新闻实时流，免 key）"
+recommended: false
+
+quality_queries:
+  - query: "今日国际要闻"
+  - query: "world news today"

@@ -1,0 +1,47 @@
+# Full Fact RSS — 英国事实核查（免 key、免注册）
+#
+# 补的盲区：与 factcheck_org 同族（verification），但**口径不同**——
+# Full Fact 核查英国政治与公共数据，FactCheck.org 覆盖美国议题。
+# 两源并存不是重复：同一族内保持不同法域口径，才有交叉验证的意义。
+#
+# 实测（2026-09-17）：10 条，摘要中位 140 字、最长 204。密度明显低于
+# FactCheck.org（482 字），条目数同样只有 10——所以它是 factcheck_org 的
+# 补位而非替代。
+#
+# 召回边界：RSS 固定窗口（最近 10 条）+ 本地关键词过滤，命中面窄。
+#
+# 验证:
+#   python3 scripts/engine_validate.py --engine full_fact --stage all --admit
+#   python3 scripts/search.py "election" --engine full_fact --json
+
+engine_id: full_fact
+type: rss_feed
+enabled: true
+cost_tier: free
+label: Full Fact
+family: verification
+feed_mode: filter
+priority: 34
+qps: 1
+period: second
+cost_per_call: 0.0
+cost_unit: free
+timeout: 12
+feed_url: https://fullfact.org/feed/
+langs:
+- en
+canary_query: "shared"
+coverage:
+- news
+- verification
+desc: "Full Fact（英国事实核查：与 FactCheck.org 分属英美两法域口径）"
+recommended: false
+
+# ⚠️ 五源中命中面最窄的一个：种子仅 10 条且逐日轮换，加之核查文本身是
+# 话题型内容，高频实词极少。实测 2026-09-17 当日 shared 4/10、posts/claims/
+# online/viral 各 3/10——canary 只能取到 4/10 这一档，明显低于其余四源。
+# 若 health 转 fail，第一个怀疑对象是词而非引擎；用 guardian_rss 里那条
+# 命令换词重测。
+quality_queries:
+  - query: "shared"
+  - query: "posts"

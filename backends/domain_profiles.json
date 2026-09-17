@@ -2406,5 +2406,35 @@
     "documents": [],
     "boost_keywords": {},
     "boost_combos": {}
+  },
+  "dw_news": {
+    "label": "DW 德国之声 RSS",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "factcheck_org": {
+    "label": "FactCheck.org",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "france24": {
+    "label": "France 24 RSS",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "full_fact": {
+    "label": "Full Fact",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
+  },
+  "guardian_rss": {
+    "label": "卫报 RSS",
+    "documents": [],
+    "boost_keywords": {},
+    "boost_combos": {}
   }
 }

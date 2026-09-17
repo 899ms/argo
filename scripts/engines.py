@@ -194,6 +194,7 @@ from engines_builders import (
     _build_tencent_kline_engine,
     _build_qq_music_engine,
     _build_github_engine,
+    _build_rss_feed_engine,
 )
 
 logger = logging.getLogger("unified_search.engines")
@@ -361,6 +362,7 @@ _BUILDERS = {
     "google_patents": _build_google_patents_engine,
     "marginalia": _build_marginalia_engine,
     "wiby": _build_wiby_engine,
+    "rss_feed": _build_rss_feed_engine,
     "cnii": _build_cnii_engine,
     "ndl": _build_ndl_engine,
     "kor_law": _build_kor_law_engine,

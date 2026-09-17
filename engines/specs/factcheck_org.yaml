@@ -1,0 +1,52 @@
+# FactCheck.org RSS — 美国事实核查（免 key、免注册）
+#
+# 补的盲区：**「这个说法有没有被核查过」**。这与 argo 已有的任何一族都不同：
+#   新闻族  回答「发生了什么」
+#   百科族  回答「X 是什么」
+#   本引擎  回答「这个具体声明被判定为真/假/误导」
+# 接入前 argo 的核验能力全靠下游对普通搜索结果打分（evidence.py 的来源类型
+# 加权），没有「声明级」的一手判定。argo 的定位本身是「搜索与证据核验」，
+# 这是补一个不存在的功能维度，不是往新闻池里再加一桶水。
+#
+# 实测（2026-09-17）：10 条，摘要中位 **482 字**、最长 566——除卫报外全场最高。
+# 核查文本身就是密度型内容（结论 + 依据），所以摘要信息量天然高。
+#
+# 覆盖范围：**以美国政治/公共议题为主**，非全球通用。若要英国口径另见 full_fact。
+#
+# 召回边界：RSS 固定窗口（最近 10 条）+ 本地关键词过滤。10 条意味着命中面很窄，
+# 只有查询正好落在近期核查过的议题上才有结果——这是它的固有限制，不是缺陷；
+# 它的价值是「正好问到点上时给出权威判定」。
+#
+# 验证:
+#   python3 scripts/engine_validate.py --engine factcheck_org --stage all --admit
+#   python3 scripts/search.py "election" --engine factcheck_org --json
+
+engine_id: factcheck_org
+type: rss_feed
+enabled: true
+cost_tier: free
+label: FactCheck.org
+family: verification
+feed_mode: filter
+priority: 28
+qps: 1
+period: second
+cost_per_call: 0.0
+cost_unit: free
+timeout: 12
+feed_url: https://www.factcheck.org/feed/
+langs:
+- en
+canary_query: "president"
+coverage:
+- news
+- verification
+desc: "FactCheck.org（美国事实核查：声明级真伪判定，摘要密度仅次于卫报）"
+recommended: false
+
+# 见 guardian_rss 的说明。该种子仅 10 条、逐日轮换，实测 2026-09-17 当日
+# president 命中 8/10、people 10/10——取 president 而非 people，因为后者
+# 是虚义词，命中了也不说明引擎在正确工作。
+quality_queries:
+  - query: "president"
+  - query: "election"

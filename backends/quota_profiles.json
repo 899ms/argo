@@ -430,6 +430,16 @@
     "cost_tier": "free",
     "priority": 13
   },
+  "dw_news": {
+    "label": "DW 德国之声 RSS",
+    "qps": 1,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 32
+  },
   "eastmoney": {
     "label": "东财金融",
     "qps": 1,
@@ -560,6 +570,16 @@
     "cost_tier": "api",
     "priority": 14
   },
+  "factcheck_org": {
+    "label": "FactCheck.org",
+    "qps": 1,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 28
+  },
   "federal_register": {
     "label": "Federal Register 联邦公报",
     "qps": 2,
@@ -630,6 +650,16 @@
     "cost_tier": "free",
     "priority": 44
   },
+  "france24": {
+    "label": "France 24 RSS",
+    "qps": 1,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 30
+  },
   "fred": {
     "label": "FRED 宏观数据",
     "qps": 3,
@@ -649,6 +679,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 37
+  },
+  "full_fact": {
+    "label": "Full Fact",
+    "qps": 1,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 34
   },
   "fx_rate": {
     "label": "实时汇率",
@@ -769,6 +809,16 @@
     "cost_unit": "free",
     "cost_tier": "free",
     "priority": 50
+  },
+  "guardian_rss": {
+    "label": "卫报 RSS",
+    "qps": 1,
+    "limit": null,
+    "period": "second",
+    "cost_per_call": 0.0,
+    "cost_unit": "free",
+    "cost_tier": "free",
+    "priority": 25
   },
   "gutenberg": {
     "label": "Project Gutenberg",

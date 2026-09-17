@@ -1,6 +1,6 @@
 _generated: 由 scripts/sync_backends.py 从运行时引擎声明派生，勿手工修改。
 version: 2
-last_updated: '2026-09-16'
+last_updated: '2026-09-17'
 engines:
 - name: anysearch
   tier: T1
@@ -545,6 +545,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: DuckDuckGo Instant Answer API（T2 替代）
+- name: dw_news
+  tier: T1
+  type: rss_feed
+  coverage:
+  - news
+  - world
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 德国之声英语版 RSS（德语区/欧洲公共广播视角，条目数最多的一档）
 - name: eastmoney
   tier: T1
   type: eastmoney
@@ -708,6 +720,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: Exa 语义搜索（embedding 匹配 + 内容摘要，新户 $20 赠金 + 每月 $10 赠金）
+- name: factcheck_org
+  tier: T1
+  type: rss_feed
+  coverage:
+  - news
+  - verification
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: FactCheck.org（美国事实核查：声明级真伪判定，摘要密度仅次于卫报）
 - name: federal_register
   tier: T1
   type: http
@@ -795,6 +819,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: 法国政府开放数据目录（data.gouv.fr）
+- name: france24
+  tier: T1
+  type: rss_feed
+  coverage:
+  - news
+  - world
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: France 24 英语版 RSS（法语区一手的国际新闻实时流，免 key）
 - name: fred
   tier: T1
   type: fred
@@ -820,6 +856,18 @@ engines:
   recommended: true
   explicit_only: false
   desc: dictionaryapi.dev 英英词典（免认证，响应为数组）
+- name: full_fact
+  tier: T1
+  type: rss_feed
+  coverage:
+  - news
+  - verification
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: Full Fact（英国事实核查：与 FactCheck.org 分属英美两法域口径）
 - name: fx_rate
   tier: T1
   type: fx_rate
@@ -892,7 +940,7 @@ engines:
   - geo
   latency_ms: 2000
   cost: free
-  status: ok
+  status: disabled
   recommended: true
   explicit_only: false
   desc: GDELT 全球新闻事件数据库（事件/舆情/地理维度，免认证）
@@ -974,6 +1022,18 @@ engines:
   recommended: false
   explicit_only: false
   desc: 中国政府网规章库（部门规章/地方政府规章，免认证）
+- name: guardian_rss
+  tier: T1
+  type: rss_feed
+  coverage:
+  - news
+  - world
+  latency_ms: 2000
+  cost: free
+  status: ok
+  recommended: false
+  explicit_only: false
+  desc: 卫报世界版 RSS（一手国际新闻实时流；摘要密度最高的一档，免 key）
 - name: gutenberg
   tier: T1
   type: gutenberg

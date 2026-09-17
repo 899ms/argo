@@ -147,6 +147,9 @@ from engines_builders_intl import (
     _build_google_news_engine,
     _build_met_museum_engine,
 )
+from engines_builders_feeds import (
+    _build_rss_feed_engine,
+)
 
 __all__ = [
     "_build_em_miaoxiang_engine",
@@ -271,5 +274,6 @@ __all__ = [
     "_build_satnogs_engine",
     "_build_tle_mirror_engine",
     "_build_nhtsa_vpic_engine",
+    "_build_rss_feed_engine",
 ]
 

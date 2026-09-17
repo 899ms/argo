@@ -181,6 +181,9 @@ class TestProbeActuallyRoutesToNewSource:
         "cn_tech_community": ("技术博客",),
         "financial_news": ("财经",),
         "weather_query": ("上海天气",),
+        # 2026-09-17：国际新闻实时流 + 声明核验两个新域的端到端探针
+        "intl_news_flash": ("今日国际要闻",),
+        "claim_check": ("疫苗谣言 是不是真的",),
     }
 
     @pytest.mark.parametrize("domain", sorted(NEW_SOURCES))

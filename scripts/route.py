@@ -1201,6 +1201,11 @@ _VERTICAL_NEW_SOURCE: dict[str, tuple[str, ...]] = {
     "cn_tech_community": ("csdn",),               # 中文技术社区最大一站，补掘金/少数派之外
     "financial_news": ("wallstreetcn",),          # 快讯流上游与财联社/金十不同源
     "weather_query": ("weather_cn",),             # 国内城市实况，补国际源的城市覆盖缺口
+    # 2026-09-17：国际新闻与事实核查两个新域。前者的三个种子按 feed_mode=hot
+    # 给「最新流」语义（与话题检索分流，见 engines_builders_feeds 说明）；
+    # 后者补声明级核验——argo 此前没有任何「这个说法被判真伪」的一手源。
+    "intl_news_flash": ("guardian_rss", "france24", "dw_news"),  # 一手外媒实时流，补英文主流媒体直采空白
+    "claim_check": ("factcheck_org", "full_fact"),               # 美/英两法域核查口径
 }
 
 # 垂直域主源保护名单：这些域的专属源被 budget 裁掉后该域等于没源可用。

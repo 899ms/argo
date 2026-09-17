@@ -292,7 +292,11 @@ class TestSearchQualityAlgorithms(unittest.TestCase):
     def test_new_engines_registered(self):
         from engines import get_registry
         reg = get_registry()
-        for e in ("gdelt", "opencorporates", "google_patents"):
+        # gdelt 于 2026-09-17 移出：上游 api.gdeltproject.org/api/v2/doc/doc
+        # 持续 429（本机连续 3 次重试全 429，argo 自身调用 TLS 握手超时），
+        # 已在 config.yaml 置 enabled:false。get_registry 按 enabled 过滤，
+        # 故它不再注册——这不是回归，是下线死源后的预期结果。
+        for e in ("opencorporates", "google_patents"):
             self.assertIn(e, reg, f"{e} 应已注册")
 
     def test_new_domain_routing(self):
