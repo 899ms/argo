@@ -1079,12 +1079,89 @@ _classify_domain = _quality._classify_domain
 
 # ─── 主入口 ──────────────────────────────────────────────────────────────────
 
+# RFC 3986 语法型规范化：unreserved 字符集与默认端口
+_UNRESERVED = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                  "0123456789-._~")
+_DEFAULT_PORTS = {"http": "80", "https": "443", "ftp": "21", "ws": "80", "wss": "443"}
+_PCT_RE = re.compile(r"%([0-9A-Fa-f]{2})")
+
+
+def _remove_dot_segments(path: str) -> str:
+    """RFC 3986 §6.2.2.3：移除 . 与 .. 路径段（纯语法，不触碰语义）。"""
+    if not path:
+        return path
+    out: list[str] = []
+    for seg in path.split("/"):
+        if seg == ".":
+            continue
+        if seg == "..":
+            if out and out[-1] not in ("", ".."):
+                out.pop()
+            continue
+        out.append(seg)
+    joined = "/".join(out)
+    if path.endswith("/") and not joined.endswith("/"):
+        joined += "/"
+    if path.startswith("/") and not joined.startswith("/"):
+        joined = "/" + joined
+    return joined
+
+
+def normalize_url(url: str) -> str:
+    """RFC 3986 §6.2.2 / §6.2.3 语法型与协议型规范化。
+
+    只做**等价改写**（同一个资源的不同写法归一），不做语义改写，因此可以
+    安全地用在缓存键与去重上：
+
+      · scheme / host 小写（§6.2.2.1）—— 大小写不同不会访问到不同资源，
+        但会让同一页被判成两条，缓存与去重都失效
+      · 解码 unreserved 百分号编码（§6.2.2.2）：%7E→~、%41→A
+      · 移除点段（§6.2.2.3）：/a/./b/../c → 该去哪去哪
+      · 去掉默认端口（§6.2.3）：http:80、https:443
+      · 空路径补 /（§6.2.3）：https://x.com 与 https://x.com/ 是同一个资源
+
+    不动的部分：query 与 fragment 原样保留（只有既有的追踪参数清理会碰它们），
+    percent 编码中的保留字符不解码——那会改变语义。
+    """
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except Exception:
+        return url
+    if not parsed.scheme or not parsed.netloc:
+        return url
+
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc
+
+    # host 小写、userinfo 保留原样、端口按需剥离
+    userinfo, _, hostport = netloc.rpartition("@")
+    host, sep, port = hostport.partition(":")
+    host = host.lower()
+    if port and port == _DEFAULT_PORTS.get(scheme):
+        port = ""
+    netloc = (userinfo + "@" if userinfo else "") + host + (sep + port if port else "")
+
+    # unreserved 解码 + 保留字符的百分号编码统一大写十六进制
+    def _fix_pct(m: re.Match) -> str:
+        ch = chr(int(m.group(1), 16))
+        return ch if ch in _UNRESERVED else "%" + m.group(1).upper()
+
+    path = _PCT_RE.sub(_fix_pct, parsed.path)
+    path = _remove_dot_segments(path) or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+
+    return urllib.parse.urlunsplit(
+        (scheme, netloc, path, parsed.query, parsed.fragment))
+
+
 def _optimize_url(url: str) -> str:
     """URL 优化：Reddit 重写、追踪参数清理等。
 
     - reddit.com → old.reddit.com（7× 更小、无 JS 渲染要求）
     - 清理常见追踪参数（utm_source, fbclid, gclid 等）
     """
+    url = normalize_url(url)
     parsed = urlparse(url)
     host = parsed.netloc.lower()
 
@@ -1095,15 +1172,18 @@ def _optimize_url(url: str) -> str:
         url = url.replace("://reddit.com", "://old.reddit.com")
         url = url.replace("://new.reddit.com", "://old.reddit.com")
 
-    # 清理追踪参数
+    # 清理追踪参数。**必须在主机重写之后重新解析**：此前用的是重写之前
+    # 捕获的 parsed，一旦两者同时命中就会把重写悄悄撤销——实测
+    # `https://www.reddit.com/r/x?utm_source=z` 最终仍是 www.reddit.com，
+    # 而分享链接几乎都带 utm，等于这条优化在真实场景里大面积失效。
     tracking_params = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
                        "utm_content", "fbclid", "gclid", "ref", "ref_src"}
+    parsed = urlparse(url)
     qs = urllib.parse.parse_qs(parsed.query)
     filtered = {k: v for k, v in qs.items() if k.lower() not in tracking_params}
     if len(filtered) < len(qs):
         new_qs = urllib.parse.urlencode(filtered, doseq=True)
-        parsed = parsed._replace(query=new_qs)
-        url = urllib.parse.urlunparse(parsed)
+        url = urllib.parse.urlunparse(parsed._replace(query=new_qs))
 
     return url
 

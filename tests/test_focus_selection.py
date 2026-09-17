@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from focus_extract import (  # noqa: E402
+    _tokens,
     _boilerplate_blocks,
     _fit_to_budget,
     _is_toc_block,
@@ -127,6 +128,35 @@ class TestBoilerplateDetection(unittest.TestCase):
         out = focus_extract(text, "alpha beta gamma 工程取舍", top_k=5)
         self.assertEqual(out.count(header), 0, "重复页眉出现在聚焦结果里")
         self.assertIn("工程上的取舍", out)
+
+
+class TestTokenization(unittest.TestCase):
+    """分词：版本号整体成词、CJK 单字保留（聚焦选段的前提）。"""
+
+    def test_version_number_is_one_token(self):
+        """`6.2.2` 必须整体成词。
+
+        原式会把它切成 6/2/2，再被长度下限逐个滤掉——查询里的章节号等于
+        没写，对 RFC 这类以编号定位的文档是致命的。
+        """
+        toks = _tokens("6.2.2 Syntax-Based Normalization")
+        self.assertIn("6.2.2", toks)
+        self.assertIn("syntax", toks)
+
+    def test_section_number_in_query_matches_document(self):
+        q = set(_tokens("6.2.3 Scheme-Based Normalization"))
+        doc = set(_tokens("see 6.2.3 Scheme-Based Normalization for details"))
+        self.assertTrue(q & doc, "查询与文档的章节号无法对上")
+
+    def test_single_cjk_char_kept(self):
+        """单个汉字本身就是一个词，不该被长度下限滤掉。"""
+        self.assertIn("茶", _tokens("茶 文化"))
+
+    def test_single_latin_letter_dropped(self):
+        self.assertNotIn("a", _tokens("a b cd"))
+
+    def test_alnum_word_not_split(self):
+        self.assertIn("ipv6", _tokens("IPv6 transition"))
 
 
 class TestFetchBudget(unittest.TestCase):

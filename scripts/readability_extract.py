@@ -48,9 +48,11 @@ MIN_DENSITY = 0.55
 class TextBlock:
     """一个正文候选块。"""
 
-    __slots__ = ("text", "link_chars", "depth", "weight", "start", "end", "is_heading")
+    __slots__ = ("text", "link_chars", "depth", "weight", "start", "end",
+                 "is_heading", "kind", "row_id")
 
-    def __init__(self, text: str, link_chars: int, depth: int, weight: float, is_heading: bool = False):
+    def __init__(self, text: str, link_chars: int, depth: int, weight: float,
+                 is_heading: bool = False, kind: str = "text", row_id: int = -1):
         self.text = text
         self.link_chars = link_chars
         self.depth = depth
@@ -58,6 +60,12 @@ class TextBlock:
         self.start = -1  # 文档序占位，由收集器赋值
         self.end = -1
         self.is_heading = is_heading
+        # kind="cell" 的块来自表格单元格。表格是二维数据，逐格输出成多条独立
+        # 行之后行列关系就没了——实测一张两行表会变成「合并表头 / 型号A /
+        # 15999元」三行，读的人看不出后两者是同一行。row_id 记录它属于哪一行，
+        # 供组装阶段还原成「单元格 | 单元格」的一行。
+        self.kind = kind
+        self.row_id = row_id
 
     @property
     def chars(self) -> int:
@@ -95,6 +103,7 @@ class ReadabilityExtractor(HTMLParser):
         self._depth = 0
         self._blocks: list[TextBlock] = []
         self._container_stack: list[int] = []  # 当前容器层级的块索引起点
+        self._row_id = 0
         self.title = ""
         self._in_title = False
 
@@ -134,7 +143,11 @@ class ReadabilityExtractor(HTMLParser):
             if start is not None and len(self._blocks) == start:
                 self._current = []
                 self._current_link = []
-        if tag in BLOCK_TAGS:
+        if tag == "tr":
+            # 行结束：后续单元格归入下一行。必须在 _flush_block 之前递增，
+            # 且 tr 自身不产块（表格数据由 td 逐格产出）。
+            self._row_id += 1
+        elif tag in BLOCK_TAGS:
             self._flush_block(tag)
         if tag in CONTAINER_TAGS | BLOCK_TAGS:
             self._depth = max(0, self._depth - 1)
@@ -176,7 +189,9 @@ class ReadabilityExtractor(HTMLParser):
         if len(text) < min_chars:
             return
         weight = TAG_WEIGHT.get(tag, 1.0)
-        block = TextBlock(text, link_chars, self._depth, weight, is_heading=is_heading)
+        kind = "cell" if tag in ("td", "th") else "text"
+        block = TextBlock(text, link_chars, self._depth, weight,
+                          is_heading=is_heading, kind=kind, row_id=self._row_id)
         block.start = len(self._blocks)
         block.end = block.start + 1
         self._blocks.append(block)
@@ -214,7 +229,7 @@ class ReadabilityExtractor(HTMLParser):
         parts: list[str] = []
         total = 0
         for group in kept:
-            text = "\n".join(b.text for b in group)
+            text = self._join_group(group)
             if not text.strip():
                 continue
             # max_chars <= 0 表示不限量（取全文，供全文存档用）
@@ -226,6 +241,34 @@ class ReadabilityExtractor(HTMLParser):
             parts.append(text)
             total += len(text)
         return parts
+
+    @staticmethod
+    def _join_group(blocks: Sequence[TextBlock]) -> str:
+        """组装一组块：同行单元格用 ` | ` 连接，其余块逐行。
+
+        表格不还原成 Markdown 管道表（那需要列对齐信息，而 colspan 场景下
+        对齐本身就是坏的），只把**同行关系**还原出来——这是「读不出行列」
+        与「能读出行列」的分界，成本极低且不引入格式依赖。
+        """
+        parts: list[str] = []
+        cells: list[str] = []
+        cur_row = None
+        for b in blocks:
+            if b.kind == "cell":
+                if cells and b.row_id != cur_row:
+                    parts.append(" | ".join(cells))
+                    cells = []
+                cells.append(b.text)
+                cur_row = b.row_id
+                continue
+            if cells:
+                parts.append(" | ".join(cells))
+                cells = []
+                cur_row = None
+            parts.append(b.text)
+        if cells:
+            parts.append(" | ".join(cells))
+        return "\n".join(parts)
 
     @staticmethod
     def _group_score(blocks: Sequence[TextBlock]) -> float:

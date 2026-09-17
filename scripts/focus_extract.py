@@ -12,7 +12,14 @@ from __future__ import annotations
 import math
 import re
 
-_TOKEN_RE = re.compile(r"[a-z0-9一-鿿]+")
+# 版本号优先：`6.2.2` 这类章节号必须整体成词。
+# 原式 `[a-z0-9一-鿿]+` 会把 "6.2.2" 切成 "6"/"2"/"2"，再被长度下限逐个滤掉，
+# 于是查询里的章节号**完全没参与打分**——实测对 RFC 查「6.2.2 Syntax-Based
+# Normalization」时，最有区分度的那个词等于没写。可选版本号放在首分支，
+# 交替匹配按分支顺序取，因此 "6.2.2" 会整体命中而不是退化成数字。
+_TOKEN_RE = re.compile(r"[a-z0-9]+(?:\.[0-9]+)+|[a-z0-9一-鿿]+")
+# 单个 CJK 字符是词（汉语词多为 1–2 字），单个拉丁字母/数字才是噪声
+_CJK_CHAR_RE = re.compile(r"^[一-鿿]$")
 
 # BM25 参数
 _K1 = 1.5
@@ -24,8 +31,17 @@ _FALLBACK_TOP = 5
 
 
 def _tokens(text: str) -> list[str]:
-    """分词：提取英文/数字/中文词，过滤长度 < 2 的词。"""
-    return [t for t in _TOKEN_RE.findall((text or "").lower()) if len(t) >= 2]
+    """分词：版本号整体成词、CJK 按字、拉丁按空白词，滤掉单字母噪声。
+
+    长度下限只针对拉丁/数字：单个汉字本身就是一个词，用 `len >= 2` 一刀切
+    会把「茶」「书」这类查询词整个丢掉——与质量评分里中文被系统性低评
+    是同一类语种偏差。
+    """
+    out: list[str] = []
+    for t in _TOKEN_RE.findall((text or "").lower()):
+        if len(t) >= 2 or _CJK_CHAR_RE.match(t):
+            out.append(t)
+    return out
 
 
 def _is_heading(block: str) -> bool:

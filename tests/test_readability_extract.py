@@ -205,6 +205,32 @@ class TestReadabilityExtract(unittest.TestCase):
         content, _ = extract_readability(html)
         self.assertNotIn("首页", content)
 
+    def test_table_row_relation_restored(self):
+        """同一行的单元格必须留在同一行，否则表格数据读不出行列关系。
+
+        历史形态：td 逐格 flush，输出成「型号A / 15999元」两条独立行，
+        读的人看不出它们同属一行。
+        """
+        pad = "这一段正文足够长，用来隔离表格行为而不是被短块阈值整段丢弃。" * 2
+        html = f"""<html><body><div><p>{pad}</p><table>
+        <tr><td>型号A</td><td>15999元</td></tr>
+        <tr><td>型号B</td><td>8888元</td></tr></table></div></body></html>"""
+        content, _ = extract_readability(html, 4000)
+        # 按整行判定：每一行自己占一行，行内单元格用 ` | ` 连接
+        lines = [ln.strip() for ln in content.split("\n") if ln.strip()]
+        self.assertIn("型号A | 15999元", lines, f"第一行不是独立一行：{lines}")
+        self.assertIn("型号B | 8888元", lines, f"第二行不是独立一行：{lines}")
+
+    def test_single_cell_row_not_joined_to_next(self):
+        """一行一格时不得与下一行粘连。"""
+        pad = "这一段正文足够长，用来隔离表格行为而不是被短块阈值整段丢弃。" * 2
+        html = f"""<html><body><div><p>{pad}</p><table>
+        <tr><td>表头甲</td></tr><tr><td>数据乙</td></tr></table></div></body></html>"""
+        content, _ = extract_readability(html, 4000)
+        self.assertIn("表头甲", content)
+        self.assertIn("数据乙", content)
+        self.assertNotIn("表头甲 | 数据乙", content, "跨行被错误连接")
+
     def test_score_blocks_placeholder_keeps_order(self):
         """P1 占位：无 query 精排时保持原顺序。"""
         parts = ["第一段", "第二段", "第三段"]
