@@ -1010,7 +1010,7 @@ _FAST_TOTAL_BUDGET_S = 6.0
 
 # auto/budget 的总墙钟预算（秒）。auto 是默认模式，此前**没有**预算
 # （deadline=inf），于是 race 窗口退化成 `_eff_timeout + 2`：timeout 默认 10s
-# → 单查询最坏 2s(grace) + 12s(race) = 14s。2026-09-15 实测 "claude 5 release
+# → 单查询最坏 grace + 12s(race) = 14s。2026-09-15 实测 "claude 5 release
 # date" 冷查询 13.4s，期间无任何信号说明在等什么，用户体感就是「卡住了」。
 #
 # 取 10.0 = 用户明确的体感阈值，也 ≥ execution.default_timeout(8s)，不截断
@@ -1018,11 +1018,29 @@ _FAST_TOTAL_BUDGET_S = 6.0
 # deep 仍不设预算：研究场景宁可等待，截断会丢证据（与 fast 的成本优先相反）。
 _AUTO_TOTAL_BUDGET_S = 10.0
 
-# primary 独享启动宽限窗（秒）：主引擎在这个时间内完成且合格就免掉 hedge，
-# 只付 1 次调用；窗口未完成才补发次引擎并行 race。实测引擎 P95 1.5-8.5s，
-# 2.0s 覆盖「快引擎」子集（anysearch/local_bing 等），慢引擎（github 8.5s）
-# 在窗口后补发 backup，避免拖尾。可调：偏快取小值（省墙钟）、偏省取大值（省成本）。
-_PRIMARY_GRACE_S = 2.0
+# 首选引擎的独占宽限窗（秒）：在这个时间内完成且合格就免掉 hedge、只付 1 次
+# 调用；窗口内没完成就补发下一个引擎并行赛跑。
+#
+# **两条路径共用同一个值**，因为它们是同一个语义：「我们最信任的那个引擎，
+# 在放弃它之前先给它多久」。串行垂直域（`parallel=False`）此前根本没有这道窗，
+# 一个死源要耗满自己的超时上限（5-8s）才轮到备选；对冲改造后它与 wave-1 用
+# 同一个数。两个名字、两个值会让「到底等多久」没有单一答案。
+#
+# 取值 0.8s（2026-09-17 实测，本机真实网络，8 条查询 ×5 次、逐条交替执行）：
+#
+#   - 主引擎在 0.8s 内交付时（网络正常时的大多数），两者完全一致——都是 1 次
+#     调用、墙钟无差别（合计 7388ms → 6085ms 那一轮里 7/8 条查询就是这种情况）。
+#   - 主引擎慢于 2.0s 时，旧值要多等 1.2s 才肯补发备选，这段直接进墙钟：
+#     实测慢网那一轮 8 条查询合计 20988ms → 13426ms（**−36%**），其中
+#     「2026年 AI Agent 进展」2856→1228ms、「量子计算 突破 2026」2846→1310ms。
+#   - 代价是中间地带（主引擎落在 0.8~2.0s）偶尔多发一次调用：实测 8 条查询
+#     合计调用 8→9 条（+12%），而备选源都是免密钥源。
+#
+# 关键判断：旧值 2.0s 恰好在最差的位置——主引擎（anysearch）实测均值 1.9s，
+# 落在窗前窗后都说不准，于是「省下一次调用」这个目的基本没兑现，却把上界
+# 1.2s 的等待稳定地写进了每一次慢查询。**用一个免费备用源的调用换掉 1.2s
+# 用户可见延迟，是一笔划算的交换。**
+_PRIMARY_GRACE_S = 0.8
 
 # 质量守卫拒绝早停后的有界宽限窗（秒）。对冲的备份引擎先回来、但结果被判不充分
 # （计数不足，或与查询零词面交集）时，主引擎还能再跑这么久，之后不再等它。
@@ -1042,6 +1060,31 @@ def _straggler_grace() -> float:
     except (TypeError, ValueError):
         pass
     return _STRAGGLER_GRACE_S
+
+
+def _serial_stagger() -> float:
+    """串行路径的起步间隔：`ARGO_SERIAL_STAGGER_S` > `_PRIMARY_GRACE_S`。
+
+    值与 wave-1 的宽限窗同源（同一语义，见 `_PRIMARY_GRACE_S` 注释）：首个
+    引擎跑过这么久还没回来，就补发备选源并行跑，而不是等它耗满自己的超时上限。
+
+    单调语义：0 = 不节流（备选源与首引擎同时起跑，最激进）；值越大越接近严格
+    串行（取一个大于引擎超时上限的值即可完全退回改造前的行为）。
+
+    环境变量这一层是给消融对照用的（取大于超时上限的值 = 退回严格串行）；
+    与隔壁 `_STRAGGLER_GRACE_S` 同一种取法：常量默认 + 环境变量覆盖、**按值
+    传进 engine_dispatch**，不在调度模块里重新解析配置。三种取法（常量 /
+    config / env）混用会让「这个值到底是多少」没有单一答案，也容易让测试里
+    patch 的常量被 config 静默顶掉。
+    """
+    try:
+        raw = os.environ.get("ARGO_SERIAL_STAGGER_S")
+        if raw is not None and raw.strip() != "":
+            return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        pass
+    return _PRIMARY_GRACE_S
+
 
 # 单引擎墙钟硬预算（秒）：含该引擎的**全部**重试尝试，超预算即停、不再发起
 # 新尝试，由调度层切备选源。
@@ -1228,11 +1271,13 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         auto_budget_s=_AUTO_TOTAL_BUDGET_S,
         primary_grace_s=_PRIMARY_GRACE_S,
         straggler_grace_s=_straggler_grace(),
+        serial_stagger_s=_serial_stagger(),
     )
     raw_results = _dispatch.raw_results
     engine_outcomes = _dispatch.engine_outcomes
     engine_latency = _dispatch.engine_latency
     wasted_ms = _dispatch.wasted_ms
+    useful_ms = _dispatch.useful_ms
     early_stopped = _dispatch.early_stopped
     budget_used_ms = _dispatch.budget_used_ms
     budget_total_ms = _dispatch.budget_total_ms
@@ -1363,7 +1408,14 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     _tock(timing, "dedupe", _tk_dedupe)
     # 漏斗第 4 格：跨引擎合并 + 近重复去重之后还剩多少（见 build_funnel）
     _funnel_deduped = len(merged)
-    _tk_rerank = _tick(timing)
+    # 三个子段各自计时，**不能共用一个 tick**：
+    # `filter`（否定词 + 时间窗过滤）是纯本地遍历；`recovery` 是**网络调用**
+    # （域路由零结果时的救援链，见下）；`rerank` 是纯本地重排。此前三者共用
+    # 一个 tick 且整个挂在 "rerank" 名下，实测「python 怎么读csv」的 rerank
+    # 阶段报 706ms（占全查询 40%），而真正的重排只用 3.6ms——那 700ms 是恢复
+    # 链打的一次 anysearch。`--explain-timing` 的全部价值就是回答「瓶颈在哪」，
+    # 报错桶等于把人指向错误的优化对象。
+    _tk_filter = _tick(timing)
 
     # ── P2：多语言语言偏好软排序（ja/ko 前置含目标语言字符结果，软排不删除）──
     try:
@@ -1401,6 +1453,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 f"时间窗后过滤剔除 {time_filtered} 条（since={since_iso}, until={until_iso}）")
     # 漏斗第 5 格：否定词过滤 + 时间窗过滤之后（见 build_funnel）
     _funnel_filtered = len(merged)
+    _tock(timing, "filter", _tk_filter)
 
     # D5：时间窗空操作告警——用户指定了时间窗，组合内含时间能力引擎，
     # 但结果没有任何 published_at（下推缺失/源端未返回）：
@@ -1426,6 +1479,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             _max_rec_level = "L2"
     except Exception:
         pass
+    _tk_recovery = _tick(timing)
+    _recovery_engines: set[str] = set()
     if not merged:
         try:
             from recovery import run_recovery
@@ -1449,6 +1504,10 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 """恢复执行器：串行跑候选引擎，取首个非空。跳过缓存避免污染。"""
                 out: list[dict[str, Any]] = []
                 for eng in rengines:
+                    # 记下真正发出的调用：恢复段走的不是 dispatch，若不单独记账，
+                    # 漏斗会算出「routed 2 → called 2 → returned 5」这种自相矛盾的
+                    # 账（实测「python 怎么读csv」），而这正是最需要被看见的路径。
+                    _recovery_engines.add(eng)
                     try:
                         # 恢复路径同样携带时间窗，避免恢复时丢弃用户约束
                         res = engine_search(rq, eng, n=max_results,
@@ -1507,6 +1566,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 f"错误恢复跳过: {type(e).__name__}")
 
     # Reranker：ARGO_LOCAL_RERANK 开关（0 关闭本地五维保底；默认 1 开启）
+    _tock(timing, "recovery", _tk_recovery)
+    _tk_rerank = _tick(timing)
     local_rerank_on = env_flag("ARGO_LOCAL_RERANK")
     reranker_status = "skipped_short"
     rank_method = "none"
@@ -1558,7 +1619,14 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     # max_results 截断，而 _sort_results 只重排、不改长度。
     funnel = build_funnel(
         len(engines),
-        len(engine_outcomes) or len(raw_results),
+        # 「实际发起调用」= 编排层跑过的引擎 ∪ 恢复链补调的引擎。
+        # 此前只数 engine_outcomes/raw_results，恢复段走的不是 dispatch、
+        # 两条都不进 → 实测「python 怎么读csv」报出 routed 2 → called 2 →
+        # returned 5：两个引擎交出了 5 条结果，而真凶（恢复链打的 anysearch）
+        # 在漏斗里根本不存在。漏斗的全部用途就是定位塌陷点，一个会漏掉真凶的
+        # 漏斗比没有更危险。
+        len({o.get("engine") for o in engine_outcomes if o.get("engine")}
+            | set(raw_results) | _recovery_engines),
         sum(1 for items in raw_results.values() if isinstance(items, list)
             for it in items
             if isinstance(it, dict) and "error" not in it),
@@ -1710,6 +1778,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             "engine_sum_ms": eng_sum,
             "parallel_efficiency": (round(eng_sum / _dispatch_ms, 2)
                                     if _dispatch_ms else None),
+            # useful_ms + wasted_ms ≡ wall_ms（唯一自洽的墙钟分解）。
+            # useful = 最后一个有效贡献引擎完成的时刻，wasted = 此后还在等。
+            "useful_ms": useful_ms,
             "wasted_ms": wasted_ms,
             "early_stopped": early_stopped,
         }

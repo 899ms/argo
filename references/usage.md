@@ -69,7 +69,10 @@ python3 scripts/search.py "查询词" \
   "dispatch": {                     // 引擎调度这一段单独展开
     "wall_ms": 394, "engines_run": 1, "engine_sum_ms": 365,
     "parallel_efficiency": 0.93,    // 引擎各自耗时之和 ÷ 墙钟。多数值大 = 并行有效
-    "wasted_ms": 0, "early_stopped": true
+    // useful_ms + wasted_ms ≡ wall_ms：前者是最后一个有效引擎完成的时刻（答案
+    // 从这一刻起已在手里），后者是此后还在等的那段。分开看才知道「慢」是源真的
+    // 慢，还是答案早就有、我们在白等一个不会来的源。
+    "useful_ms": 394, "wasted_ms": 0, "early_stopped": true
   },
   "import_ms": 49.4,                // 加载模块占的时间
   "overhead_ms": 61.5,              // 除各阶段外的开销（import + 解析参数 + 收尾）
@@ -78,8 +81,9 @@ python3 scripts/search.py "查询词" \
 ```
 
 常见阶段名：`route`（选引擎）、`cache_lookup` / `cache_write`（读写缓存）、
-`dispatch`（等各引擎返回）、`fusion`（合并）、`dedupe`（去重）、`rerank`
-（重排）、`signals`（算各项质量分）。
+`dispatch`（等各引擎返回）、`filter`（否定词 + 时间窗过滤）、`recovery`
+（零结果救援链，**含网络调用**）、`fusion`（合并）、`dedupe`（去重）、
+`rerank`（重排）、`signals`（算各项质量分）。
 
 两个最常看的数：
 - **`stages` 第一行**——慢在等网络（`dispatch`）还是慢在本地算（`fusion`/`rerank`）。

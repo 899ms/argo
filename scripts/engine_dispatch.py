@@ -50,6 +50,11 @@ _NOTE_STATUS = {
 # 分类与自适应学习跳过逻辑共用。新增配额错误码（如新的 API 业务码）只改这里。
 _QUOTA_ERROR_KEYWORDS = ("quota", "10406")
 
+# 「这次调用对最终答案有贡献」的 outcome 状态（唯一来源）。
+# `no-results` / `skipped-*` / `timeout` / `error` 一律不算——它们消耗了时间但
+# 没有交出任何可用结果。wasted 记账与 timing 可观测面共用这张表。
+_CONTRIBUTING_STATUS = frozenset({"ok", "ok-cached", "partial"})
+
 # 拦截页特征词（唯一来源）：error 文本里出现即判 blocked。HTML 引擎的反爬
 # 命中没有 error 文本（静默空结果），走 engines_base 的归因寄存器；
 # 这张表兜住「error 结果里带拦截页字样」的可见路径。
@@ -121,11 +126,12 @@ class DispatchResult:
 
     __slots__ = ("raw_results", "engine_outcomes", "engine_latency",
                  "wasted_ms", "early_stopped", "run_one", "ingest",
-                 "budget_used_ms", "budget_total_ms")
+                 "budget_used_ms", "budget_total_ms", "useful_ms")
 
     def __init__(self, raw_results, engine_outcomes, engine_latency,
                  wasted_ms, early_stopped, run_one, ingest,
-                 budget_used_ms=None, budget_total_ms=None) -> None:
+                 budget_used_ms=None, budget_total_ms=None,
+                 useful_ms: int = 0) -> None:
         self.raw_results = raw_results
         self.engine_outcomes = engine_outcomes
         self.engine_latency = engine_latency
@@ -135,6 +141,7 @@ class DispatchResult:
         self.ingest = ingest
         self.budget_used_ms = budget_used_ms
         self.budget_total_ms = budget_total_ms
+        self.useful_ms = useful_ms
 
 
 def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
@@ -156,7 +163,8 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                  fast_budget_s: float,
                  auto_budget_s: float,
                  primary_grace_s: float,
-                 straggler_grace_s: float = 1.5) -> DispatchResult:
+                 straggler_grace_s: float = 1.5,
+                 serial_stagger_s: float = 0.8) -> DispatchResult:
     """把 engines 跑完并收账：并发/串行调度 → 结局分类 → 熔断与配额记账。
 
     依赖全部显式注入（原因见模块头）。返回编排产出与两个补搜钩子。
@@ -178,6 +186,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
     if _budget_cfg <= 0:
         _budget_cfg = per_engine_budget_s
 
+
     # 慢源禁重试：timeout ≥ 8s 的引擎超时即放弃，避免「10s×3 次=30s」线性放大。
     # 超时本质上是源端慢/网络抖，重试不改变结果，只放大尾延迟；快速失败
     # （连接错/4xx）保留重试，重试成本低。
@@ -186,13 +195,24 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
     except Exception:
         _engine_specs = {}
 
-    def _engine_retries(eng: str) -> int:
+    def _declared_timeout(eng: str) -> float | None:
+        """引擎声明的超时（秒）；缺失/非数值/非正数一律 None。
+
+        这段解析此前在「重试策略」与「超时收紧」两处各写了一遍，任何一处漏掉
+        类型守卫，另一条路径就会拿到 `None >= 8.0` 的 TypeError；把「声明超时
+        长什么样」定在一处，两条路径就永远同步。
+        """
         spec = (_engine_specs or {}).get(eng) or {}
-        eng_timeout = None
-        if isinstance(spec, dict):
-            t = spec.get("timeout")
-            if isinstance(t, (int, float)) and t > 0:
-                eng_timeout = float(t)
+        if not isinstance(spec, dict):
+            return None
+        t = spec.get("timeout")
+        # bool 是 int 的子类：`timeout: true` 会被 isinstance 放行成 1.0 秒
+        if isinstance(t, bool) or not isinstance(t, (int, float)):
+            return None
+        return float(t) if t > 0 else None
+
+    def _engine_retries(eng: str) -> int:
+        eng_timeout = _declared_timeout(eng)
         if eng_timeout is not None and eng_timeout >= 8.0:
             return 0
         return retry_count
@@ -322,12 +342,7 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
             mode in ("fast", "auto", "budget") and depth != "deep"
         )
         if _tighten:
-            spec = (_engine_specs or {}).get(eng) or {}
-            eng_to = None
-            if isinstance(spec, dict):
-                t = spec.get("timeout")
-                if isinstance(t, (int, float)) and t > 0:
-                    eng_to = float(t)
+            eng_to = _declared_timeout(eng)
             cap = 5.0 if early_min is not None else 6.0
             # half_open 半开探测收紧到 2s：熔断器允许半开探测恢复，但探测应短促，
             # 避免 6s 探测阻塞串行/并行主路径（慢源拖尾主因）。2026-08 修复。
@@ -434,10 +449,13 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         raw_results[eng] = res
         engine_outcomes.append(outcome)
         engine_latency[eng] = lat
-        if outcome["status"] not in ("ok", "ok-cached", "partial"):
-            nonlocal_wasted[0] += lat
+        # 完成时刻（相对本次编排起点）：wasted 的真值来源，见函数尾部的记账
+        engine_done_ms[eng] = (_now() - _budget_base) * 1000.0
+        if outcome["status"] in _CONTRIBUTING_STATUS:
+            contributed_ms.append(engine_done_ms[eng])
 
-    nonlocal_wasted = [0]
+    engine_done_ms: dict[str, float] = {}
+    contributed_ms: list[float] = []
     # 配额批次的构造在调用方：flush 必须发生在**最后一个 _ingest 之后**，
     # 而那个点在融合后的 D6 补搜里（本模块之外）。在这里另建一个实例，
     # 调用方 flush 到的就是空批次——补搜引擎的记账永远落不了盘。
@@ -461,6 +479,11 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
 
     early_min = decision.get("early_stop_min_results")
     no_early = bool(decision.get("no_early_stop", False))
+
+    def _cumulative_stop(eng: str, goods: list[dict[str, Any]]) -> bool:
+        """wave-2 收工判据：把已完成的引擎合起来看是否已够（跨引擎累计）。"""
+        return (not no_early) and cumulative_sufficient(
+            raw_results, mode=mode, min_results=early_min, query=query)
 
     def _daemon_start(eng: str):
         """daemon 线程跑 _run_one：弃置线程不阻塞进程退出。"""
@@ -502,13 +525,35 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                 raw_results[eng] = [{"error": "timeout", "source": eng}]
                 engine_outcomes.append(classify_outcome(
                     eng, raw_results[eng], lat_ms, "timeout"))
-                nonlocal_wasted[0] += lat_ms
             else:
                 _ingest_holder(holder)
 
     def _run_engines_bounded(engs: list[str], wait_s: float,
-                             check_sufficient: bool = False) -> bool:
+                             stop: Callable[[str, list[dict[str, Any]]], bool] | None = None,
+                             stagger_s: float = 0.0,
+                             start_before_s: float | None = None,
+                             tail_grace_s: float = 0.0) -> bool:
         """并发跑一组引擎（≤3 并发），等待上限 wait_s 秒；返回是否已「够用」。
+
+        `stop(eng, goods)` 是某引擎完成后的收工判据，返回真即立刻收尾返回。
+        判据由调用方给：串行路径是「逐引擎充分性」，wave-2 是「跨引擎累计
+        充分性」——两种语义留成参数，调度本身只有一套。
+
+        `stagger_s` 起步间隔（秒），单调：0 = 不节流（立即填满并发位，wave-2
+        语义）；值越大越接近严格串行（大于引擎超时上限即完全退回串行）。
+        串行路径靠它获得对冲：happy path（首个引擎很快给出合格结果）仍然只发
+        一次调用，只有首个引擎「异常地慢」时才提前补发备选源。实测意义见本
+        函数调用点的注释。
+
+        `start_before_s` 之后不再起新引擎（已起的不受影响，让它跑完自己的
+        单引擎预算）。与 wait_s 分开是刻意的：串行路径要「预算耗尽就不要再
+        发新引擎」，但不能因此把已经发出去的那一枪的成果丢掉。
+
+        `tail_grace_s`（>0 时生效）：一旦**已经有引擎交出了非空结果**（哪怕
+        判据认为不够），剩余等待收窄到这么久。理由是「有东西可交付」和
+        「一个能交付的东西都没有」是两种处境——后者值得等，前者已经可以
+        收工。与 wave-1 竞速分支的 `_STRAGGLER_GRACE_S` 同一语义、同一开关
+        （`ARGO_STRAGGLER_GRACE_S=0` 可整体关闭做消融对照）。
 
         为什么不用 ThreadPoolExecutor：它的 `with` 退出会
         `shutdown(wait=True)` 并 join 所有已提交任务，把「超时即返回」的语义
@@ -523,11 +568,21 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         queue = list(engs)
         pending: list[tuple[dict[str, Any], Any, str]] = []
         deadline = _now() + max(0.0, wait_s)
+        gate = None if start_before_s is None else _now() + max(0.0, start_before_s)
+        last_start: float | None = None
         while (queue or pending) and _now() < deadline:
+            started = False
             while queue and len(pending) < 3:
+                if gate is not None and _now() >= gate:
+                    break  # 预算耗尽：不再起新引擎（既有 fast 契约）
+                if (pending and stagger_s > 0.0 and last_start is not None
+                        and (_now() - last_start) < stagger_s):
+                    break  # 起步节流：等满 stagger 再补发（串行路径的对冲）
                 eng = queue.pop(0)
                 holder, th = _daemon_start(eng)
                 pending.append((holder, th, eng))
+                last_start = _now()
+                started = True
             progressed = False
             for item in list(pending):
                 holder, th, eng = item
@@ -536,12 +591,16 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
                 _ingest_holder(holder)
                 pending.remove(item)
                 progressed = True
-                if check_sufficient and not no_early and cumulative_sufficient(
-                        raw_results, mode=mode, min_results=early_min,
-                        query=query):
+                goods = _holder_goods(holder)
+                if stop is not None and stop(eng, goods):
                     _settle_pending(pending)
                     return True
-            if not progressed:
+                if goods and tail_grace_s > 0.0:
+                    # 有东西可交付了：剩余等待收窄到宽限窗（只收紧一次，不回扩）
+                    deadline = min(deadline, _now() + tail_grace_s)
+            if not progressed and not started:
+                if not pending:
+                    break  # 队列里还有引擎，但起步闸门已关：没有下一步了
                 # 自适应轮询间隔：剩余时间充裕时多睡，快到期时少睡。
                 # 固定 20ms 在尾部会浪费时间（实测最多浪费 20ms），
                 # 自适应后平均等待时长降至 5-8ms。
@@ -556,92 +615,47 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         # github 引擎 8.5s 拖尾而次引擎 2.4s 就绪）；race 后墙钟由最先合格
         # 者决定。双成员都不合格则落 wave-2 并行补全（语义不变，且 wave-2
         # 的累计充分性判定天然包含 race 已收入的结果）。
-        # 成本语义：fast+parallel 域固定 2 次引擎调用（原 1 次），fast 的
-        # combo 以免费通用引擎为主，增量可忽略；结果质量仍由充分性判定+
+        # 成本语义：hedge 只在主引擎跑过宽限窗还没回来时才多发一次调用——
+        # 主引擎在窗内交付就仍然只付 1 次（与串行路径同一套语义、同一个值，
+        # 见 search._PRIMARY_GRACE_S 的实测依据）。结果质量仍由充分性判定 +
         # 覆盖守卫把关，先到不等于放行。
-        primary, rest = to_run[0], to_run[1:]
-        # 首发 + 分岔 hedged：先只发 primary，grace 宽限窗内完成且合格 → 只付
-        # 1 次调用（成本回退消除）；窗内未完成 → 补发次引擎并行 race，先合格者
-        # 赢（慢 primary 不拖整体）。弃置线程用 daemon 管理：赢家早停后不再被
-        # 进程退出 join，修掉原 race shutdown(wait=False) 的「函数内快、进程级
-        # 假快」——CLI 单发真省墙钟。质量仍由充分性判定 + 覆盖守卫把关。
+        #
+        # 实现形态：wave-1 就是「起步间隔 = grace 的有界并发」——primary 先跑，
+        # grace 内合格则只付一次调用（成本回退），未完成才补发 backup 并行竞速。
+        # 此前这里另有一份手写的赛车循环，与 `_run_engines_bounded` 是同一段
+        # 逻辑的两个拷贝（收尸、宽限窗、轮询间隔全都要各维护一遍）。现在两者
+        # 是同一函数的两次配置，改一处即改两处。
         grace = max(0.3, min(primary_grace_s, net_timeout * 0.25))
         if _now() + grace > _deadline:
             grace = max(0.0, _deadline - _now())
 
-        # (helper _daemon_start / _ingest_holder / _holder_goods / _settle_pending
-        #  / _run_engines_bounded 定义在本分支之前，wave-1 与 wave-2 共用一套
-        #  有界并发实现)
-        ph, pt = _daemon_start(primary)
-        pt.join(grace)
-        if not pt.is_alive():
-            # primary 在 grace 内完成：收结果，合格即早停（只 1 次调用）
-            _ingest_holder(ph)
-            goods_p = _holder_goods(ph)
-            if not no_early and goods_p and results_sufficient(
-                    goods_p, mode=mode, min_results=early_min, query=query):
-                early_stopped = True
-        if not early_stopped and pt.is_alive():
-            # primary 未在 grace 内完成：hedged 分岔，补发次引擎并行 race
-            backup = rest[:1]
-            if backup:
-                rest = rest[1:]
-                bh, bt = _daemon_start(backup[0])
-                pending = [(ph, pt, primary), (bh, bt, backup[0])]
-                _race_wait = min(net_timeout + 2,
-                                 max(0.1, _deadline - _now()))
-                _race_deadline = _now() + _race_wait
-                # 质量守卫拒绝早停后的**有界**宽限窗。
-                #
-                # 场景（实测「上海 地铁 线路图」）：对冲的备份引擎先回来，但结果与
-                # 查询零词面交集（纽约共享单车站点答上海地铁），覆盖守卫正确地
-                # 拒绝早停；此时主引擎仍在跑，循环会一直等它到 _race_deadline
-                # （net_timeout+2 量级），而它往往本就答不了这个问题
-                # （Nominatim 对「附近 咖啡店」「上海地铁」一律 1-3s 后返回 0 条）。
-                # 守卫没错——它防的是「单引擎垃圾成最终答案」；错的是拒绝之后
-                # 的等待没有上限。这里给它一个宽限窗：拿不到更好的就认了。
-                # 只影响「还等多久」，不改变任何结果的取舍。
-                reject_deadline = None
-                while pending and _now() < _race_deadline:
-                    progressed = False
-                    for (holder, th, eng) in list(pending):
-                        if th.is_alive():
-                            continue
-                        _ingest_holder(holder)
-                        goods = _holder_goods(holder)
-                        if not no_early and goods and results_sufficient(
-                                goods, mode=mode, min_results=early_min,
-                                query=query):
-                            early_stopped = True
-                        elif goods and straggler_grace_s > 0:
-                            # 有结果但被判不充分（计数或词面覆盖）→ 起宽限窗。
-                            # 只有 >0 才起：`now + 0` 会让下面的判据立刻成立，
-                            # 等于「一有结果被拒就马上放弃主引擎」——那与「关闭
-                            # 宽限窗（回旧行为）」恰好相反。0/负数一律视为关闭。
-                            reject_deadline = _now() + straggler_grace_s
-                        pending.remove((holder, th, eng))
-                        progressed = True
-                    if early_stopped or not pending:
-                        break
-                    if reject_deadline is not None and _now() >= reject_deadline:
-                        break
-                    if not progressed:
-                        # 自适应轮询间隔（同 _run_engines_bounded）
-                        remain = _race_deadline - _now()
-                        time.sleep(min(0.02, remain / 10) if remain > 0 else 0.005)
-                # 超时/弃置：仍活线程标记 timeout（daemon 自行结束，不阻塞
-                # 退出）；恰在末次轮询后完成的线程照常入账——此前它既不
-                # ingest 也不标 timeout，结果静默丢失。latency 记账用真实
-                # 等待时长（原 timeout 参数×1000 是假值，污染遥测）
-                for (holder, th, eng) in pending:
-                    lat_ms = int((_now() - holder.get("t0", _budget_base)) * 1000)
-                    if th.is_alive():
-                        raw_results[eng] = [{"error": "timeout", "source": eng}]
-                        engine_outcomes.append(classify_outcome(
-                            eng, raw_results[eng], lat_ms, "timeout"))
-                        nonlocal_wasted[0] += lat_ms
-                    else:
-                        _ingest_holder(holder)
+        def _wave1_stop(eng: str, goods: list[dict[str, Any]]) -> bool:
+            """先合格者赢：判据看单个引擎自己的结果，不看跨引擎累计。"""
+            if no_early or not goods:
+                return False
+            return results_sufficient(goods, mode=mode, min_results=early_min,
+                                      query=query)
+
+        # 竞速窗口：grace 之后还剩 net_timeout+2 的观察窗（不越过总预算）。
+        # 窗口按「从起步算起」折算，所以是 grace + 剩余额度——等价于原来的
+        # 「先 join(grace)，再从当下算 min(net_timeout+2, deadline-now)」，
+        # 但不必把 grace 白白耗在 join 上。
+        #
+        # 质量守卫拒绝早停后的等待上限由 tail_grace_s 表达：它防的是「对冲的
+        # 备份先回来但零词面交集（实测「上海 地铁 线路图」拿到纽约共享单车
+        # 站点），主引擎却已被证明答不了这类查询」时把墙钟拖到窗口耗尽。
+        # 守卫没错，错的是拒绝之后没有等待上限。
+        race_wait = grace + min(
+            net_timeout + 2, max(0.1, _deadline - _now() - grace))
+        if _run_engines_bounded(
+                to_run[:2], race_wait,
+                stop=None if no_early else _wave1_stop,
+                stagger_s=grace,
+                tail_grace_s=straggler_grace_s):
+            early_stopped = True
+        # 第 3 个及之后的引擎归 wave-2（竞速是 2 匹马的比赛，再多的交给
+        # 累计充分性判定批量补全）
+        rest = to_run[2:]
         if (not early_stopped and rest
                 and not (budget_s is not None and _now() >= _deadline)):
             # 预算检查（与串行路径 `_now() >= _deadline` 同语义）：
@@ -649,38 +663,71 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
             # 「总墙钟预算」对并行路径同样成立
             w2_wait = min(net_timeout + 2,
                           max(0.1, _deadline - _now()))
-            if _run_engines_bounded(rest, w2_wait, check_sufficient=True):
+            if _run_engines_bounded(rest, w2_wait, stop=_cumulative_stop):
                 early_stopped = True
     elif parallel and to_run:
         _run_engines_bounded(to_run, net_timeout + 2)
     else:
-        # no_early_stop 域在串行路径同样生效：平台引擎「有结果」不等于「结果可用」，
-        # fast 模式 parallel=False 必走本分支，此前曾在此被噪声结果短路
-        for eng in to_run:
-            if _now() >= _deadline:
-                break  # fast 预算耗尽：止损不再起新引擎
-            e, res, outcome, lat = _run_one(eng)
-            _ingest(e, res, outcome, lat)
-            goods = [r for r in res if isinstance(r, dict) and "error" not in r]
-            if not goods:
-                continue  # 无结果：串行试下一引擎
+        # 串行路径（`parallel=False` 的垂直域）。
+        #
+        # 它此前是**严格串行**：前一个引擎必须耗满自己的超时上限（收紧后
+        # 5-8s）才轮到下一个。实测（2026-09-17，24 条代表性查询）：dispatch
+        # 超出「首个可用引擎完成时刻」的部分 p50 39ms、p90 2436ms、合计
+        # 22.4s（平均 0.93s/查询，占平均墙钟 36%）——尾部全在这里，而
+        # wave-1/wave-2 早就有对冲，只有这条路径没有。
+        #
+        # 改法不是把垂直域改成并行（那会连 happy path 都多发调用），而是
+        # **错开起步**：首个引擎跑过 serial_stagger_s 还没回来才补发备选源。
+        # 首个引擎正常完成时仍然只付一次调用（成本语义不变）；它异常地慢时，
+        # 备选源不再等到它超时才起跑。垂直域的源（行情/宏观/天气/赛事/地理）
+        # 都是免密钥的，增量调用没有成本含义。
+        def _serial_stop(eng: str, goods: list[dict[str, Any]]) -> bool:
+            if not allow_early or no_early or not goods:
+                return False
             # 答案型域 min_results=1：1 条快照即 early-stop
-            if allow_early and not no_early and results_sufficient(
-                goods, mode=mode, min_results=early_min, query=query,
-            ):
-                early_stopped = True
-                break
+            if results_sufficient(goods, mode=mode, min_results=early_min,
+                                  query=query):
+                return True
             # 默认串行：任一引擎有结果即停（历史行为）；答案型不够用则继续补源。
             # 词面覆盖守卫同语义：结果与查询几乎无交集 → 试下一引擎（救援线）
-            if early_min is None and not no_early and query_coverage_ok(goods, query):
-                break
+            return early_min is None and query_coverage_ok(goods, query)
+
+        stagger = max(0.0, serial_stagger_s)
+        # 等待上限：给「最晚起步的那个引擎」留足它自己的单引擎预算。
+        # 旧语义等价于 n × 单引擎预算；对冲把引擎错开起步，所以是
+        # (n-1) × stagger + 单引擎预算——差的正是要消灭的那段串行拖尾。
+        _serial_wait = (len(to_run) - 1) * stagger + _budget_cfg
+        if budget_s is not None:
+            # 总预算只管「还起不起新引擎」，不没收已经发出去的枪：已起的
+            # 引擎可以跑完自己的单引擎预算（与旧串行行为一致，不比它更差）
+            _start_before = max(0.0, _deadline - _now())
+        else:
+            _start_before = None
+        if _run_engines_bounded(to_run, _serial_wait,
+                                stop=_serial_stop if allow_early else None,
+                                stagger_s=stagger,
+                                start_before_s=_start_before,
+                                tail_grace_s=straggler_grace_s):
+            early_stopped = True
 
 
 
     budget_total_ms = int(budget_s * 1000) if budget_s is not None else None
+    # 墙钟账：`useful_ms` = 最后一个有效贡献引擎完成的时刻（答案从这一刻起
+    # 就已经在手里了），`wasted_ms` = 之后还在等的那段。
+    #
+    # 此前的 wasted 是「所有非 ok 引擎的 latency 之和」——它根本不是时间量：
+    # 并行时必然大于墙钟（实测「世界杯 2026 主办国」wasted 2847ms > dispatch
+    # 2313ms），而且把「引擎如实返回了 0 条」也算成浪费。两个已知代价：
+    # ① 上一轮的优化盘点据此写下「早停与 hedge race 记账诚实、调度不用动」，
+    #    而实测调度是最大的单一浪费源；② 读者无法从它推出任何行动。
+    # 现在两者相加恒等于墙钟，且 wasted 只表示一件事：**答案就绪后还在等**。
+    wall_ms = int((_now() - _budget_base) * 1000)
+    useful_ms = int(min(max(contributed_ms), wall_ms)) if contributed_ms else 0
     return DispatchResult(
         raw_results, engine_outcomes, engine_latency,
-        nonlocal_wasted[0], early_stopped, _run_one, _ingest,
-        budget_used_ms=int((_now() - _budget_base) * 1000),
+        wall_ms - useful_ms, early_stopped, _run_one, _ingest,
+        budget_used_ms=wall_ms,
         budget_total_ms=budget_total_ms,
+        useful_ms=useful_ms,
     )

@@ -273,3 +273,39 @@ def test_funnel_survives_cache_roundtrip(backend, tmp_path, monkeypatch):
     assert second.get("funnel") == first.get("funnel") == {
         "routed": 1, "called": 1, "returned": 2, "deduped": 2,
         "filtered": 2, "kept": 2}
+
+
+def test_funnel_called_counts_recovery_engines(backend):
+    """`called` = 真正发起过调用的引擎数，救援链换上去的引擎一个都不许漏。
+
+    改造前这里只数 `engine_outcomes ∪ raw_results`，而零结果救援链
+    （`recovery.run_recovery` → `_recovery_executor`）走的**不是** dispatch：
+    实测「python 怎么读csv」报出 `routed 2 → called 2 → returned 5`
+    ——两个引擎交出了 5 条结果，真正打这一枪的救援引擎在漏斗里不存在。
+
+    漏斗的全部用途就是定位塌陷点；一个会把真凶漏掉的漏斗比没有更危险，
+    因为它给出的是一个**看似自洽**的错误结论。
+
+    用例必须走到 L3（换引擎）才有意义：L1/L2 是**拿原引擎换查询词重试**，
+    引擎名不变，漏掉它也看不出来。所以这里给一个非 general 的域 + 定向保底
+    名单，让恢复链放行 L3 并真的换上新引擎。
+    """
+    from cache import SearchCache
+    from engines import available_engines
+
+    real = sorted(available_engines())[:2]
+    assert real, "本机没有可用引擎，本用例无法构造 L3 场景"
+
+    backend.docs = {}                     # 全部空 → 逼出恢复链
+    dec = _decision(["empty_a", "empty_b"])
+    dec["domain"] = "macro_data"          # 非 general → 恢复链放行 L3
+    dec["engines_fallback"] = real
+    out = search.execute_search(f"漏斗恢复测试-{time.time_ns()}", dec, 5, 20,
+                                "fast", SearchCache(), True)
+
+    invoked = set(backend.calls)
+    assert len(invoked) > 2, (
+        f"恢复链没有换引擎（只调用了 {sorted(invoked)}），本用例测不到 L3 路径")
+    assert out["funnel"]["called"] == len(invoked), (
+        f"called={out['funnel']['called']} 与实际发起调用的引擎数 "
+        f"{len(invoked)} 不一致（invoked={sorted(invoked)}）")
