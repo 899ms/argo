@@ -276,7 +276,12 @@ function createMcpConnection(options) {
       if (timeoutMs > 0) {
         reqTimer = setTimeout(() => {
           pending.delete(id)
-          rej(new Error(`argo MCP request timed out after ${timeoutMs}ms: ${method}`))
+          // 带可判别的 code：调用方要能区分「这次调用超时」与「连接坏了」。
+          // 超时不是传输故障——原样重发只会把同一次慢调用再跑一遍（双倍引擎
+          // 调用与配额），见 makeNativeTool.execute 对它的处理。
+          const err = new Error(`argo MCP request timed out after ${timeoutMs}ms: ${method}`)
+          err.code = 'ARGO_TIMEOUT'
+          rej(err)
         }, timeoutMs)
         if (reqTimer.unref) reqTimer.unref()
       }
@@ -299,7 +304,7 @@ function createMcpConnection(options) {
   }
 
   const conn = {
-    initialize: async () => {
+    initialize: async (timeoutMs = 0) => {
       if (proc !== null) return
       proc = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] })
       proc.on('error', () => close())
@@ -330,11 +335,15 @@ function createMcpConnection(options) {
         proc.once('spawn', res)
         proc.once('error', rej)
       })
+      // 握手必须有上界：`proc.once('spawn')` 在 fork 成功时就 resolve，之后
+      // 若入口一直不回 initialize 响应（离线、代理、npx 冷缓存），send 默认
+      // timeoutMs=0 就是不装定时器——调用方声明的 searchTimeoutMs 全都在
+      // 握手之后才生效，于是第一次搜索会永远挂着。用调用方给的预算兜住它。
       const init = await send('initialize', {
         protocolVersion: '2025-06-18',
         capabilities: {},
         clientInfo: { name: 'argo-dsh', version: PLUGIN_VERSION }
-      })
+      }, timeoutMs)
       conn.notify('notifications/initialized', {})
       return init
     },
@@ -345,6 +354,19 @@ function createMcpConnection(options) {
     /** 同步认领一次调用（在 acquireMcp 里于任何 await 之前调用）。 */
     claim: () => {
       claims += 1
+      touchIdle()
+    },
+    /**
+     * 归还一次认领——用于「已经 claim 了，但最终没发出请求」的路径。
+     *
+     * 认领只在 `request` 里递减。一旦有路径 claim 之后直接返回（调用方传入
+     * 已 abort 的 signal），这条连接的 load() = pending + claims 就再也回不到 0：
+     * `find(entry => entry.load() === 0)` 永远选不中它，后续每一次调用都落到
+     * 「最闲的一条」分支，全系统搜索退化成单连接串行——而那正是连接池存在的
+     * 理由。searchIdleMs=0（文档明确允许）时这条连接到进程结束都不会被回收。
+     */
+    release: () => {
+      if (claims > 0) claims -= 1
       touchIdle()
     },
     /** 在途请求 + 已认领未发出的请求：池的负载口径。 */
@@ -369,11 +391,13 @@ function createMcpConnection(options) {
  */
 async function acquireMcp(options) {
   const max = Math.max(1, Number(options.max) || DEFAULTS.searchConcurrency)
+  // 握手预算：调用方那次调用的超时。握手不做完，调用方的超时根本没机会生效。
+  const initMs = Math.max(0, Number(options.initMs) || 0)
   const idle = mcpPool.find(entry => entry.load() === 0)
   if (idle !== undefined) {
     idle.claim()
     try {
-      await idle.initialize()
+      await idle.initialize(initMs)
       return idle
     } catch (err) {
       // 连接已坏：摘掉它再走下面的新开分支，不把失败留给调用方
@@ -387,16 +411,26 @@ async function acquireMcp(options) {
     mcpPool.push(conn)
     conn.claim()
     try {
-      await conn.initialize()
+      await conn.initialize(initMs)
     } catch (err) {
       dropFromPool(conn)
+      conn.close()
       throw err
     }
     return conn
   }
   const least = mcpPool.reduce((a, b) => (a.load() <= b.load() ? a : b))
   least.claim()
-  await least.initialize()
+  try {
+    await least.initialize(initMs)
+  } catch (err) {
+    // 与上面两条分支同一套收尾：摘掉 + 关掉。少了它，失败的连接既留在池里
+    // 占着认领位（load() 永不为 0），又不在 disposeSharedMcp 的遍历范围外
+    // ——子进程要等空闲超时才回收，searchIdleMs=0 时根本不回收。
+    dropFromPool(least)
+    least.close()
+    throw err
+  }
   return least
 }
 
@@ -434,11 +468,15 @@ export async function searchViaArgoMCP(query, maxResults = 5, signal, options = 
     args,
     idleMs: options.idleMs ?? DEFAULTS.searchIdleMs,
     max: options.max ?? DEFAULTS.searchConcurrency,
+    initMs: timeoutMs,
   })
+  // 已 abort 的 signal 会在下面立刻返回、一次请求都不发——但认领已经在
+  // acquireMcp 里同步拿走了，必须显式归还（详见 conn.release 的说明）。
   const result = await new Promise((resolve, reject) => {
     const onAbort = () => reject(argoAborted())
     if (signal !== undefined) {
       if (signal.aborted) {
+        conn.release()
         reject(argoAborted())
         return
       }
@@ -1086,6 +1124,7 @@ async function nativeViaMcpPool(config, kind, argsObj, timeoutMs) {
     args,
     idleMs: config.searchIdleMs ?? DEFAULTS.searchIdleMs,
     max: config.searchConcurrency ?? DEFAULTS.searchConcurrency,
+    initMs: timeoutMs,
   })
   const result = await conn.request('tools/call', { name: kind, arguments: argsObj }, timeoutMs)
   if (result?.isError) {
@@ -1145,9 +1184,12 @@ export function makeNativeTool(config, kind, deps = {}) {
         try {
           return { stdout: await mcpCall(config, kind, argsObj, nativeTimeoutMs) }
         } catch (err) {
-          // 工具级错误是「工具跑过了、它说不行」：单发重试只会把同一次注定
-          // 失败的调用再起一个进程跑一遍（双倍引擎调用与配额），原样抛出。
-          if (err?.code === 'ARGO_TOOL_ERROR') throw err
+          // 这两类错误都表示「调用确实到达了服务器、并且已经跑完」，重发只会
+          // 把同一次注定失败（或注定很慢）的调用再跑一遍：
+          //   ARGO_TOOL_ERROR —— 工具跑过了、它说不行；
+          //   ARGO_TIMEOUT    —— 这次调用超时了，引擎调用与配额已经花掉。
+          // 其余错误（进程崩溃 / 入口不支持 stdio）才是传输层故障，回退单发。
+          if (err?.code === 'ARGO_TOOL_ERROR' || err?.code === 'ARGO_TIMEOUT') throw err
           // 常驻连接不可用（进程崩溃 / 入口不支持 stdio）→ 回退单发，保证功能不丢
         }
       }

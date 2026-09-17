@@ -1078,11 +1078,20 @@ class SearchCache:
     def stats(self) -> dict:
         l1 = self._l1.stats
         l2 = self._l2.stats
-        total_hits = l1["hits"] + l2["hits"]
+        # 一次 _read 就是一次查找：L1 交付即命中，L1 没交付（未命中或已过期）
+        # 才下探 L2；L2 也拿不到才算真 miss。所以 miss 数恒等于 l2["misses"]，
+        # 命中数 = 总查找 − miss。
+        #
+        # 此前 hits 用 l1.hits + l2.hits、分母却用 l1.misses：L1 未命中的每一笔
+        # 都会再记一次 l2 命中，于是分母里既有这一笔的 hit 又有它的 l1.miss，
+        # 命中率被系统性压低——L2 越有效，报出来的数字越差。
+        lookups = l1["hits"] + l1["misses"]
+        misses = l2["misses"]
+        hits = lookups - misses
         return {
-            "hits": total_hits,
-            "misses": l1["misses"],
-            "hit_rate": round(total_hits / max(total_hits + l1["misses"], 1), 3),
+            "hits": hits,
+            "misses": misses,
+            "hit_rate": round(hits / max(lookups, 1), 3),
             "size_mb": l2["size_mb"],
             "entries": l2["entries"],
             "l1": l1,

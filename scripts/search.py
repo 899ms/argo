@@ -1286,7 +1286,6 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     _ingest = _dispatch.ingest
 
     elapsed = int((time.time() - t0) * 1000)
-    _dispatch_ms = elapsed
     _tock(timing, "dispatch", _tk_dispatch)
     _tk_fusion = _tick(timing)
 
@@ -1509,10 +1508,14 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                     # 账（实测「python 怎么读csv」），而这正是最需要被看见的路径。
                     _recovery_engines.add(eng)
                     try:
-                        # 恢复路径同样携带时间窗，避免恢复时丢弃用户约束
+                        # 恢复路径同样携带时间窗，避免恢复时丢弃用户约束；
+                        # --no-cache 也要透传：本函数的契约是「跳过缓存避免污染」，
+                        # 不透传会让恢复段既读到用户明确拒绝的旧缓存，又把自己的
+                        # 临时查询写进缓存（dispatch 那条路径是透传的，两处不一致）。
                         res = engine_search(rq, eng, n=max_results,
                                             timeout=timeout, depth=depth, mode=mode,
-                                            since=since_iso, until=until_iso)
+                                            since=since_iso, until=until_iso,
+                                            skip_cache=skip_cache)
                     except Exception:
                         res = []
                     goods = [r for r in (res or [])
@@ -1773,11 +1776,15 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         out["timing"] = timing.summary()
         out["timing"]["elapsed_ms"] = elapsed
         out["timing"]["dispatch"] = {
-            "wall_ms": _dispatch_ms,
+            # 用 dispatch 自己那口单调钟量出来的墙钟（budget_used_ms），不用外层
+            # 这笔 time.time() 差值：useful/wasted 都是单调钟算的，混用两种钟会
+            # 让「useful + wasted ≡ wall」只在毫秒取整恰好对齐时成立——而这条
+            # 恒等式正是测试与文档承诺的「唯一自洽的墙钟分解」。
+            "wall_ms": budget_used_ms,
             "engines_run": len(engine_latency),
             "engine_sum_ms": eng_sum,
-            "parallel_efficiency": (round(eng_sum / _dispatch_ms, 2)
-                                    if _dispatch_ms else None),
+            "parallel_efficiency": (round(eng_sum / budget_used_ms, 2)
+                                    if budget_used_ms else None),
             # useful_ms + wasted_ms ≡ wall_ms（唯一自洽的墙钟分解）。
             # useful = 最后一个有效贡献引擎完成的时刻，wasted = 此后还在等。
             "useful_ms": useful_ms,
@@ -2720,7 +2727,6 @@ def main():
     # 阶段耗时：**默认开**。它是「这次慢在哪」的自解释入口——不开的话，
     # 想知道瓶颈只能外部计时 + 临时代码，等于把优化门槛抬到只有维护者能过。
     _timing = StageTiming() if args.timing else None
-    _tk_total = _tick(_timing)
 
     results = super_search(
         query=args.query,

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import time
 from typing import Any
 from cli_io import dumps
@@ -27,7 +28,6 @@ try:
     from quota import get_quota_manager
     from engine_families import engines_demote_for_lang, engines_not_for_lang, lang_allows
 except ImportError:
-    import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
     from config import (load_config, get_engines, get_domains, get_cost_factor,
@@ -727,12 +727,21 @@ _SOCIAL_ZH_GENERAL = ("anysearch", "local_bing")
 
 
 def _specs_snapshot() -> dict:
-    """引擎 spec 快照（读 config langs 覆盖）；不可用时回退 ENGINE_LANGS 表。"""
-    try:
-        from engines import _engine_specs
-        return _engine_specs or {}
-    except Exception:
+    """引擎 spec 快照（读 config langs 覆盖）；不可用时回退 ENGINE_LANGS 表。
+
+    **已加载才读，不为它去导入。** `engines` 连带 engines_base → urllib/http.client
+    整条 HTTP 栈；而它模块级的 `_engine_specs` 只在 registry 被 `_load_registry()`
+    填充，route 从不加载 registry——旧写法（`from engines import _engine_specs`）
+    付了整笔导入的钱，拿回的却是一个空表，路由结果与「不导入」逐位相同
+    （222 引擎全量比对：0 处差异；config 里声明 langs 的只有 6 个引擎，而
+    回退的 ENGINE_LANGS 表有 42 条，空表反而走的是更全的那条路）。
+    engines 真被导入过时（dispatch / available_engines 之后）两者取到的是
+    同一个 dict 对象，语义不变。
+    """
+    mod = sys.modules.get("engines")
+    if mod is None:
         return {}
+    return getattr(mod, "_engine_specs", None) or {}
 
 
 def _move_to_tail(combo: list[str], excluded) -> list[str]:

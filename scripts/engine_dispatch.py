@@ -407,7 +407,12 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
             note_quota_exhausted(eng, outcome.get("detail") or "")
 
         if breaker is not None:
-            if outcome["status"] == "ok":
+            if outcome["status"] in _CONTRIBUTING_STATUS:
+                # 「交出可用结果」的判据只在这一张表里（同 _ingest 的 wasted 记账）。
+                # partial 是「有结果 + 有错误条目」，它同样属于贡献者；此前它落到
+                # 最后的 else，被记成 kind=error 的失败——既累计 opens（可能把
+                # 一个正常交付的引擎推向 auto-disable），又写进负缓存 30s，于是
+                # 同一个查询再搜时直接跳过该引擎，把它自己刚交出来的结果丢掉。
                 breaker.record_success(eng)
                 breaker.clear_negative(query, eng)
             elif outcome["status"] == "quota-exhausted":
@@ -522,9 +527,14 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
         for holder, th, eng in pending:
             lat_ms = int((_now() - holder.get("t0", _now())) * 1000)
             if th.is_alive():
-                raw_results[eng] = [{"error": "timeout", "source": eng}]
-                engine_outcomes.append(classify_outcome(
-                    eng, raw_results[eng], lat_ms, "timeout"))
+                # 走 _ingest 而不是手写两行收账：超时路径此前漏记 engine_latency，
+                # 而 timing.dispatch 的 engines_run / engine_sum_ms / parallel_efficiency
+                # 全是从 engine_latency 推的——一轮里引擎全部超时时，会报出「跑了 0 个
+                # 引擎」，而那恰恰是最该被看见的一轮。归一到同一处记账，以后 _ingest
+                # 再加字段，超时路径自动跟上。
+                res = [{"error": "timeout", "source": eng}]
+                _ingest(eng, res,
+                        classify_outcome(eng, res, lat_ms, "timeout"), lat_ms)
             else:
                 _ingest_holder(holder)
 
@@ -666,7 +676,14 @@ def run_dispatch(*, query: str, retrieval_query: str, engines: list[str],
             if _run_engines_bounded(rest, w2_wait, stop=_cumulative_stop):
                 early_stopped = True
     elif parallel and to_run:
-        _run_engines_bounded(to_run, net_timeout + 2)
+        # 全量并行（depth=deep，或 mode 不在 fast/auto/budget 内）：没有早停判据，
+        # 但**总墙钟预算照样成立**——与上面 wave-2、下面串行两条路径同语义。
+        # 此前这里直接等 net_timeout+2，而 budget_s 是按 mode 定的（--depth deep
+        # 时 mode 仍是 auto，10s），于是会报出 used_ms > total_ms 的自相矛盾读数。
+        _wait = net_timeout + 2
+        if budget_s is not None:
+            _wait = min(_wait, max(0.1, _deadline - _now()))
+        _run_engines_bounded(to_run, _wait)
     else:
         # 串行路径（`parallel=False` 的垂直域）。
         #

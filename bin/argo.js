@@ -6,6 +6,23 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+
+/**
+ * 子进程的退出码。
+ *
+ * `code === null` 表示子进程是被**信号**杀死的（SIGPIPE/SIGKILL/OOM killer…），
+ * 此时 node 把信号名放在第二个参数里。原有的 `code || 0` 会把这种情况报成
+ * 成功：MCP 宿主关掉 stdio 管道 → python 死于 SIGPIPE → 本进程 exit 0，
+ * 于是 `argo-search call ... || fallback` 和 CI 的退出码判断全部失效——
+ * 拿到的是被截断的输出，却看不见失败（错误信封的契约也一并作废）。
+ * 按 shell 惯例折算成 128 + 信号号。
+ */
+function exitCodeOf(code, signal) {
+  if (code !== null && code !== undefined) return code;
+  const num = (os.constants.signals || {})[signal];
+  return typeof num === 'number' ? 128 + num : 128;
+}
 
 function resolvePython() {
   if (process.env.ARGO_PYTHON) return process.env.ARGO_PYTHON;
@@ -45,8 +62,8 @@ if (argv[0] === 'call') {
     console.error(`argo-search: 无法启动 Python (${PYTHON}): ${err.message}`);
     process.exit(1);
   });
-  cli.on('exit', (code) => {
-    process.exit(code || 0);
+  cli.on('exit', (code, signal) => {
+    process.exit(exitCodeOf(code, signal));
   });
 } else {
   const proc = spawn(PYTHON, [SCRIPT], {
@@ -63,7 +80,7 @@ if (argv[0] === 'call') {
     process.exit(1);
   });
 
-  proc.on('exit', (code) => {
-    process.exit(code || 0);
+  proc.on('exit', (code, signal) => {
+    process.exit(exitCodeOf(code, signal));
   });
 }

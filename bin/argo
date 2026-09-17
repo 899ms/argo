@@ -311,20 +311,28 @@ def main():
 
     sub = sys.argv[1]
     rest = sys.argv[2:]
-    # 达标就地执行；否则按 _pick_python 选解释器并 execv 重启。
-    # 判定前置于探测：达标时连 _pick_python 的子进程校验都省掉。
-    inplace = _self_capable()
-    py = sys.executable if inplace else _pick_python()
 
     # env 文件 → os.environ 同步（只填缺失，不覆盖已有值）：子进程按标准
     # os.environ 直读密钥（读取方零改动，含其他 AGT 既有集成），未经
-    # mcp_launch.sh 注入的裸 shell 也能拿到
+    # mcp_launch.sh 注入的裸 shell 也能拿到。
+    #
+    # **必须在选解释器之前**：`_pick_python` 认的权威覆盖就是 ARGO_PYTHON，
+    # 而它读的是 os.environ——同步排在后面，用户照文档把 ARGO_PYTHON 写进
+    # `~/.config/argo/env` 就等于没写。`mcp_launch.sh` 是「先 source 再探测」
+    # （line 32 早于 line 67），两个启动器对同一个文件给出不同答案，正是本仓
+    # 反复踩过的「装了没通电」。这个变量只在「当前解释器不够用」时才被读到，
+    # 而那恰恰是用户会去写它的情形。
     try:
         sys.path.insert(0, SCRIPTS)
         from engine_env import sync_envfile_to_environ
         sync_envfile_to_environ()
     except Exception:
         pass
+
+    # 达标就地执行；否则按 _pick_python 选解释器并 execv 重启。
+    # 判定前置于探测：达标时连 _pick_python 的子进程校验都省掉。
+    inplace = _self_capable()
+    py = sys.executable if inplace else _pick_python()
 
     scripts = {
         "search":    ("search.py",     ["--json"]),

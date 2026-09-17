@@ -10,7 +10,6 @@ local_bing、local_baidu 等子引擎，消除 local_search 黑盒。
 from __future__ import annotations
 
 import json
-import logging
 import os
 import time
 from pathlib import Path
@@ -19,10 +18,12 @@ from typing import Any
 # 本地状态目录唯一来源（env ARGO_STATE_DIR → config cache.db_path 父目录 → 旧路径）
 import argo_paths as _paths
 
-logger = logging.getLogger("argo.engine_registry")
-if not logger.handlers:
-    logger.setLevel(logging.WARNING)
-    logger.addHandler(logging.StreamHandler())
+# 这里曾有 logger = logging.getLogger(...) + setLevel/addHandler 四行，但全模块
+# 一次都没调用过它——本模块只做声明合并与健康状态读写，没有需要记的运行时事件。
+# 代价却不是零：`import logging` 会连带 traceback → dataclasses → inspect →
+# _colorize（CPython 3.13+ 实测 12.5 ms），而 route 在模块级导入本模块，
+# 于是每一次进程启动（含纯缓存命中的那一档）都要付这笔钱去买一个没人用的 logger。
+# 真要记日志时再按需 import，别让路由路径为它买单。
 
 ARGO_DIR = Path(__file__).resolve().parent.parent
 LOCAL_SEARCH_DIR = ARGO_DIR / "sub-skills" / "local-search"
