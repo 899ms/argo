@@ -231,6 +231,99 @@ class TestReadabilityExtract(unittest.TestCase):
         self.assertIn("数据乙", content)
         self.assertNotIn("表头甲 | 数据乙", content, "跨行被错误连接")
 
+    # ── 结构还原（HTML → Markdown 结构）──────────────────────────────────
+    #
+    # 没有这层时输出是纯文本流：标题、列表项、代码、引用全部退化成普通行。
+    # 判定一律基于「纯文本视图」——Markdown 语法会让文本明显变长，而
+    # link_chars 只数锚文本，用带语法的文本做判据会让整块都是链接的导航块
+    # 漏进正文（实测 Wikipedia 的导航框不是 <nav> 标签，靠的正是这条判据）。
+
+    _PAD = "这一段正文足够长，用来隔离结构行为而不是被短块阈值整段丢弃。" * 2
+
+    def test_headings_get_level_prefix(self):
+        html = f"""<html><body><div><h1>一级标题文字</h1><h2>二级标题文字</h2>
+        <p>{self._PAD}</p></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertIn("# 一级标题文字", content)
+        self.assertIn("## 二级标题文字", content)
+
+    def test_unordered_and_ordered_lists(self):
+        # 列表项必须明确越过 li 的 30 字下限（含后缀也叫不准容易踩线，
+        # 实测已因此误判两次）
+        li = "列表项的内容写得足够长，长到足以形成独立块并参与打分流程的完整说明"
+        html = f"""<html><body><div><ul><li>{li}甲</li><li>{li}乙</li></ul>
+        <ol><li>{li}丙</li><li>{li}丁</li></ol>
+        <p>{self._PAD}</p></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertIn(f"- {li}甲", content, "无序列表缺少 - 前缀")
+        self.assertIn(f"1. {li}丙", content, "有序列表未编号")
+        self.assertIn(f"2. {li}丁", content, "有序列表编号未递增")
+
+    def test_code_block_gets_fence_and_language(self):
+        code = "def compute(rows, seconds):\n    return sum(rows) / max(seconds, 1)"
+        html = f"""<html><body><div>
+        <pre><code class="language-python">{code}</code></pre>
+        <p>{self._PAD}</p></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertIn("```python", content, "代码围栏缺少语言标记")
+        self.assertIn("def compute(rows, seconds):", content)
+        self.assertIn("return sum(rows)", content, "代码内容被压缩成一行")
+
+    def test_inline_link_keeps_href(self):
+        html = f"""<html><body><div><p>见 <a href="https://e.com/doc">说明文档</a>
+        以及其余补充文字，使该段长度稳定超过最小块阈值要求。</p></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertIn("[说明文档](https://e.com/doc)", content)
+
+    def test_image_becomes_markdown(self):
+        html = f"""<html><body><div><p>下图给出对照：<img src="/a.png" alt="对照图">
+        详细说明见后文附录章节，此处不再展开。</p></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertIn("![对照图](/a.png)", content)
+
+    def test_blockquote_prefixed(self):
+        html = f"""<html><body><div><blockquote>这是一段引用文字，内容写得足够长，
+        足以形成独立块并参与正文打分。</blockquote></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertIn("> 这是一段引用文字", content)
+
+    def test_link_list_without_nav_tag_still_excluded(self):
+        """导航块不一定是 <nav> 标签——纯链接列表必须照样被过滤。
+
+        这是结构层引入的真实风险：链接在输出里变成 `[文字](地址)` 之后，
+        块文本远长于 link_chars，用带语法的文本做判据就判不出「整块都是链接」。
+        实测 Wikipedia 的导航框（<div> 里一堆 <li><a>）因此漏进正文。
+        """
+        # 锚文本必须**长过**块长度下限（30 字）：短于它会被 min_chars 先丢掉，
+        # 纯链接规则根本轮不到，门就测不出东西。此处按长度生成而非手写——
+        # 凭眼睛数中文字数已连续数错多次，写死长度并在下方断言才可靠。
+        anchor = "导航链接文字" * 6          # 36 字，明确越过 30
+        assert len(anchor) >= 35, "锚文本必须明确越过长度下限"
+        items = "".join(
+            f'<li><a href="/p/{i}">{anchor}{i}</a></li>' for i in range(6))
+        # 关键：链接列表与正文**同深度**。若把它再包一层 <div>，导航块会因深度
+        # 不同被分组阈值滤掉，纯链接规则根本没轮到——那样的夹具测的是分组，
+        # 不是本规则（实测第一版夹具正是如此，变异测试显示该门无牙）。
+        html = f"""<html><body><div><ul>{items}</ul>
+        <p>{self._PAD}</p></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertNotIn("门户条目 3", content, f"纯链接导航块漏进正文：{content[:200]!r}")
+        self.assertIn("这一段正文足够长", content, "正文被误伤")
+
+    def test_short_block_still_dropped_after_prefix(self):
+        """结构前缀不得让短块蒙混过关：判据看纯文本长度，不看带前缀的长度。"""
+        # 纯文本远低于阈值，而带 Markdown 语法的文本（长 href 展开后）越过
+        # 阈值——只有这样两种判据才会给出不同结论，门才有区分力。
+        # 若两者都低于阈值，无论用哪种判据都丢弃，测不出判据是否正确。
+        long_a = "/documentation/reference/very-long-path-segment"
+        long_b = "/documentation/guides/another-long-path-segment"
+        html = f"""<html><body><div>
+        <p>说明<a href="{long_a}">甲</a>与<a href="{long_b}">乙</a></p>
+        <p>{self._PAD}</p></div></body></html>"""
+        content, _ = extract_readability(html, 8000)
+        self.assertNotIn("[甲]", content, f"短块被链接语法救活了：{content!r}")
+        self.assertIn("这一段正文足够长", content, "正文被误伤")
+
     def test_score_blocks_placeholder_keeps_order(self):
         """P1 占位：无 query 精排时保持原顺序。"""
         parts = ["第一段", "第二段", "第三段"]

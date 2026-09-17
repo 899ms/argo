@@ -106,6 +106,17 @@ class ReadabilityExtractor(HTMLParser):
         self._row_id = 0
         self.title = ""
         self._in_title = False
+        # ── 结构还原状态（HTML → Markdown 结构）──
+        # 没有这层时输出是纯文本流：标题、列表项、代码、引用全部退化成普通行，
+        # 表格只剩「A | B」而看不出是不是表格。实测结构保真 0/5。
+        self._current_plain: list[str] = []   # 与 _current 同步，但不含 Markdown 语法
+        self._inline_stack: list[dict] = []   # 行内包裹（a / code）
+        self._pre_depth = 0                   # 处于 <pre> 内的深度
+        self._code_buf: list[str] = []        # <pre> 内的原始文本
+        self._code_lang = ""                  # code 的 language-xxx
+        self._list_stack: list[str] = []      # "ul" / "ol"
+        self._ol_count: list[int] = []        # 有序列表计数器
+        self._quote_depth = 0                 # 引用嵌套深度
 
     # ── HTMLParser 回调 ──────────────────────────────────────────────
 
@@ -117,10 +128,42 @@ class ReadabilityExtractor(HTMLParser):
             return
         if self._in_skip:
             return
+        a = dict(attrs)
+        if tag == "img":
+            # 图片是空元素：在起点就地成文，不依赖 endtag
+            alt = (a.get("alt") or "").strip()
+            src = (a.get("src") or "").strip()
+            if src:
+                self._current.append(f"![{alt}]({src})")
+                # alt 是图片的可见文本，必须计入纯文本视图：否则「只有一句话
+                # 配一张图」的段落会因文本过短被整块丢弃，图片跟着一起消失
+                if alt:
+                    self._current_plain.append(alt)
         if tag in CONTAINER_TAGS | BLOCK_TAGS:
             self._depth += 1
         if tag == "a":
             self._link_depth += 1
+            self._inline_stack.append({"kind": "a", "href": (a.get("href") or "").strip(),
+                                       "buf": []})
+        elif tag == "code":
+            cls = a.get("class") or ""
+            m = re.search(r"language-([\w+#-]+)", cls)
+            if self._pre_depth:
+                # <pre><code class="language-x"> —— 语言标记取自此层
+                if m:
+                    self._code_lang = m.group(1)
+            else:
+                self._inline_stack.append({"kind": "code", "href": "", "buf": []})
+        elif tag == "pre":
+            self._pre_depth += 1
+            self._code_buf = []
+            self._code_lang = ""
+        elif tag in ("ul", "ol"):
+            self._list_stack.append(tag)
+            if tag == "ol":
+                self._ol_count.append(0)
+        elif tag == "blockquote":
+            self._quote_depth += 1
         if tag in CONTAINER_TAGS:
             self._container_stack.append(len(self._blocks))
 
@@ -134,6 +177,37 @@ class ReadabilityExtractor(HTMLParser):
             return
         if tag == "a":
             self._link_depth = max(0, self._link_depth - 1)
+        if tag in ("a", "code") and self._inline_stack:
+            w = self._inline_stack.pop()
+            txt = "".join(w["buf"]).strip()
+            if txt:
+                self._current_plain.append(txt)
+            if txt:
+                if w["kind"] == "a" and w["href"]:
+                    self._current.append(f"[{txt}]({w['href']})")
+                elif w["kind"] == "code":
+                    self._current.append(f"`{txt}`")
+                else:
+                    self._current.append(txt)
+        if tag == "pre":
+            self._pre_depth = max(0, self._pre_depth - 1)
+            if self._pre_depth == 0:
+                raw = "".join(self._code_buf).strip("\n")
+                self._code_buf = []
+                if raw:
+                    fence = f"```{self._code_lang}" if self._code_lang else "```"
+                    self._current.append(f"{fence}\n{raw}\n```")
+                self._code_lang = ""
+        if tag in ("ul", "ol") and self._list_stack:
+            popped = self._list_stack.pop()
+            if popped == "ol" and self._ol_count:
+                self._ol_count.pop()
+        if tag == "blockquote":
+            self._quote_depth = max(0, self._quote_depth - 1)
+            # blockquote 是容器不是块标签，自身不触发 flush；不在此收尾，
+            # 引文会被并进下一个块，`> ` 前缀就贴到了无关段落上
+            if self._current and "".join(self._current).strip():
+                self._flush_block("blockquote")
         if tag in CONTAINER_TAGS:
             start = self._container_stack.pop() if self._container_stack else None
             # 仅当容器内**没有产出任何正文块**时（纯链接侧栏/导航），丢弃累积文本，
@@ -143,6 +217,7 @@ class ReadabilityExtractor(HTMLParser):
             if start is not None and len(self._blocks) == start:
                 self._current = []
                 self._current_link = []
+                self._current_plain = []
         if tag == "tr":
             # 行结束：后续单元格归入下一行。必须在 _flush_block 之前递增，
             # 且 tr 自身不产块（表格数据由 td 逐格产出）。
@@ -162,23 +237,57 @@ class ReadabilityExtractor(HTMLParser):
         # 「See the  for the full harness」。_current_link 保留同样的文本
         # 只为算 link_chars（链接密度惩罚），两个用途互不替代——惩罚靠
         # 计分（见 TextBlock.score），不是靠删除。
-        self._current.append(data)
+        if self._pre_depth:
+            # 代码块内原样收集：缩进与换行都是内容，不能被当作空白丢弃
+            self._code_buf.append(data)
+            self._current_plain.append(data)
+            return
+        if self._inline_stack:
+            # 行内链接/行内代码：先入缓冲，收尾时整体成文（见 handle_endtag），
+            # 这样 [文字](地址) 才会作为一个整体落在句子的正确位置上。
+            # 此时**不得**同步记入 _current_plain：收尾时会把锚文本补记一次，
+            # 两处都记等于让纯文本视图翻倍，纯链接判据随即失效（实测导航块
+            # 因此漏出）。
+            self._inline_stack[-1]["buf"].append(data)
+        else:
+            self._current.append(data)
+            self._current_plain.append(data)
         if self._link_depth > 0:
             self._current_link.append(data)
 
     # ── 内部 ─────────────────────────────────────────────────────────
 
+    def _struct_prefix(self, tag: str) -> str:
+        """块级结构前缀（Markdown）。`li` 会推进有序列表计数。"""
+        if tag.startswith("h") and len(tag) == 2 and tag[1].isdigit():
+            return "#" * int(tag[1]) + " "
+        if tag == "li":
+            if self._list_stack and self._list_stack[-1] == "ol" and self._ol_count:
+                self._ol_count[-1] += 1
+                return f"{self._ol_count[-1]}. "
+            return "- "
+        return ""
+
     def _flush_block(self, tag: str) -> None:
-        text = "".join(self._current).strip()
+        # raw 保留不加前缀的原文：纯链接判定与长度判定都必须基于它。
+        # 若先加前缀，`- ` 这两个字符会让导航块的 `link_chars >= len(text)`
+        # 不再成立，之前修好的纯链接块过滤会被打回去。
+        raw = "".join(self._current).strip()
+        # 纯文本视图：判据一律基于它。Markdown 语法（`](href)`、`# `、`- `）
+        # 会让 raw 明显变长，而 link_chars 只数锚文本——用 raw 做判据时
+        # 「整块都是链接」的导航块不再被判出，实测 Wikipedia 的导航框因此
+        # 漏进正文（它不是 <nav> 标签，靠的正是这条判据）。
+        plain = "".join(self._current_plain).strip()
         link_chars = len("".join(self._current_link).strip())
         self._current = []
         self._current_link = []
+        self._current_plain = []
         # 纯链接块（整块文字都来自 <a>，如导航项/面包屑/页脚链接）整体丢弃。
         # 与「行内链接」必须区分开：段落里的链接是句子的一部分，丢了句子就断了
         # （见 handle_data）；而整块只有链接的块是导航噪声，留着会变成负分块，
         # 经 _group_score 拖垮同深度的正文分组——实测会让 MDN / Astro 文档页
         # 的正文输出反而缩水三分之一。
-        if link_chars and link_chars >= len(text):
+        if link_chars and link_chars >= len(plain):
             return
         # 标题类标签（h1-h6）放宽短块阈值：文章标题/小节标题信息密度高，
         # 30 字符下限会把「第一段正文标题内容」这类短标题丢掉。
@@ -186,8 +295,13 @@ class ReadabilityExtractor(HTMLParser):
         # 30 字符下限会把整张表格的数据全部丢光；2 字符下限只丢单字噪声。
         is_heading = tag.startswith("h") and len(tag) == 2 and tag[1].isdigit()
         min_chars = 2 if tag == "td" else (6 if is_heading else MIN_BLOCK_CHARS)
-        if len(text) < min_chars:
+        if len(plain) < min_chars:
             return
+        if tag == "blockquote":
+            # 引用逐行加前缀，否则多行引文只有首行属于引用
+            text = "\n".join("> " + ln for ln in raw.split("\n") if ln.strip())
+        else:
+            text = self._struct_prefix(tag) + raw
         weight = TAG_WEIGHT.get(tag, 1.0)
         kind = "cell" if tag in ("td", "th") else "text"
         block = TextBlock(text, link_chars, self._depth, weight,
