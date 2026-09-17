@@ -1176,10 +1176,14 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 "reranker": "skipped_cache",
                 "engine_outcomes": hit.get("engine_outcomes") or [],
                 "time_filtered": 0,
-                # 缓存命中时漏斗记账沿用存档值（它描述的是上一次真实抓取），
-                # 键缺席即「该条缓存写入于引入漏斗之前」，不伪造数字。
-                "funnel": hit.get("funnel"),
             }
+            # 缓存命中时漏斗记账沿用存档值（它描述的是上一次真实抓取）。
+            # 存档里没有（该条写入于引入漏斗之前）就**整个键缺席**，不写成
+            # null——null 会被读成「漏斗算出来是空」，而缺席只表示「这次没有
+            # 这个数据」。两种档位（默认/agent）必须同一形态，否则同一件事
+            # 有两种表述。
+            if hit.get("funnel") is not None:
+                _hit["funnel"] = hit["funnel"]
             if timing is not None:
                 _hit["timing"] = timing.summary()
             return _hit

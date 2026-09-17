@@ -225,6 +225,39 @@ def test_agent_view_keeps_funnel(backend):
     assert slim["funnel"] == out["funnel"]
 
 
+class _OldEntryCache:
+    """只模拟一种状态：命中一条「写入于引入漏斗之前」的缓存。
+
+    不碰缓存内部结构（L1/L2/锁），因为这里要验的是**命中路径怎么组装输出**，
+    不是缓存本身。
+    """
+
+    def __init__(self, results):
+        self._hit = {"results": results, "_cache_level": "L2",
+                     "engines_used": ["engine_a"], "engine_outcomes": []}
+
+    def get(self, *_a, **_k):
+        return dict(self._hit)
+
+    def set(self, *_a, **_k):
+        return None
+
+
+def test_old_cache_entry_omits_funnel_not_null(backend):
+    """存档里没有漏斗时，输出里该键**缺席**，不能写成 null。
+
+    null 会被读成「漏斗算出来是空」，缺席才是「这次没有这个数据」。默认档与
+    agent 档必须同一形态，否则同一件事有两种表述。
+    """
+    out = search.execute_search(
+        "老缓存条目", _decision(["engine_a"]), 5, 20, "fast",
+        _OldEntryCache([{"title": "t", "url": "https://example.invalid/x",
+                         "snippet": "s", "source": "engine_a"}]),
+        False)
+    assert out.get("cached") is True
+    assert "funnel" not in out
+
+
 def test_funnel_survives_cache_roundtrip(backend, tmp_path, monkeypatch):
     """缓存命中时漏斗随存档一起回来——缺席比错误数字更容易被误读成「没数据」。"""
     from cache import SearchCache
