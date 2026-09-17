@@ -87,6 +87,31 @@ export TINYFISH_API_KEY="sk-tinyfish-..."   # 去 agent.tinyfish.ai/api-keys 申
 - **插件 wide_research 接入**：`file_inputs`（本地一手数据，登记来源记录 sha256/路径，内容不入账）+ `recompute`（可复算契约，调度器侧受限执行，产出 `recomputed_values`）+ `include_local`（worker 搜索并入本机命中）；检查 `recompute_skipped` / `recompute_conflict` 保持一致核心，本地一手计入一手命中（防 no_source 假阴性）
 - **成果复用**：`python3 scripts/research.py --search-archive "主题词" [--archive-since 日期]` —— 检索历史研究/搜索归档（`数据/argo-search-archive/runs/`），按主题词 + 时间窗列出历史 run 与来源统计
 
+## 改完之后怎么验证（都不联网）
+
+| 想确认的事 | 跑什么 | 要多久 |
+|---|---|---|
+| 路由还选得对 | `python3 scripts/matrix_search_eval.py --offline` | 秒级 |
+| 排序质量有没有退步 | `python3 -m pytest tests/test_ranking_golden.py -q` | 秒级 |
+| 结果条数与输出体积有没有退步 | `python3 scripts/replay_eval.py --check` | 秒级 |
+| 这次改动到底比上次好还是差 | 先 `--save-baseline 旧.json`，改完再 `--compare 旧.json` | 秒级 |
+| 全面回归 | `python3 -m pytest tests/ -q` | 三分钟左右 |
+
+`scripts/replay_eval.py` 的用法：它把真实搜索里每个引擎返回的内容录在
+`tests/golden/pipeline_golden.json`，之后不上网也能重跑整条流程。
+
+```bash
+python3 scripts/replay_eval.py                     # 重跑，看每条的结果条数与输出体积
+python3 scripts/replay_eval.py --save-baseline 旧.json   # 改动前先存一份基准
+python3 scripts/replay_eval.py --compare 旧.json   # 改动后列出差异：多了什么、少了什么、位次怎么动
+python3 scripts/replay_eval.py --case <id>         # 看某一条的明细
+python3 scripts/replay_eval.py --record            # 只有它需要联网：重新录一批真实返回
+```
+
+**切记**：录下来的引擎返回只属于录制那一天。重跑保证的是「我们的处理逻辑没有退步」，
+不是「现在网上就是这个样子」——网页结构会变、配额会变、不同地区的可达性也不同。
+外部环境的变化要靠 `--record` 重新录一次，不要用重跑的结果下结论。
+
 ## 工程纪律（唯一来源）
 
 - **代码来源** = 本仓库；**引擎声明来源** = `config.yaml`（外置 `engines/specs/*.yaml` 优先覆盖同名引擎）；注册表由 `scripts/sync_backends.py` 派生到 `backends/*`
