@@ -33,15 +33,15 @@ triggers:
 
 ```bash
 python3 scripts/search.py "查询词"                      # 自动路由搜索
-python3 scripts/search.py "查询词" --json --no-envelope --fields agent  # Agent 消费默认档
+python3 scripts/search.py "查询词" --json --fields agent  # Agent 消费档
 python3 scripts/search.py "查询词" --verify 3            # 核验 top-3 并回填证据分
 python3 scripts/research.py "复杂问题" --json            # 取证包（扩词或多工作包 → dossier）
 ```
 
-`--no-envelope` 去掉归档用的候选列表与 sources 投影（URL 与 results 全重），输出体积减半以上；`--fields agent` 再剥掉遥测字段只留答案（fetch_required 保留）。要归档（`--archive`）或
-需要来源追溯时才不加。三个视图分工（`results` 答案 / `sources` 引用 /
-`candidates` 归档）、全量字段、以及 `--list-engines --detail` 的体积陷阱见
-`references/usage.md`。
+默认不附归档用的 candidates/sources（它们是同一批结果的重复投影），一次 5 条约
+5.6 KB；`--fields agent` 再剥遥测只留答案。要来源追溯或归档时加 `--envelope`
+（`--archive` 自动带上）。三视图分工、全量字段与 `--list-engines --detail` 的
+体积陷阱见 `references/usage.md`。
 
 深度研究只此一条。机器产出**取证包（dossier）**：来源、覆盖、缺口、是否达标，不是判断稿。Agent 先读 `references/research-protocol.md`，写出工作包再取证；判断按事实/推断/建议写。不要另装「专业深度研究」skill。
 
@@ -97,7 +97,7 @@ argo watch add|check|list|remove   # 观察模式：快照+变化检测（check 
 4. **社交帖**：叙事/舆情，不进事实真值
 5. **深度研究**：先读 `references/research-protocol.md`；有决策含义就交工作包，不要靠扩词充问题树；`quality_gate_results.passed=false` 必须降级表述
 6. **引用**：讲给用户的事实带 URL 出处，日常档也要带（URL 在 `results[].url`，零成本）
-7. **上下文纪律**：Agent 搜索用 `--json --no-envelope --fields agent`、按需 `-n`（超 10 无收益）；要来源追溯或归档才用 envelope 模式（sources/candidates 只在那里）；查引擎状态用 `--list-engines --detail --engine <名>`（单引擎全量 ~0.9 KB）；不带 `--engine` 是瘦身全量清单 ~50 KB，只回答「哪些源可用」。MCP 默认只注入 search/fetch/local_search，全量 14 个 MCP 工具设 `ARGO_MCP_TOOLS=all`
+7. **上下文纪律**：Agent 搜索用 `--json --fields agent`、按需 `-n`（超 10 无收益）；要来源追溯或归档才加 `--envelope`；结果异常少看 `funnel`（六格阶段计数，哪格归零即塌陷点）；查引擎状态用 `--list-engines --detail --engine <名>`（单引擎全量 ~0.9 KB）；不带 `--engine` 是瘦身全量清单 ~50 KB，只回答「哪些源可用」。MCP 默认只注入 search/fetch/local_search，全量 14 个 MCP 工具设 `ARGO_MCP_TOOLS=all`
 
 ## 证据流程（v2.8.0）
 

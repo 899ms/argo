@@ -16,7 +16,7 @@ python3 scripts/search.py "查询词" \
   [--since 7d|2026-08-01] [--until 2026-08-01] [--sort relevance|oldest|newest]\
   [--domain DOMAIN] [--sub_domain SUB_DOMAIN]  # 垂直域限定\
   [--input-kind auto|keyword|url-seed|known-url]\
-  [--plan-only] [--force-search] [--no-envelope]\
+  [--plan-only] [--force-search] [--envelope]\
   [--timing|--no-timing]       # 输出里的阶段耗时，默认开\
   [--archive] [--archive-dir DIR] [--archive-tag TAG] [--archive-note NOTE]\
   [--verify [TOP_K]]          # 核验 top-K 未核验结果并回填证据分
@@ -28,9 +28,9 @@ python3 scripts/search.py "查询词" \
 
 ## search 输出字段与体积纪律
 
-一次 `search --json` 会给出**三个视图**，它们不是重复而是各有用途；选错视图会
-白等上下文（实测 5 条结果：默认 14.9 KB ≈ 5.0k token，`--no-envelope` 后 6.8 KB
-≈ 2.3k，再叠 `-n 3` 降到 4.5 KB ≈ 1.5k）：
+`search --json` **默认只给答案**（实测 5 条：5.6 KB ≈ 1.4k token）。加
+`--envelope` 才会附**三个视图**——这三个视图各有用途、不是重复，但它们服务的是
+**归档与来源追溯**，日常取答案不需要，故默认关（`--archive` 会自动带上）：
 
 | 视图 | 用途 | 体积（5 条） |
 |------|------|-------------|
@@ -38,9 +38,16 @@ python3 scripts/search.py "查询词" \
 | `sources` | **引用用这个**：底部相关链接形态的稳定 5 字段投影 | 1.0 KB |
 | `candidates` | **归档/整理素材才要**：完整候选记录，带来源追溯字段（`candidate_id`/`canonical_url`/`platform`/`verification`/`metrics`/`limitations`） | 4.9 KB |
 
-- **Agent 消费默认加 `--no-envelope --fields agent`**：前者去掉完整候选记录与 sources 投影（sources 是 results 里 URL 的重投影，只在 envelope 模式生成）；后者再剥掉遥测字段，实测 -n2 输出 1.3 KB（full --json ≈ 14.9 KB）。`fetch_required` 在两档都保留；只有做归档
-  （`--archive`）或需要来源追溯时才保留（`--archive` 会强制保留）。
-- 另有一批诊断字段（`tfidf_scores`/`engine_outcomes`/`coverage`/`routes`/`limitations`/
+- **Agent 消费再加 `--fields agent`**：剥掉遥测字段、只留答案与质量信号，
+  实测 `-n 2` 输出 1.3 KB。`fetch_required` 与 `limitations` 在各档都保留。
+- 三视图内部确实有重复（同一段 snippet 在三处各写一遍，合计约占全文档 40%）——
+  那是**归档要的冗余**：`candidates.jsonl` 一行一条要能自证来源。所以做法是
+  「要用时打开 `--envelope`」，不是把视图削瘦（削了归档就残了）。
+- **`funnel`（阶段漏斗账）**：`routed → called → returned → deduped → filtered →
+  kept` 六格计数，按管线顺序。相邻两格的差值就是该层损耗——「只有 5 条」和「0 条」
+  都能一眼看出塌在哪一层（引擎没抓到 / 被当重复削掉 / 被过滤压没），`limitations`
+  会把塌陷点写成一句话。约 70 字节，agent 档也保留。
+- 另有一批诊断字段（`tfidf_scores`/`engine_outcomes`/`coverage`/`routes`/
   `lang_pref`）体积不大但通常无用，别把它们当结果读。
 - 结果级字段：`fetch_suggested`（是否建议核验）、`has_fetched_evidence`（已核验）、
   `post_fetch_absorption`（正文级吸收分，核验后回填）；`full_text_url` 是源给出的
@@ -184,7 +191,7 @@ python3 scripts/search.py "贵州茅台股价" --verify 3
 # [verify] 核验 3 条，improved=2 unchanged=1 degraded=0 mean_delta=0.18
 ```
 
-以上开关在两档都保留（`--no-envelope` 与 `--fields agent` 都不会剥掉 `fetch_required`）。
+以上开关在精简档与 `--fields agent` 档都保留（两档都不会剥掉 `fetch_required`）。
 
 ## argo answer（直答）与 Seltz 语料
 
@@ -232,8 +239,8 @@ laggard 规则（与族内最高分差 ≥0.15 即后置）会把它推到族末
 把搜索结果讲给用户时，凡是来自检索的事实都要带 URL 出处——**日常档也要带，不必等深度研究**。
 URL 就在 `results[].url` 里（`--fields agent` 也保留），零额外成本。
 
-`sources` 是 `results` 里 URL 的重投影，只在 envelope 模式生成（1.0 KB），形态是「底部相关链接」；
-要那种整齐样式就加 envelope，不加也不影响能引用。
+`sources` 是 `results` 里 URL 的重投影，只在 `--envelope` 下生成（1.0 KB），形态是「底部相关链接」；
+要那种整齐样式就加 `--envelope`，不加也不影响能引用。
 
 ## 内容质量信号
 

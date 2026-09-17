@@ -220,7 +220,11 @@ def build_limitations(
     """
     limitations = list(extra_limitations or [])
     limitations.append("Do not treat engagement metrics as factual correctness.")
-    if search_result.get("early_stopped"):
+    # 有 funnel（阶段漏斗账）时，早停说明由 search 侧给出带 called/routed 数字的
+    # 版本，此处不再说一遍——同一件事两条表述会互相削弱（读者该信哪条？）。
+    # 无 funnel 的情况（引入漏斗之前写入的缓存条目）仍由这里兜底。
+    if search_result.get("early_stopped") \
+            and not isinstance(search_result.get("funnel"), dict):
         limitations.append("early_stopped: later engines in combo may not have run.")
     if search_result.get("recovery"):
         limitations.append("recovery path used; results may come from fallback engines.")

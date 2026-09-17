@@ -66,7 +66,8 @@ class AdaptiveLearner:
         if conn is not None:
             return conn
         conn = sqlite3.connect(str(DB_PATH), timeout=10, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
+        import argo_paths
+        argo_paths.apply_state_pragmas(conn)
         self._local.conn = conn
         return conn
 

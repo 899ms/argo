@@ -651,6 +651,43 @@ def _save_config_disk_cache(st: os.stat_result, scan: tuple[float, int, int, str
         return
     # 刚写的这份就是本进程的最新真值，直接填入记忆，省掉一次回读
     _disk_cache_memo = (_config_db_path_key(st), payload)
+    _sweep_orphan_cache_slots(path)
+
+
+def _sweep_orphan_cache_slots(keep: Path) -> None:
+    """回收「config_path 已不存在」的缓存槽；任何失败静默。
+
+    why（2026-09-17 实测）：引导根里 8 个槽中有 6 个属于 `/tmp` 下的临时
+    checkout（测试与基准跑出来的），每个约 142 KB 且永久留存，合计 1.13 MB。
+
+    判据只能是「那份 config.yaml 还在不在」：槽按 config_path 分是**多 checkout
+    安全所必需的**（见 _config_disk_cache_path 的说明），所以不能按「同一个
+    config 的旧摘要」来删——那会误删另一个 checkout 正在用的槽。只删 config_path
+    在盘上已消失的槽，既不误伤活着的 checkout，又能自愈任何来源的临时副本。
+
+    时机：只在写缓存时顺带扫（缓存未命中才写，属低频）。临时 checkout 自己写槽
+    时就会回收上一批的遗留，所以污染源活跃时回收也随之发生。
+    """
+    if not _config_disk_cache_enabled():
+        return
+    try:
+        siblings = list(keep.parent.glob("config-cache-*.json"))
+    except OSError:
+        return
+    for path in siblings:
+        if path == keep:
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            cfg_path = str(((payload.get("key") or {}).get("config_path")) or "").strip()
+        except (OSError, ValueError, AttributeError):
+            # 读不动或结构不认识：一律不动。判定不了就不删，是这里的保守选择。
+            continue
+        if cfg_path and not Path(cfg_path).exists():
+            try:
+                path.unlink()
+            except OSError:
+                continue
 
 
 def load_config(force: bool = False) -> dict[str, Any]:

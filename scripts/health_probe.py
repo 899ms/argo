@@ -53,7 +53,8 @@ MAX_FAILURES = 2  # 连续失败次数阈值
 def _connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), timeout=5)
-    conn.execute("PRAGMA journal_mode=WAL")
+    import argo_paths
+    argo_paths.apply_state_pragmas(conn)
     return conn
 
 

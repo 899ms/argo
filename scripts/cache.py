@@ -348,7 +348,7 @@ class SQLiteCache:
         if self._mem_conn is not None:
             return self._mem_conn
         conn = sqlite3.connect(self._db_path, timeout=10)
-        conn.execute("PRAGMA journal_mode=WAL")
+        argo_paths.apply_state_pragmas(conn)
         conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 

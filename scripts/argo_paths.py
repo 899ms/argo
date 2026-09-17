@@ -657,6 +657,32 @@ def atomic_write_json(path: Path, payload: Any, *, indent: int | None = 2) -> No
     atomic_write_text(path, content)
 
 
+# WAL 回缩上限与自动检查点页数：argo 状态库的统一 WAL 策略。
+#
+# 为什么需要（2026-09-17 实测）：SQLite 默认 `journal_size_limit=-1`，检查点后
+# 不回缩 `-wal`，文件长期停在自动检查点阈值（1000 页 ≈ 3.94 MB）上。实测
+# 「limit=1 MB + autocheckpoint=256 页」把稳态压到 0.95 MB；只设 limit 不降
+# 检查点阈值无效（仍 2.84 MB）——**真正起作用的是检查点频率**。
+# 本机 cache.db + adaptive.db 两库合计省约 6 MB。
+WAL_SIZE_LIMIT_BYTES = 1024 * 1024
+WAL_AUTOCHECKPOINT_PAGES = 256
+
+
+def apply_state_pragmas(conn: Any) -> None:
+    """argo 状态库连接的统一设置：WAL + 回缩上限 + 检查点阈值。
+
+    why：此前 cache.py / adaptive.py / health_probe.py 各自写一份
+    `PRAGMA journal_mode=WAL`，三份必然漂移——新增状态库时只会照抄
+    journal_mode，漏掉回缩上限；改策略时也要改三处。收敛到一处的代价是
+    多一次函数调用，收益是「WAL 策略」这件事只有一个定义点。
+
+    只改 PRAGMA，不碰连接生命周期（各模块的连接复用方式不同，刻意不统一）。
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
+    conn.execute(f"PRAGMA wal_autocheckpoint={WAL_AUTOCHECKPOINT_PAGES}")
+
+
 def isolate_state_dir(tag: str = "argo-dev") -> Path:
     """把状态目录重定向到独立临时目录，并返回该目录。
 

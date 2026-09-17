@@ -1926,6 +1926,195 @@ def route_query(query: str, engine_override: str = "auto",
     )
 
 
+# ── 路由决策缓存（跨进程） ─────────────────────────────────────────────────────
+#
+# 为什么需要（2026-09-17 实测）：route_query 的**首次调用**要付约 103 ms 的
+# 进程级初始化——238 条域正则编译 33 ms（而跑完全部匹配只要 0.2 ms）、惰性导入、
+# 引擎环境/准入与 TF-IDF 装载；同进程内的后续调用只要 3.7 ms。CLI 每次调用都是
+# 新进程，于是这笔启动税每次重付。实测：跳过一次 route_query 后，缓存命中的
+# 一次完整搜索只要 26 ms（对比 route 首调 137 ms + 执行 3 ms）。
+#
+# 判据为什么与 config 磁盘缓存不同：那一层的产物被当作**事实**（db_path 等），
+# 必须逐字节正确，所以用内容摘要；这一层的产物是**优化结果**，偏差的后果只是
+# 一段时间内引擎排序不最优，且有 TTL 与下游失败分型兜底，故用 config_stamp()
+# 这个既有的 mtime 综合戳（registry 热加载同款）——键计算从约 5 ms 降到 0.1 ms。
+
+_ROUTE_CACHE_SCHEMA = 1
+_ROUTE_CACHE_TTL_S = 300.0
+_ROUTE_CACHE_MAX_ENTRIES = 200
+
+
+def _route_cache_enabled() -> bool:
+    """ARGO_ROUTE_CACHE=0/false/no/off 关闭；判定链不可用时按「开」处理。
+
+    缓存是纯性能优化，关掉不影响正确性；判不开时维持既有行为（每次都实算）。
+    """
+    try:
+        from engine_env import env_flag
+        return env_flag("ARGO_ROUTE_CACHE", default=True)
+    except Exception:
+        return True
+
+
+def _route_cache_file():
+    import argo_paths
+    return argo_paths.state_path("route-cache.json")
+
+
+def _route_state_fingerprint() -> str:
+    """影响路由决策的可变状态摘要；取不到就返回空串（等价于不用缓存）。
+
+    - `config_stamp()`：config.yaml 与外置声明的 mtime，覆盖 enabled / domains /
+      engines_combo 的改动。
+    - 配额与熔断取**派生集合**（已耗尽额度 / 已自动禁用），不取状态文件的字节或
+      mtime。为什么：`quota.json` 每次运行都会被状态机重写（mtime 必变），文件里的
+      用量计数也随每次搜索变动——**实测拿 mtime 做摘要会让缓存 100% 失效**
+      （第二次调用就换了键）；而真正改变路由结果的只是「哪些源现在不可用」这个
+      集合，它只在源真的挂掉或恢复时变化。
+
+    刻意**不含** adaptive.db：自适应学习器每次搜索都写它，同理会让缓存立即失效；
+    它只影响引擎排序的软信号、变化渐进，由 TTL 兜住。
+
+    这是**粗粒度**信号：覆盖「源挂了 / 被禁 / 额度耗尽」这类持久状态，瞬时节流
+    （rpm 抖动）不在其中，由 TTL 兜住。空串判据与 config 磁盘缓存 digest 取不到
+    时的保守选择一致：空摘要永不等于任何已存条目的键，因此不会读到旧结论。
+    """
+    try:
+        from config import config_stamp
+        parts = [f"cfg={config_stamp():.0f}"]
+    except Exception:
+        return ""
+    try:
+        from quota import get_quota_manager
+        marks = get_quota_manager().remote_exhausted_marks()
+        parts.append("qe=" + ",".join(sorted(marks)))
+    except Exception:
+        return ""
+    try:
+        from circuit_breaker import get_breaker
+        parts.append("cb=" + ",".join(sorted(get_breaker().auto_disabled())))
+    except Exception:
+        return ""
+    return "|".join(parts)
+
+
+def _route_cache_key(query: str, engine_override: str, mode: str, depth: str,
+                     context: str, engines_boost: list[str] | None,
+                     fingerprint: str) -> str:
+    import hashlib
+    import json
+    raw = json.dumps({
+        "v": _ROUTE_CACHE_SCHEMA,
+        # 归一化空白：同一问题多打几个空格不该是两次路由
+        "q": " ".join(str(query or "").split()),
+        "eo": engine_override or "auto",
+        "mode": mode, "depth": depth, "context": context,
+        "boost": [str(b) for b in (engines_boost or [])],
+        "fp": fingerprint,
+    }, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def _route_cache_read() -> dict[str, Any]:
+    import json
+    try:
+        payload = json.loads(_route_cache_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(payload, dict) or payload.get("schema") != _ROUTE_CACHE_SCHEMA:
+        return {}
+    entries = payload.get("entries")
+    return entries if isinstance(entries, dict) else {}
+
+
+def _route_cache_prune(entries: dict[str, Any]) -> dict[str, Any]:
+    now = time.time()
+    fresh = {k: v for k, v in entries.items()
+             if isinstance(v, dict)
+             and now - float(v.get("ts") or 0) <= _ROUTE_CACHE_TTL_S}
+    if len(fresh) > _ROUTE_CACHE_MAX_ENTRIES:
+        newest = sorted(fresh.items(),
+                        key=lambda kv: float(kv[1].get("ts") or 0), reverse=True)
+        fresh = dict(newest[:_ROUTE_CACHE_MAX_ENTRIES])
+    return fresh
+
+
+def _route_cache_write(entries: dict[str, Any]) -> None:
+    import argo_paths
+    try:
+        argo_paths.atomic_write_json(
+            _route_cache_file(),
+            {"schema": _ROUTE_CACHE_SCHEMA, "entries": entries},
+            indent=None,
+        )
+    except Exception:
+        return
+
+
+def invalidate_route_cache() -> bool:
+    """删除磁盘上的路由决策缓存（测试隔离与显式失效用）。"""
+    try:
+        _route_cache_file().unlink()
+        return True
+    except OSError:
+        return False
+
+
+def route_query_cached(query: str, engine_override: str = "auto",
+                       mode: str = "auto", depth: str = "fast",
+                       context: str = "search",
+                       engines_boost: list[str] | None = None) -> dict[str, Any]:
+    """route_query 的跨进程缓存包装：命中即跳过整笔启动税。
+
+    调用方会就地改 decision（如 research 置 no_early_stop），而命中返回的是
+    每次从**磁盘重新读出**的对象，改动不会影响后续调用或存档内容——这条契约由
+    tests/test_route_cache.py::test_hit_returns_deep_copy 锁住（新增进程内记忆化
+    之类的优化会打破它，届时测试会红）。
+
+    route_cached 的三种取值是有意的：True=命中、False=走了缓存但未命中、
+    **缺席**=本次没走缓存（开关关闭或指纹不可用）。缺席与 False 对调用方的
+    含义不同——前者是「缓存没参与」，后者是「缓存参与过、这个输入是新的」。
+
+    任何不满足缓存条件的情况都回落到 route_query，缓存永不改变功能，只改变
+    「要不要再算一次」。
+    """
+    import json
+
+    if not _route_cache_enabled():
+        return route_query(query, engine_override=engine_override, mode=mode,
+                           depth=depth, context=context, engines_boost=engines_boost)
+    fingerprint = _route_state_fingerprint()
+    if not fingerprint:
+        return route_query(query, engine_override=engine_override, mode=mode,
+                           depth=depth, context=context, engines_boost=engines_boost)
+
+    t0 = time.time()
+    key = _route_cache_key(query, engine_override, mode, depth, context,
+                           engines_boost, fingerprint)
+    entries = _route_cache_read()
+    hit = entries.get(key)
+    if isinstance(hit, dict) and isinstance(hit.get("decision"), dict) \
+            and time.time() - float(hit.get("ts") or 0) <= _ROUTE_CACHE_TTL_S:
+        decision = hit["decision"]
+        decision["route_cached"] = True
+        # 用真实耗时覆盖存档值：这个字段会经 plan 输出给用户，报旧值就是撒谎
+        decision["elapsed_ms"] = round((time.time() - t0) * 1000, 2)
+        return decision
+
+    decision = route_query(query, engine_override=engine_override, mode=mode,
+                           depth=depth, context=context, engines_boost=engines_boost)
+    decision["route_cached"] = False
+    # 语义可逆才缓存：JSON 往返会把元组静默变列表，那等于改变了决策的形态
+    # （与 config 磁盘缓存「缓存不得改变语义」同一条纪律）。
+    try:
+        if json.loads(json.dumps(decision, ensure_ascii=False)) == decision:
+            entries[key] = {"ts": time.time(), "decision": decision}
+            _route_cache_write(_route_cache_prune(entries))
+    except (TypeError, ValueError):
+        pass
+    return decision
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def _cli():

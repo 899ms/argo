@@ -17,6 +17,13 @@ import tempfile
 
 os.environ.setdefault("ARGO_ENGINE_HTTP_CLIENT", "0")
 
+# 路由决策缓存默认关闭，理由与上面的 HTTP_CLIENT 同类：它是跨进程的持久缓存，
+# 而本会话的状态目录**整轮共享**——于是「A 用例路由过 Q」会把决策留给「B 用例
+# 换过夹具后再路由 Q」，用例之间互相串味，且结果与执行顺序相关。关掉后退回每次
+# 实算，存量检查的行为与引入缓存前逐位一致；缓存自身的行为由
+# tests/test_route_cache.py 显式打开开关验证。
+os.environ["ARGO_ROUTE_CACHE"] = "0"
+
 # 状态目录隔离（必须在任何 argo 模块 import 前设置）
 _STATE_DIR = tempfile.mkdtemp(prefix="argo-test-state-")
 os.environ["ARGO_STATE_DIR"] = _STATE_DIR

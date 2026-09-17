@@ -43,6 +43,7 @@ try:
 except ImportError:
     _query_similarity = None  # type: ignore
 from route import route_query  # noqa: E402
+from route import route_query_cached  # noqa: E402  # 跨进程路由决策缓存（见 route 内说明）
 from config import get_execution_config, get_cost_factor, get_engines  # noqa: E402
 from cli_io import dumps  # noqa: E402
 try:
@@ -1175,6 +1176,9 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
                 "reranker": "skipped_cache",
                 "engine_outcomes": hit.get("engine_outcomes") or [],
                 "time_filtered": 0,
+                # 缓存命中时漏斗记账沿用存档值（它描述的是上一次真实抓取），
+                # 键缺席即「该条缓存写入于引入漏斗之前」，不伪造数字。
+                "funnel": hit.get("funnel"),
             }
             if timing is not None:
                 _hit["timing"] = timing.summary()
@@ -1353,6 +1357,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             import logging
             logging.getLogger("unified_search").debug(f"minhash 去重跳过: {type(_e).__name__}")
     _tock(timing, "dedupe", _tk_dedupe)
+    # 漏斗第 4 格：跨引擎合并 + 近重复去重之后还剩多少（见 build_funnel）
+    _funnel_deduped = len(merged)
     _tk_rerank = _tick(timing)
 
     # ── P2：多语言语言偏好软排序（ja/ko 前置含目标语言字符结果，软排不删除）──
@@ -1389,6 +1395,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
             import logging
             logging.getLogger("unified_search").debug(
                 f"时间窗后过滤剔除 {time_filtered} 条（since={since_iso}, until={until_iso}）")
+    # 漏斗第 5 格：否定词过滤 + 时间窗过滤之后（见 build_funnel）
+    _funnel_filtered = len(merged)
 
     # D5：时间窗空操作告警——用户指定了时间窗，组合内含时间能力引擎，
     # 但结果没有任何 published_at（下推缺失/源端未返回）：
@@ -1539,6 +1547,20 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
     if on_progress:
         on_progress(Stage.MERGING, {"count": len(merged)})
 
+    # 阶段漏斗账（见 build_funnel）。在写缓存之前算一次、两处消费：
+    # 既进 result_payload（缓存命中时它随存档一起返回，否则命中路径的漏斗会
+    # 缺席——而「缺席」比数字更容易被误读成「没数据」），也进本次输出。
+    # 此处 len(merged) 已等于最终条数：_apply_consensus_and_sort 在上一步已按
+    # max_results 截断，而 _sort_results 只重排、不改长度。
+    funnel = build_funnel(
+        len(engines),
+        len(engine_outcomes) or len(raw_results),
+        sum(1 for items in raw_results.values() if isinstance(items, list)
+            for it in items
+            if isinstance(it, dict) and "error" not in it),
+        _funnel_deduped, _funnel_filtered, len(merged),
+    )
+
     result_payload = {
         "results": merged,
         "engines_used": list(raw_results.keys()),
@@ -1547,6 +1569,7 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         "time_filtered": time_filtered,
         "time_filter_warning": time_filter_warning,
         "noise_dropped": _noise_dropped,
+        "funnel": funnel,
     }
 
     # 写 combo 缓存：空结果短 TTL / 时效 cap 由 cache.set 处理
@@ -1649,6 +1672,8 @@ def execute_search(query: str, decision: dict[str, Any], max_results: int,
         "count": len(out_results), "engines_used": list(raw_results.keys()),
         "errors": _collect_errors(raw_results, engine_outcomes),
         "engine_outcomes": engine_outcomes,
+        # 阶段漏斗账：0 结果时用它定位塌在哪一层（见 build_funnel）
+        "funnel": funnel,
         # 多语言噪声门：被剔除的引擎及原因（可观测，便于定位「为什么少了几个源」）
         "noise_dropped": _noise_dropped,
         "wasted_engine_ms": wasted_ms,
@@ -1905,14 +1930,14 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
 
     if local_first:
         _tk_route = _tick(timing)
-        decision = route_query(
+        decision = route_query_cached(
             original_query, engine_override="local_search", mode=mode,
             depth=depth, context=context, engines_boost=engines_boost,
         )
         _tock(timing, "route", _tk_route)
     else:
         _tk_route = _tick(timing)
-        decision = route_query(
+        decision = route_query_cached(
             original_query, engine_override=engine, mode=mode,
             depth=depth, context=context, engines_boost=engines_boost,
         )
@@ -1987,6 +2012,28 @@ def super_search(query: str, engine: str = "auto", n: int = 5, explain: bool = F
         )
     if result.get("recovery"):
         extra_lim.append("recovery used; engine fallback may differ from primary route")
+    # 执行归因：把「为什么只有这么几条 / 为什么只跑了一个源」写进随答案一起
+    # 到达的局限声明。此前这类问题只能靠翻 engine_outcomes 与 early_stopped
+    # 反推，而局限声明本身就是给消费者看的「这批结果能用到什么程度」，
+    # 成因属于同一类信息（GLM 密集反馈：反馈要能追到具体原因）。
+    _fn = result.get("funnel")
+    if isinstance(_fn, dict):
+        _routed, _called = _fn.get("routed"), _fn.get("called")
+        if isinstance(_routed, int) and isinstance(_called, int) \
+                and _called < _routed:
+            # 有漏斗时由这里给带数字的版本；candidate_envelope.build_limitations
+            # 见到 funnel 就不再出泛化表述——同一件事只留一句。
+            extra_lim.append(
+                f"early_stopped: only {_called} of {_routed} routed engines "
+                "were queried; coverage may be narrower than the route implies"
+            )
+        if result.get("count") == 0:
+            _stage = funnel_collapse(_fn)
+            if _stage:
+                extra_lim.append(
+                    f"no results: pipeline emptied at '{_stage}' "
+                    f"[{describe_funnel(_fn)}]"
+                )
     if tier == "daily":
         extra_lim.append(
             "daily tier: direct search; no pre-confirm gate"
@@ -2152,14 +2199,17 @@ _AGENT_RESULT_FIELDS = (
 def _strip_for_agent(payload: dict[str, Any]) -> dict[str, Any]:
     """--fields agent：输出只留答案内容（P2-2，2026-09-13）。
 
-    在 --no-envelope 之上再剥遥测标量（tfidf_scores/lang_pref/engine_outcomes
-    等）与 null/空键。fetch_required 必须保留——SKILL.md 的高后果门控纪律
-    依赖它，不能被瘦身掉。
+    在默认精简档之上再剥遥测标量（tfidf_scores/lang_pref/engine_outcomes 等）
+    与 null/空键。fetch_required 必须保留——SKILL.md 的高后果门控纪律依赖它，
+    不能被瘦身掉；funnel 同理保留，它是 agent 判「0 结果卡在哪一层」的唯一依据。
     """
     keep_top = (
         "query", "engine", "engines", "engines_used", "domain", "count",
         "mode", "depth", "status", "fetch_required", "evidence_loop",
         "errors", "login_hint",
+        # 阶段漏斗账：约 70 字节，换来「这次为什么只有这么几条」的可归因性。
+        # 它是 agent 档里唯一能回答「0 结果卡在哪一层」的东西，不剥。
+        "funnel",
         # 质量信号：局限声明与告警必须随答案一起到达。此前 agent 档把
         # limitations/recovery/time_filter_warning 一并剥掉，agent 无从判断
         # 「这批结果能用到什么程度」（2026-09-15 输出契约审查）。
@@ -2179,6 +2229,56 @@ def _strip_for_agent(payload: dict[str, Any]) -> dict[str, Any]:
     out["results"] = slim_results
     out["count"] = len(slim_results)
     return out
+
+
+def build_funnel(routed: int, called: int, returned: int,
+                 deduped: int, filtered: int, kept: int) -> dict[str, int]:
+    """阶段漏斗账：一次调用在管线每一层还剩多少条。
+
+    why（GLM 密集反馈那篇的核心）：端到端指标只能说明「变差了」，说明不了
+    **在哪一层**变差。同一句「0 结果」背后至少有四种病——路由没选到能答的引擎、
+    引擎返回了但去重削没了、否定词/时间窗过滤压到 0、精排阶段全被剔掉。
+    这些数字此前散在 minhash_removed / excluded_count / time_filtered / count
+    里，读者得自己拿管线知识把它们按顺序拼起来，拼错就会误判。
+
+    六格按管线顺序（routed → called → returned → deduped → filtered → kept），
+    相邻两格的差值就是该层的损耗，「哪一格塌了」一眼可见。
+
+    routed   = 路由选出的引擎数（engines_combo）
+    called   = 实际发起调用的引擎数（早停时小于 routed）
+    returned = 引擎返回的原始条数（跨引擎去重前）
+    deduped  = 跨引擎合并 + 近重复去重后
+    filtered = 否定词过滤 + 时间窗过滤后
+    kept     = 最终输出条数
+    """
+    return {"routed": routed, "called": called, "returned": returned,
+            "deduped": deduped, "filtered": filtered, "kept": kept}
+
+
+FUNNEL_STAGES = ("routed", "called", "returned", "deduped", "filtered", "kept")
+
+
+def describe_funnel(funnel: dict[str, Any] | None) -> str:
+    """把漏斗压成一行 `routed 2→called 2→returned 0→…`（给局限声明用）。"""
+    if not isinstance(funnel, dict):
+        return ""
+    return "→".join(f"{k} {funnel.get(k)}" for k in FUNNEL_STAGES
+                    if k in funnel)
+
+
+def funnel_collapse(funnel: dict[str, Any] | None) -> str | None:
+    """返回漏斗里第一个被打到 0 的层名；没有 0 就返回 None。
+
+    这是「0 结果」的归因答案：结果在 `returned` 归零 = 引擎没抓到；
+    在 `deduped` 归零 = 抓到了但被当重复削掉；在 `kept` 归零 = 被过滤/截断压没。
+    三者的处置完全不同，混成一句「没有结果」就没法据此行动。
+    """
+    if not isinstance(funnel, dict):
+        return None
+    for name in FUNNEL_STAGES:
+        if funnel.get(name) == 0:
+            return name
+    return None
 
 
 def build_sources(results: list[Any] | None) -> list[dict[str, Any]]:
@@ -2432,8 +2532,11 @@ def main():
                         help="仅输出离线计划（不联网）")
     parser.add_argument("--force-search", action="store_true",
                         help="known-url 也强制多引擎搜索（不推荐）")
+    parser.add_argument("--envelope", action="store_true",
+                        help="附加 candidates/sources/coverage（归档/来源追溯用；"
+                             "--archive 自动开启）")
     parser.add_argument("--no-envelope", action="store_true",
-                        help="不附加 candidates/coverage/limitations")
+                        help="兼容保留：默认已不附加，此开关现在等同默认")
     _tg = parser.add_mutually_exclusive_group()
     _tg.add_argument(
         "--timing", "--explain-timing", dest="timing",
@@ -2525,8 +2628,20 @@ def main():
     if not args.query:
         parser.error("必须提供搜索关键词")
 
-    # 归档需要 envelope；--archive 时强制保留
-    use_envelope = (not args.no_envelope) or args.archive
+    # envelope 默认**关**，要时显式开（--envelope / --archive）。
+    #
+    # why（2026-09-17 实测）：默认附 envelope 时一次 5 条结果的 JSON 输出 15454 B，
+    # 其中 14117 B（82%）是同一批结果的三视图重复——snippet 被写三遍（5701 B，
+    # 占全文 40%），candidates 每条还重复一遍 query。而这三个视图的角色是
+    # **归档与来源追溯**：归档路径（--archive）本来就会把 candidates 落成
+    # candidates.jsonl、并在缺 sources 时从 results 回填，所以「归档要全量」
+    # 由 `or args.archive` 这一支保证，默认翻转**不损失任何能力**——需要
+    # provenance 的调用者加 --envelope 即可拿到与从前逐字节相同的文档。
+    #
+    # 之前的方向是「默认给全量、调用者自己记得减」（--no-envelope），
+    # 于是忘记加开关的调用者每次多付约 2.4k token。默认档应当服务最常见的
+    # 那个用途，而不是服务最重的那个用途。
+    use_envelope = args.envelope or args.archive
     # 阶段耗时：**默认开**。它是「这次慢在哪」的自解释入口——不开的话，
     # 想知道瓶颈只能外部计时 + 临时代码，等于把优化门槛抬到只有维护者能过。
     _timing = StageTiming() if args.timing else None

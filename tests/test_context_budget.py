@@ -201,16 +201,27 @@ class TestNoSelfDescriptionInSkillDocs(unittest.TestCase):
 class TestContextGuidanceIsReal(unittest.TestCase):
     """文档承诺的省上下文开关必须真实存在且未失效。"""
 
-    def test_skill_md_documents_no_envelope(self):
-        md = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("--no-envelope", md,
-                      "SKILL.md 未教 Agent 用 --no-envelope——默认输出体积翻倍")
+    def test_skill_md_documents_envelope_opt_in(self):
+        """契约在 2026-09-17 反转：归档视图改为默认关，要时加 --envelope。
 
-    def test_cli_really_supports_no_envelope(self):
+        门禁的**意图没变**——「SKILL.md 必须教 Agent 怎么控制输出体积，别让
+        默认档翻倍」。变的只是开关方向：此前是「默认全量、记得减
+        （--no-envelope）」，现在是「默认精简、要用时打开（--envelope）」。
+        旧的 `--no-envelope` 仍在 CLI 上兼容保留。
+        """
+        md = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("--envelope", md,
+                      "SKILL.md 未教 Agent 用 --envelope——要来源追溯时无从打开")
+        self.assertIn("--fields agent", md,
+                      "SKILL.md 未教 Agent 用精简档——默认输出体积会翻倍")
+
+    def test_cli_really_supports_documented_flags(self):
         import inspect
         import search as search_mod
         src = inspect.getsource(search_mod)
-        self.assertIn('"--no-envelope"', src, "CLI 不再支持 --no-envelope 但文档仍在教")
+        self.assertIn('"--envelope"', src, "文档在教 --envelope，CLI 却不支持")
+        self.assertIn('"--no-envelope"', src,
+                      "--no-envelope 是兼容保留项，删掉会打断既有脚本")
 
     def test_list_engines_detail_filter_by_engine(self):
         """单引擎详细查询必须真的被过滤——曾静默忽略 --engine 吐全量 186 KB。"""
